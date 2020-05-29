@@ -4,8 +4,8 @@ identified from manual segmenetaiton and training a NN on this data for
 segment identification
 '''
 
-import HelperFunctions as HF
-import numpy as np
+from HelperFunctions import *
+import glob
 
 # User input
 '''
@@ -13,18 +13,24 @@ Folder location of slices
 Extent of training (epochs, batch)
 '''
 
+data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
+
+# NOTE functions need to be able to deal with a list of names
+slicesDIr = glob(str(data+"*.ndpi"))
+annotationsDir = slices = glob(str(data+"*.ndpa"))
+
 # Load in the WSI
-HF.WSILoad.main()
+segments = WSILoad.main(slicesDir)
 
 # Load in the locations of identified slices
-HF.SegmentLoad.main()
+annotations = SegmentLoad.readndpa(annotationsDir)
 
 # Perform pre-processing on the WSI to highlight features/remove background+artifacts 
-HF.WSIPreProcessing.main()
+WSIPreProcessing.main()
 
 # Creating the training data
-HF.DataGenerator.main()
+DataGenerator.main()
 
 # Training the model
-HF.ModelTrainer.main()
+ModelTrainer.main()
 
