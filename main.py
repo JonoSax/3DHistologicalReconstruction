@@ -19,12 +19,13 @@ data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/D
 slicesDIr = glob(str(data+"*.ndpi"))
 annotationsDir = slices = glob(str(data+"*.ndpa"))
 
-# Load in the WSI
+# Load in the WSI segments
 segments = WSILoad.main(slicesDir)
 
 # Load in the locations of identified slices
 annotations = SegmentLoad.readndpa(annotationsDir)
 
+# NOTE this could possible go into the WSILoad function
 # Perform pre-processing on the WSI to highlight features/remove background+artifacts 
 WSIPreProcessing.main()
 

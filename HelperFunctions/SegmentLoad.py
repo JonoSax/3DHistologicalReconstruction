@@ -6,8 +6,6 @@ that has just been loaded
 
 import numpy as np
 
-# dir = "/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/testAnnotations.ndpa"
-
 def readndpa(name):
 
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points
@@ -28,16 +26,14 @@ def readndpa(name):
     pos = np.empty([0, 2])
     l = 0
 
+    # NOTE the skips in this loop are hard coded because as far as i can tell
+    # they are enitrely predictable 
     while l < len(doco):
 
             if "<point>" in doco[l]:
 
                 x = doco[l+1]
                 y = doco[l+2]
-
-                # read each line and extract the integers from string
-                # x = int(''.join(str(e) for e in [int(s) for s in list(doco[l+1]) if s.isdigit()]))
-                # y = int(''.join(str(e) for e in [int(s) for s in list(doco[l+2]) if s.isdigit()]))
 
                 x = x.replace("<x>", ""); x = int(x.replace("</x>\n", ""))
                 y = y.replace("<y>", ""); y = int(y.replace("</y>\n", ""))
