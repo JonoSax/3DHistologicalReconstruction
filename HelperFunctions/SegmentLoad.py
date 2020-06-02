@@ -5,53 +5,61 @@ that has just been loaded
 '''
 
 import numpy as np
+from glob import glob
 
-def readndpa(name):
+def readndpa(annotationsSRC, annotationName):
 
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points
-    # Input:    Directory for a *.ndpa file
+    # Input:    Directory for a single *.ndpa file
     # Output:   A list containing numpy arrays which have the recorded positions of the drawn points on the slide. Each
     #           entry to the list refers to a section drawn
 
-    file = open(name)
+    names = glob(annotationsSRC + annotationName + "*.ndpa")
 
-    # find the number of sections identified in slice
-    sections = open(name).read().count("ndpviewstate id=")
+    posAll = list()
 
-    # extract all info from text file line by line
-    doco = list(file.readlines())
+    for name in names:
 
-    # declare list and array
-    posA = list()
-    pos = np.empty([0, 2])
-    l = 0
+        file = open(name)
 
-    # NOTE the skips in this loop are hard coded because as far as i can tell
-    # they are enitrely predictable 
-    while l < len(doco):
+        # find the number of sections identified in slice
+        sections = open(name).read().count("ndpviewstate id=")
 
-            if "<point>" in doco[l]:
+        # extract all info from text file line by line
+        doco = list(file.readlines())
 
-                x = doco[l+1]
-                y = doco[l+2]
+        # declare list and array
+        posA = list()
+        pos = np.empty([0, 2])
+        l = 0
 
-                x = x.replace("<x>", ""); x = int(x.replace("</x>\n", ""))
-                y = y.replace("<y>", ""); y = int(y.replace("</y>\n", ""))
+        # NOTE the skips in this loop are hard coded because as far as i can tell
+        # they are enitrely predictable 
+        while l < len(doco):
 
-                pos = np.vstack((pos, [x, y]))
+                if "<point>" in doco[l]:
 
-                l += 4  # jump 4 line to the next set of co-ordinates
+                    x = doco[l+1]
+                    y = doco[l+2]
 
-            elif "</pointlist>" in doco[l]:
-                posA.append(pos.astype(int))
-                pos = np.empty([0, 2])
+                    x = x.replace("<x>", ""); x = int(x.replace("</x>\n", ""))
+                    y = y.replace("<y>", ""); y = int(y.replace("</y>\n", ""))
 
-                l+=18   # jump 18 lines to the next section of co-ordinates
+                    pos = np.vstack((pos, [x, y]))
 
-            else:
-                l+=1    # if no info found, just iterate through
+                    l += 4  # jump 4 line to the next set of co-ordinates
 
-    print(str(len(posA)/sections*100)+"% of sections found")
+                elif "</pointlist>" in doco[l]:
+                    posA.append(pos.astype(int))
+                    pos = np.empty([0, 2])
 
-    return(posA)
+                    l+=18   # jump 18 lines to the next section of co-ordinates
+
+                else:
+                    l+=1    # if no info found, just iterate through
+
+        print(str(len(posA)/sections*100)+"% of section " + name + " found")
+        posAll.append(posA)
+
+    return(posAll)
 
