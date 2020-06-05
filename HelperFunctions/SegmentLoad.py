@@ -6,15 +6,20 @@ that has just been loaded
 
 import numpy as np
 from glob import glob
+import openslide 
 
-def readndpa(annotationsSRC, annotationName):
+def readndpa(annotationsSRC, speciment = ''):
 
-    # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points
-    # Input:    Directory for a single *.ndpa file
+    # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points and converts
+    # them into their pixel location equivalents
+    # Input:    (annotationsSRC), Directory for the ndpi files
+    #           (annotationName), the specimen name/s to specifically investigate (optional, if not
+    #                               chosen then will investigate the entire directory)
     # Output:   A list containing numpy arrays which have the recorded positions of the drawn points on the slide. Each
     #           entry to the list refers to a section drawn
 
-    names = glob(annotationsSRC + annotationName + "*.ndpa")
+    # get the directories of all the specimes of interest
+    names = glob(annotationsSRC + specimen + "*.ndpa")
 
     posAll = list()
 
@@ -22,7 +27,7 @@ def readndpa(annotationsSRC, annotationName):
 
         file = open(name)
 
-        # find the number of sections identified in slice
+        # find the number of sections identified in slice --> Used to validate that the search is completed
         sections = open(name).read().count("ndpviewstate id=")
 
         # extract all info from text file line by line
@@ -61,5 +66,39 @@ def readndpa(annotationsSRC, annotationName):
         print(str(len(posA)/sections*100)+"% of section " + name + " found")
         posAll.append(posA)
 
+    # get the ndpi properties of all the specimes of interest
+    xShift, yShift, xResolution, yResolution = normaliseNDPA(names)
+
+    for name in names:
+
+
     return(posAll)
 
+def normaliseNDPA(data):
+
+    # This functions reads the properties of the ndpi files and extracts the properties 
+    # of the file.
+    # Inputs:   (data), directory containing all the ndpi files of interest
+    # Output:   (xShift), the x position on the image (in nm) of the co-ordinate systems origin
+    #           (yShift), the y position on the image (in nm) of the co-ordinate systems origin
+    #           (xResolution), the x scalar of unit measurement (nm in this case) to pixel
+    #           (yResolution), the x scalar of unit measurement (nm in this case) to pixel
+
+    # data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
+    # data = '/Volumes/Storage/H653A_11.3 new/'
+
+    slicesDir = glob(str(data+"*.ndpi"))
+
+    xShift = list()
+    yShift = list()
+    xResolution = list()
+    yResolution = list()
+
+    for slicedir in slicesDir:
+        slideProperties = openslide.OpenSlide(slicedir).properties
+        xShift.append(int(slideProperties['hamamatsu.XOffsetFromSlideCentre']))
+        yShift.append(int(slideProperties['hamamatsu.YOffsetFromSlideCentre']))
+        xResolution.append(int(slideProperties['tiff.XResolution']))
+        yResolution.append(int(slideProperties['tiff.YResolution']))
+
+    return (xShift, yShift, xResolution, yResolution)
