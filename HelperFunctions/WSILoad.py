@@ -1,5 +1,5 @@
 '''
-This function loads in the entire histological image, segmented in the 
+This function loads in the entire histological image, quadranted in the 
 specified kernel size with pre-processing
 '''
 
@@ -15,16 +15,30 @@ from glob import glob
 # imageSRC =  "Data.nosync/testing/"
 # size = 0
 
-def main(kernel, size, annotations, imageSRC, imageName = ''):
+def segmentation(annotations, quadrantDirs):
 
-    # This function segments the tif image into n x n images 
+    # This function segments the data based on the annotations provided
+    # Input:    (annotations), directory/ies which contain the txt files of the annotation co-ordinates 
+    #               as extracted by SegmentLoad.py
+    #           (quandrantDirs), list of the directories of the quandrated tif files as sectioned by quadrants
+    # Output:   (), no output instead it seperates the data into test and training directories as 
+    #               done by convention for tensorflow training processes 
+
+    # What needs to happen is there needs to be some kind of recognition of when annotations are coupled
+    # IDEA: use the x and y median values to find annotations which are close to each other
+    #       calculate the range of the values of each annotation to find which one is inside which 
+
+    pass
+
+def quadrants(kernel, size, imageSRC, imageName = ''):
+
+    # This function quadrants the tif image into n x n images 
     # Input:    (kernel), Square kernel size (pixels)
     #           (size), scale image to be extracted from the ndpi file         
-    #           (annotations), NOTE: ATM this is just a list from SegmentLoad but will eventually be a directory/automatically identified from saved file   
     #           (imageSRC), ndpi source directory
     #           (imageName), OPTIONAL to specify which samples to process
-    # Output:   (dir), a list of directories which contains the segmented sections, each 
-    #           named according to their segmented position    
+    # Output:   (dirs), a list of directories which contains the quadranted sections, each 
+    #           named according to their quadranted position    
 
     # get all the npdi files of interest
     imagesNDPI = glob(imageSRC + imageName + "*.ndpi")
@@ -37,16 +51,16 @@ def main(kernel, size, annotations, imageSRC, imageName = ''):
 
     dirs = list()
 
-    # for each ndpi image found, convert into a tif and segment
+    # for each ndpi image found, convert into a tif and quadrant
     for imageTIF in imagesTIF:
 
         # read the tif file into a numpy array
         img = tifi.imread(imageTIF)
 
-        # get tif dimenstions --> necessary for the segmentation
+        # get tif dimenstions --> necessary for the quadrantation
         height, width, channels = img.shape
 
-        # create a directory containing the segmentations of the imager
+        # create a directory containing the quadrants of the images
         dir = str(imageTIF + "_tiles@" + str(kernel) + "x" + str(kernel))
         dirs.append(dir)
 
@@ -55,16 +69,16 @@ def main(kernel, size, annotations, imageSRC, imageName = ''):
         except OSError:
             print("\nReplacing existing files\n")
 
-        # create the number of indexes for segmentation 
+        # create the number of indexes for quadrants 
         acr = int(height / kernel)
         up = int(width / kernel)
 
-        # segment tissue
+        # quadrant tissue
         for h in range(acr):
             for w in range(up):
-                segment = img[0 + kernel * h:kernel + kernel * h, 0 + kernel * w:kernel + kernel * w, :]
-                # print(image+"_tiles/Segment_"+str(h)+"_"+str(w)+"_"+str(image))
-                cv2.imwrite(dir + "/Segment_" + str(h) + "_" + str(w) + ".tif", segment)
+                quadrant = img[0 + kernel * h:kernel + kernel * h, 0 + kernel * w:kernel + kernel * w, :]
+                # print(image+"_tiles/quadrant_"+str(h)+"_"+str(w)+"_"+str(image))
+                cv2.imwrite(dir + "/quadrant_" + str(h) + "_" + str(w) + ".tif", quadrant)
                 print("height = " + str(h) + "/" + str(up) + ", width = " + str(w) + "/" + str(acr))
 
         print(imageTIF + " done")
@@ -72,8 +86,6 @@ def main(kernel, size, annotations, imageSRC, imageName = ''):
     print("done all")  
 
     return(dirs)
-
-
 
 def ndpiLoad(i, src):
 
