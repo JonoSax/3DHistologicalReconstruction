@@ -26,7 +26,7 @@ slicesDir = glob(str(data+"*.ndpi"))
 test = slicesDir[0].split(data)[-1].split(".ndpi") 
 annotationsDir = slices = glob(str(data+"*.ndpa"))
 
-# get a list of all the names of the ndpi and ndpa files
+# get a list of all the names of the specimens represented in the ndpi (and ndpa) files
 names = list()
 for file in glob(data + "*.ndpi"): 
     names.append(file.split(data)[-1].split(".ndpi")[0])           

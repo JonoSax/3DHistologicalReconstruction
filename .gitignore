@@ -2,3 +2,6 @@ venvSegmentation/
 .vscode/
 Data.nosync/
 testing.py
+.DS_Store
+PinsToOrient.txt
+openslide-python/
