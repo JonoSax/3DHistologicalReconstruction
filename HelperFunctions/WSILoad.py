@@ -15,12 +15,14 @@ from glob import glob
 # imageSRC =  "Data.nosync/testing/"
 # size = 0
 
-def main(kernel, imageSRC, imageName, size, annotations):
+def main(kernel, size, annotations, imageSRC, imageName = ''):
 
     # This function segments the tif image into n x n images 
     # Input:    (kernel), Square kernel size (pixels)
+    #           (size), scale image to be extracted from the ndpi file         
+    #           (annotations), NOTE: ATM this is just a list from SegmentLoad but will eventually be a directory/automatically identified from saved file   
     #           (imageSRC), ndpi source directory
-    #           (size), scale image to be extracted from the ndpi file            
+    #           (imageName), OPTIONAL to specify which samples to process
     # Output:   (dir), a list of directories which contains the segmented sections, each 
     #           named according to their segmented position    
 
@@ -45,7 +47,7 @@ def main(kernel, imageSRC, imageName, size, annotations):
         height, width, channels = img.shape
 
         # create a directory containing the segmentations of the imager
-        dir = str(imageTIF + "_tiles")
+        dir = str(imageTIF + "_tiles@" + str(kernel) + "x" + str(kernel))
         dirs.append(dir)
 
         try:
@@ -62,7 +64,7 @@ def main(kernel, imageSRC, imageName, size, annotations):
             for w in range(up):
                 segment = img[0 + kernel * h:kernel + kernel * h, 0 + kernel * w:kernel + kernel * w, :]
                 # print(image+"_tiles/Segment_"+str(h)+"_"+str(w)+"_"+str(image))
-                cv2.imwrite(imageTIF + "_tiles/Segment_" + str(h) + "_" + str(w) + ".tif", segment)
+                cv2.imwrite(dir + "/Segment_" + str(h) + "_" + str(w) + ".tif", segment)
                 print("height = " + str(h) + "/" + str(up) + ", width = " + str(w) + "/" + str(acr))
 
         print(imageTIF + " done")

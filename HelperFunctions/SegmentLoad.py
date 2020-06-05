@@ -7,6 +7,7 @@ that has just been loaded
 import numpy as np
 from glob import glob
 import openslide 
+import matplotlib.pyplot as plt
 
 # simple dictionary used to convert to SI unit between the different scales in the ndpi and ndpa files
 # It is using millimeters as the base unit (ie multiple of 1)
@@ -42,7 +43,7 @@ def readndpa(annotationsSRC, specimen = ''):
 
     # get the directories of all the specimes of interest
     ndpaNames = glob(annotationsSRC + specimen + "*.ndpa")
-    ndpiNames = glob(annotationsSRC + specimen + "*.ndpi")
+    ndpiNames = glob(annotationsSRC + specimen + "*.ndpi")      # need this for the properties of the image
 
     posAll = list()
 
@@ -56,6 +57,7 @@ def readndpa(annotationsSRC, specimen = ''):
     #       ...
     for name in ndpaNames:
 
+        # ndpa file
         file = open(name)
 
         # find the number of sections identified in slice --> Used to validate that the search is completed
@@ -69,21 +71,16 @@ def readndpa(annotationsSRC, specimen = ''):
         pos = np.empty([0, 2])
         l = 0
 
-        print("\nThis is the specimen: " + str(name) + "\n")
-
         # NOTE the skips in this loop are hard coded because as far as i can tell
         # they are enitrely predictable --> ONLY WORKS IF THERE ARE ONLY FREE HAND ANNOTATIONS
         while l < len(doco):
 
-            # get the unit co-ordinates
+            # get the unit used in the co-ordinates
             if "<coordformat>" in doco[l]:
 
                 unit = doco[l]
-
                 unitStr = unit.replace("<coordformat>", "").replace("</coordformat>\n", "").replace(" ", "")
-
                 unit = unitDict[unitStr]
-
                 l+=12
 
             elif "<point>" in doco[l]:                # indicates an annotated point
@@ -125,8 +122,11 @@ def readndpa(annotationsSRC, specimen = ''):
         for i in range(len(posAll[spec])):
             stack = ((posSpec[i] - centreShift + topLeftShift ) * scale).astype(int)
             posAll[spec][i] = np.unique(stack, axis=0)          # remove any duplicate co-ordinates
+            
+            # plt.scatter(stack[:, 0], -stack[:, 1])            # shows that currently there is correct identification 
+            #                                                       of the annotations
 
-        
+        # plt.show()
 
     return(posAll)
 
