@@ -22,15 +22,6 @@ unitDict = {
     'centimeter':1*10**1
 }
 
-def savendpa(coordinates):
-
-    # This function takes the extracted ndpa co-ordinates and saves them in a text file so that 
-    # it can be called by WSILoaded.py
-    # Input:    (coordinates), list containing all the processed co-ordinates 
-    # Output:   (), files saved per specimen containing the co-ordinates
-
-    pass
-
 def readndpa(annotationsSRC, specimen = ''):
 
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points and converts
@@ -112,20 +103,39 @@ def readndpa(annotationsSRC, specimen = ''):
     # with the origin in the top left corner of the image
     for spec in range(len(ndpaNames)):
 
+        # create txt file which contains these co-ordinates
+        f = open(str(ndpaNames[spec]) + ".txt", 'w')
+
+
         # NOTE: These should all now be in mm..... work with that
 
         centreShift = np.hstack([xShift[spec], yShift[spec]])
         topLeftShift = np.hstack([xDim[spec]/2, yDim[spec]/2])
         scale = np.hstack([xRes[spec], yRes[spec]])
         posSpec = posAll[spec]
-
         for i in range(len(posAll[spec])):
             stack = ((posSpec[i] - centreShift + topLeftShift ) * scale).astype(int)
-            posAll[spec][i] = np.unique(stack, axis=0)          # remove any duplicate co-ordinates
+            stack = np.unique(stack, axis=0)          # remove any duplicate co-ordinates
+
+            # write the information into the txt file
+            # structure: each file is the name of the ndpa file it is represnting
+            #   Annotation_[number]
+            #   Entries_[lines of co-ordinates]
+            #   x0, y0
+            #   x1, y1
+            #   .....
+            X, Y = stack.shape
+            f.write("Annotation:" + str(i) + "\nEntries:" + str(X) + "\n")
+            for x in range(X):
+                for y in range(Y):
+                    f.write(str(stack[x, y]))
+                    if (y+1)%Y:
+                        f.write(",")
+                    else:
+                        f.write("\n")
             
             # plt.scatter(stack[:, 0], -stack[:, 1])            # shows that currently there is correct identification 
             #                                                       of the annotations
-
         # plt.show()
 
     return(posAll)
