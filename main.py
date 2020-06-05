@@ -2,6 +2,7 @@
 This is the main script extracting the image values from the WSI which are 
 identified from manual segmenetaiton and training a NN on this data for 
 segment identification
+
 '''
 
 from HelperFunctions import *
@@ -9,38 +10,25 @@ from glob import glob
 
 # ---------- THINGS TO DO ----------
 # Make it so that the directories of the slices and the annotated slices are all in a single callable object, rather than seperate variables
+# Make is so that every function saves something so that once a step is complete, that function can be commented
+    # out but the next function is only calling the saved output of the function --> this means the script
+    # is essentially a full workflow but is also not dependent on every sequential step being run
 
 # User input
 '''
 Folder location of slices
 Extent of training (epochs, batch)
 '''
+
 # data directory
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 
-kernel = 150
+# Load in the annotations on the specimens
+# SegmentLoaded = SegmentLoad.readndpa(data)
+SegmentLoaded = list()          # --> this is just so WSILoaded runs ATM
 
-# NOTE functions need to be able to deal with a list of names
-slicesDir = glob(str(data+"*.ndpi"))
-
-test = slicesDir[0].split(data)[-1].split(".ndpi") 
-annotationsDir = slices = glob(str(data+"*.ndpa"))
-
-# get a list of all the names of the specimens represented in the ndpi (and ndpa) files
-names = list()
-for file in glob(data + "*.ndpi"): 
-    names.append(file.split(data)[-1].split(".ndpi")[0])           
-
-SegmentLoaded = list()
-WSILoaded = list()
-
-for name in names:
-
-    # Load in the locations of identified slices
-    SegmentLoaded.append(SegmentLoad.readndpa(data, name))
-
-    # Load in the WSI segments, seperate into target tissue and non-target
-    WSILoaded.append(WSILoad.main(kernel, data, name, 0, annotations))
+# Load in the WSI segments, seperate into target tissue and non-target
+WSILoaded = WSILoad.main(kernel, 0, SegmentLoaded, data)
 
 # NOTE this could possible go into the WSILoad function
 # Perform pre-processing on the WSI to highlight features/remove background+artifacts 
