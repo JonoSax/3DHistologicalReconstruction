@@ -25,7 +25,6 @@ data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/D
 
 # Load in the annotations on the specimens
 # SegmentLoaded = SegmentLoad.readndpa(data)
-SegmentLoaded = list()          # --> this is just so WSILoaded runs ATM
 
 # Load in the WSI segments, seperate into target tissue and non-target
 WSILoaded = WSILoad.main(kernel, 0, SegmentLoaded, data)
