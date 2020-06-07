@@ -24,10 +24,10 @@ Extent of training (epochs, batch)
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 
 # Load in the annotations on the specimens
-# SegmentLoaded = SegmentLoad.readndpa(data)
+# SegmentLoad.readndpa(data, 'testWSIMod')
 
 # Load in the WSI segments, seperate into target tissue and non-target
-WSILoaded = WSILoad.main(kernel, 0, SegmentLoaded, data)
+WSILoaded = WSILoad.quadrants(100, 0, data)
 
 # NOTE this could possible go into the WSILoad function
 # Perform pre-processing on the WSI to highlight features/remove background+artifacts 

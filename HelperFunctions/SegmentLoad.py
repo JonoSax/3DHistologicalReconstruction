@@ -1,13 +1,17 @@
 '''
 This script loads in the NDPA files which have the manually segmented 
-sections and correlates these positions with array position on the WSI 
-that has just been loaded
+sections and correlates these positions with the pixel position on the WSI 
+that has just been loaded. 
+
+It then saves these co-ordinates as a .pos file 
+
 '''
 
 import numpy as np
 from glob import glob
 import openslide 
 import matplotlib.pyplot as plt
+from scipy.interpolate import interpolate
 
 # simple dictionary used to convert to SI unit between the different scales in the ndpi and ndpa files
 # It is using millimeters as the base unit (ie multiple of 1)
@@ -94,30 +98,38 @@ def readndpa(annotationsSRC, specimen = ''):
                 l+=1    # if no info found, just iterate through
 
         print(str(len(posA)/sections*100)+"% of section " + name + " found")
+        file.close()
         posAll.append(posA)
+
+    # NOTE: Probably could combine the loop which reads in the information per specimen and the loop
+    # which saves it in the .pos format 
 
     # get the ndpi properties of all the specimes of interest
     xShift, yShift, xRes, yRes, xDim, yDim = normaliseNDPA(ndpiNames)
 
     # apply the necessary transformations to extracted co-ordinates to convert to pixel represnetations
-    # with the origin in the top left corner of the image
+    # with the origin in the top left corner of the image and save them as a txt file for all npda files
     for spec in range(len(ndpaNames)):
 
         # create txt file which contains these co-ordinates
-        f = open(str(ndpaNames[spec]) + ".txt", 'w')
+        f = open(str(ndpaNames[spec]) + ".pos", 'w')
 
-
-        # NOTE: These should all now be in mm..... work with that
-
+        # npdi properties
         centreShift = np.hstack([xShift[spec], yShift[spec]])
         topLeftShift = np.hstack([xDim[spec]/2, yDim[spec]/2])
         scale = np.hstack([xRes[spec], yRes[spec]])
         posSpec = posAll[spec]
+        f.write("NUMBER_OF_ANNOTATIONS=" + str(len(posSpec)) + "\n")
         for i in range(len(posAll[spec])):
-            stack = ((posSpec[i] - centreShift + topLeftShift ) * scale).astype(int)
-            stack = np.unique(stack, axis=0)          # remove any duplicate co-ordinates
 
-            # write the information into the txt file
+            # co-ordinate transformation
+            stack = ((posSpec[i] - centreShift + topLeftShift ) * scale).astype(int)
+
+            # stack = np.unique(stack, axis=0)          # remove any duplicate co-ordinates, 
+            #                                           NOTE: this is removed so that co-ordinates have continuity 
+            #                                           (it can be assumed that points were drawn succissevly)
+
+            # write the information into a txt file
             # structure: each file is the name of the ndpa file it is represnting
             #   Annotation_[number]
             #   Entries_[lines of co-ordinates]
@@ -138,7 +150,7 @@ def readndpa(annotationsSRC, specimen = ''):
             #                                                       of the annotations
         # plt.show()
 
-    return(posAll)
+    print("Co-ordinates extracted and saved in " + annotationsSRC)
 
 def normaliseNDPA(slicesDir):
 

@@ -10,6 +10,7 @@ import cv2
 from skimage.measure import block_reduce
 from PIL import Image
 from glob import glob
+import sys
 
 # kernel = 150
 # imageSRC =  "Data.nosync/testing/"
@@ -21,6 +22,7 @@ def segmentation(annotations, quadrantDirs):
     # Input:    (annotations), directory/ies which contain the txt files of the annotation co-ordinates 
     #               as extracted by SegmentLoad.py
     #           (quandrantDirs), list of the directories of the quandrated tif files as sectioned by quadrants
+    #           (kernel), square kernel size (pixels)
     # Output:   (), no output instead it seperates the data into test and training directories as 
     #               done by convention for tensorflow training processes 
 
@@ -32,10 +34,10 @@ def segmentation(annotations, quadrantDirs):
 
 def quadrants(kernel, size, imageSRC, imageName = ''):
 
-    # This function quadrants the tif image into n x n images 
+    # This function quadrants the tif image into n x n images and saves them in a new directory
     # Input:    (kernel), Square kernel size (pixels)
     #           (size), scale image to be extracted from the ndpi file         
-    #           (imageSRC), ndpi source directory
+    #           (imageSRC), data source directory
     #           (imageName), OPTIONAL to specify which samples to process
     # Output:   (dirs), a list of directories which contains the quadranted sections, each 
     #           named according to their quadranted position    
