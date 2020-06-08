@@ -13,48 +13,6 @@ from skimage.segmentation import flood_fill
 from Utilities import *
 
 
-
-def annotationsReader(annotationDirs):
-
-    # This function reads in the annotations extracted by SegmentLoad and creates a mask
-    # Input:    (annotationdir), list containing the directories of the annotations
-    # Output:   (annotationsDict), dictionary containing a list of numpy arrays of the annotations each
-    #               name after the directory location of the .pos file
-
-    # ensure input is as a list 
-    if type(annotationDirs) is not list:
-        store = annotationDirs
-        annotationDirs = list()
-        annotationDirs.append(store)
-
-    annotationsDict = {}
-
-    # for every ndpa file
-    for a in annotationDirs:
-
-        coords = list()
-        f = open(a)
-        annotationNo = int(f.readline().replace("NUMBER_OF_ANNOTATIONS=", ""))
-        for n in range(annotationNo):
-            no = int(f.readline().replace("Annotation:", ""))
-
-            # perform a check to ensure the annotations are being read in correctly
-            if n != no:
-                sys.exit("The file is being read incorrectly, perhpas it has been interferred with")
-            
-            points = int(f.readline().replace("Entries:", ""))
-            pos = np.zeros([points, 2])
-
-            for p in range(points):
-                line = f.readline().replace("\n", "").split(",")
-                pos[p, 0], pos[p, 1] = line
-
-            pos = pos.astype(int)
-            coords.append(pos)
-
-        annotationsDict[a] = coords
-        return(annotationsDict)
-                
 def segmentedAreas(kernel, segmentSRC, segmentName = ''):
 
     # This function create a mask of the annotations which encompass the target tissue.
@@ -78,39 +36,37 @@ def maskCreator(specimenDir):
     # Outputs:  (maskDirs), directories to the files which contains all pixel locations for the
     #           annotations of the  highest resolultion tif file 
 
-    annotationDict = annotationsReader(specimenDir)
-
     for specimen in specimenDir:
+
+        annoSpec, argsDict = txtToList(specimen)
 
         denseAnnotations = list()
             
-        # get the manual annotation for a single image specimen
-        annoSpec = annotationDict[specimen]
 
         # perform mask building per annotation
         # for n in range(len(annoSpec)):
-        for n in range(2):
+        for n in range(6):
             print("annotation no: " + str(n))
 
             # process per annotation
             annotation = annoSpec[n]
 
             # shift the annotation to a (0, 0) origin
-            xmin = annotation[:, 0].min()
-            ymin = annotation[:, 1].min()
+            xmin = int(annotation[:, 0].min())
+            ymin = int(annotation[:, 1].min())
             annotationM = annotation - [xmin, ymin]
 
             # create a grid array for interpolation for the annotation of interest
-            xmax = annotation[:, 0].max()
-            ymax = annotation[:, 1].max()
+            xmax = int(annotation[:, 0].max())
+            ymax = int(annotation[:, 1].max())
             grid = np.zeros([xmax-xmin+3, ymax-ymin+3])     # NOTE: added one so that the entire bounds of the co-ordinates are stored... 
 
             # --- Interpolate between each annotated point creating a continuous border of the annotation
-            x_p, y_p = annotationM[-1]
+            x_p, y_p = annotationM[-1]      # initialise with the last point for continuity 
             for x, y in annotationM:
 
                 # number of points needed for a continuous border
-                num = sum(np.abs(np.subtract((x, y),(x_p, y_p))))
+                num = int(sum(np.abs(np.subtract((x, y),(x_p, y_p)))))
 
                 # generating the x and y region points
                 x_r = np.linspace(x, x_p, num+1)
@@ -140,11 +96,10 @@ def maskCreator(specimenDir):
                 # print("y_r: " + str(y_r) + "\n")
                 # plt.imshow(grid); plt.show()
 
-            edges = np.zeros([2, 2])
-
             # --- fill in the outline with booleans
             # perform a preliminary horizontal search
             for x in range(grid.shape[0]):
+                edges = np.zeros([2, 2])
                 startFound = False  
                 edgeFound = False 
 
@@ -196,16 +151,66 @@ def maskCreator(specimenDir):
             # --- save the mask identified in a dense form and re-position into global space
             denseGrid = np.stack(np.where(gridN == 1), axis = 1) + [xmin, ymin]
             denseAnnotations.append(denseGrid)
-            pass
+        
+        # --- all annotation mask created an added to list denseAnnotations
 
-        # perform global subtractions to remove the non-ROIs
-        allPixels = np.concatenate(denseAnnotations).astype(int)
+        # perform a boundary search to investigate which masks are within which sections
+        annoID = np.arange(len(denseAnnotations))
+        targetTissue = list()
 
-        annotationsMask = np.unique(allPixels, axis = 0)
+        for s in annoID:
+            print("\nAnnotation " + str(s))
+            annoID = np.delete(annoID, np.where(annoID == s)[0][0])      # as you find matches remove from array search
+            
+            # annotation to perform search
+            search = denseAnnotations[s]
+            sXmax = search[:, 0].max()
+            sXmin = search[:, 0].min()
+            sYmax = search[:, 1].max()
+            sYmin = search[:, 1].min()
 
+            # need to check if search is either the inside or outside mask
+            for m in annoID:
+                match = denseAnnotations[m]
+                mXmax = match[:, 0].max()
+                mXmin = match[:, 0].min()
+                mYmax = match[:, 1].max()
+                mYmin = match[:, 1].min()
+                
+                # check if match is inside the search
+                if (mXmax <= sXmax) & (mYmax <= sYmax) & (mXmin >= sXmin) & (mYmin >= sYmin):
+                   '''
+                    Create a function which performs subtractions of 
+                    two arrays containg co-ordinates
+                    '''
+                    # annotatedArea = coordMatch(s, m)
+
+                    annoID = np.delete(annoID, np.where(annoID == m)[0][0])
+                    print("match is smaller: " + str(m))
+                    break
+
+                # check is match is surrounding the search
+                elif (mXmax >= sXmax) & (mYmax >= sYmax) & (mXmin <= sXmin) & (mYmin <= sYmin):
+                    '''
+                    Create a function which performs subtractions of 
+                    two arrays containg co-ordinates
+                    '''
+                    # annotatedArea = coordMatch(s, m)
+
+                    annoID = np.delete(annoID, np.where(annoID == m)[0][0])
+                    print("match is bigger" + str(m))
+                    break
+                
+                # if no match is found assumed that there is no annotated centre
+                else:
+                    # 
+                    # annotatedArea = s
+                    print("there is no identified centre")
+
+        # save the mask as a txt file of pixel co-ordinates
         listToTxt(annotationsMask, str(specimenDir[0] + ".mask"))
 
-        pass
+    pass
             
         # save the complete mask of the specimen as a txt file
 
