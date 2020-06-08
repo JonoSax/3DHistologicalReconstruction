@@ -4,6 +4,7 @@ menial tasks not directly related to the extraction of relevant information
 '''
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 def listToTxt(data, dir, **kwargs):
     # Converts a list of information into a txt folder with the inputted name
@@ -100,45 +101,25 @@ def txtToList(dir):
     return(sampleList, args)
 
 
+def denseMatrixViewer(coords):
+    # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
+    # which can be view with matplotlib
+    # Inputs:   (coords), the coordinates
+    # Outputs:  (), produces a plot to view
 
-def annotationsReader(annotationDirs):
+    Xmax = coords[:, 0].max()
+    Xmin = coords[:, 0].min()
+    Ymax = coords[:, 1].max()
+    Ymin = coords[:, 1].min()
 
-    # This function reads in the annotations extracted by SegmentLoad and creates a mask
-    # Input:    (annotationdir), list containing the directories of the annotations
-    # Output:   (annotationsDict), dictionary containing a list of numpy arrays of the annotations each
-    #               name after the directory location of the .pos file
+    coordsNorm = coords - [Xmin, Ymin]
 
-    # ensure input is as a list 
-    if type(annotationDirs) is not list:
-        store = annotationDirs
-        annotationDirs = list()
-        annotationDirs.append(store)
+    area = np.zeros([Xmax - Xmin + 1, Ymax - Ymin + 1])
 
-    annotationsDict = {}
+    X, Y = coords.shape
+    for x in range(X):
+        xp, yp = coordsNorm[x, :]
+        area[xp, yp] = 1
 
-    # for every ndpa file
-    for a in annotationDirs:
-
-        coords = list()
-        f = open(a)
-        annotationNo = int(f.readline().replace("NUMBER_OF_ANNOTATIONS=", ""))
-        for n in range(annotationNo):
-            no = int(f.readline().replace("Annotation:", ""))
-
-            # perform a check to ensure the annotations are being read in correctly
-            if n != no:
-                sys.exit("The file is being read incorrectly, perhpas it has been interferred with")
-            
-            points = int(f.readline().replace("Entries:", ""))
-            pos = np.zeros([points, 2])
-
-            for p in range(points):
-                line = f.readline().replace("\n", "").split(",")
-                pos[p, 0], pos[p, 1] = line
-
-            pos = pos.astype(int)
-            coords.append(pos)
-
-        annotationsDict[a] = coords
-        return(annotationsDict)
-          
+    plt.imshow(area)
+    plt.show()
