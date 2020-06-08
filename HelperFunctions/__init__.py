@@ -3,6 +3,8 @@ from . import ModelTrainer
 from . import SegmentLoad
 from . import WSIPreProcessing
 from . import WSILoad
+from . import Utilities
+from. import MaskMaker
 
 class data(object):
 

@@ -18,7 +18,7 @@ import sys
 
 def segmentation(annotations, quadrantDirs):
 
-    # This function segments the data based on the annotations provided
+    # This moves the quadrants into training/testing data based on the annotations provided
     # Input:    (annotations), directory/ies which contain the txt files of the annotation co-ordinates 
     #               as extracted by SegmentLoad.py
     #           (quandrantDirs), list of the directories of the quandrated tif files as sectioned by quadrants

@@ -10,10 +10,10 @@ import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 from skimage.segmentation import flood_fill
-from Utilities import *
+from .Utilities import *
 
 
-def segmentedAreas(kernel, segmentSRC, segmentName = ''):
+def segmentedAreas(segmentSRC, segmentName = ''):
 
     # This function create a mask of the annotations which encompass the target tissue for the target resolution and kernel size.
     # Input:    (kernel), Square kernel size (pixels)
@@ -26,7 +26,7 @@ def segmentedAreas(kernel, segmentSRC, segmentName = ''):
     # get the masks of each of the annotations
     specMask = maskCreator(specimenDir)
 
-    pass
+
 
 def maskCreator(specimenDir):
 
@@ -192,7 +192,9 @@ def maskCreator(specimenDir):
                     annotatedROI = search
                     print("there is no identified centre")
 
-            # denseMatrixViewer(annotatedROI)
+            # view the roi
+            denseMatrixViewer(annotatedROI)
+
             targetTissue.append(annotatedROI)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
@@ -213,6 +215,3 @@ def coordMatch(array1, array2):
     roi = uniq[np.where(count == 1)]
 
     return(roi)
-
-
-segmentedAreas(100, segmentSRC)

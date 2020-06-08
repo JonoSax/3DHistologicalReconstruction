@@ -23,11 +23,14 @@ Extent of training (epochs, batch)
 # data directory
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 
-# Load in the annotations on the specimens
-# SegmentLoad.readndpa(data, 'testWSIMod')
+# Extract the manual co-ordinates of the annotated tissue
+# SegmentLoad.readndpa(data)
+
+# create the masks of the annotationes
+# MaskMaker.segmentedAreas(data)
 
 # Load in the WSI segments, seperate into target tissue and non-target
-WSILoaded = WSILoad.quadrants(100, 0, data)
+WSILoad.quadrants(100, 0, data, 'testWSIMod')
 
 # NOTE this could possible go into the WSILoad function
 # Perform pre-processing on the WSI to highlight features/remove background+artifacts 
