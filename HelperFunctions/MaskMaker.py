@@ -79,7 +79,7 @@ def segmentedAreas(kernel, segmentSRC, segmentName = ''):
             # create a grid array for interpolation for the annotation of interest
             xmax = annotation[:, 0].max()
             ymax = annotation[:, 1].max()
-            grid = np.zeros([xmax-xmin+1, ymax-ymin+1])     # NOTE: added one so that the entire bounds of the co-ordinates are stored... 
+            grid = np.zeros([xmax-xmin+3, ymax-ymin+3])     # NOTE: added one so that the entire bounds of the co-ordinates are stored... 
 
             # interpolate between each annotated point creating a continuous border of the annotation
             x_p, y_p = annotationM[-1]
@@ -89,20 +89,37 @@ def segmentedAreas(kernel, segmentSRC, segmentName = ''):
                 num = sum(np.abs(np.subtract((x, y),(x_p, y_p))))
 
                 # generating the x and y region points
-                x_r = np.linspace(x, x_p, num+1).astype(int)
-                y_r = np.linspace(y, y_p, num+1).astype(int)
-                extrapolated = np.stack([x_r, y_r], axis = 1)
+                x_r = np.linspace(x, x_p, num+1)
+                y_r = np.linspace(y, y_p, num+1)
 
-                # set these points as true 
+                # perform a "blurring" operation to ensure the outline of the mask is solid
+                extrapolated21 = np.stack([x_r+1, y_r], axis = 1)
+                extrapolated01 = np.stack([x_r, y_r+1], axis = 1)
+                extrapolated11 = np.stack([x_r+1, y_r], axis = 1)
+                extrapolated10 = np.stack([x_r+1, y_r+2], axis = 1)
+                extrapolated12 = np.stack([x_r+2, y_r+2], axis = 1)
+
+                extrapolated = np.concatenate([extrapolated21,
+                                                extrapolated01,
+                                                extrapolated11,
+                                                extrapolated10,
+                                                extrapolated12,]).astype(int)
+
+                # set these points as true
                 for x_e, y_e in extrapolated:
                     grid[x_e, y_e] = 1
                 
                 # save previous point to i
                 x_p, y_p = x, y
+                
+                #print("x_r: " + str(x_r))
+                # print("y_r: " + str(y_r) + "\n")
+                # plt.imshow(grid); plt.show()
 
-            # find a point inside the roi
+            edges = np.zeros([2, 2])
+
+            # perform a preliminary horizontal search
             for x in range(grid.shape[0]):
-                edges = np.zeros([2, 2])
                 startFound = False  
                 edgeFound = False 
 
@@ -119,16 +136,38 @@ def segmentedAreas(kernel, segmentSRC, segmentName = ''):
                         edges[1, :] = [x, y]
                         
                         # find the middle of the edge --> assumed this will be a pixel within the roi
-                        roi = tuple(np.mean(edges, axis = 0).astype(int))
+                        roi0 = tuple(np.mean(edges, axis = 0).astype(int))
                         edgeFound = True
-                        break
+
+                        '''
+                        # AT THIS POINT WE HAVE POTENTIALLY FOUND AN EDGE. HOWEVER DUE
+                        # TO HUMAN BS WHEN DRAWING THE ANNOTATIONS WE NEED TO CHECK OVER 
+                        # THIS EDGE WITH ANOTHER METHOD --> CONFIRM THE EXISTENCE OF THE 
+                        # EDGE IN THE VERTICAL PLANE AS WELL
+                        # perform a vertical search to confirm roi
+                        for x in range(1, grid.shape[0]-1):
+                            yroi0 = roi0[1]
+                            # check if there is a raising edge point on this column
+                            if (grid[x+1, yroi0] == 0) & (grid[x, yroi0] == 1):
+                                edges[0, :] = [x, yroi0]
+                                startFound = True
+                                
+                            # check if there is a falling edge point on this column
+                            elif (grid[x-1, yroi0] == 0) & (grid[x, yroi0] == 1) & startFound:
+                                edges[1, :] = [x, yroi0]
+                                
+                                # find the middle of the edge --> assumed this will be a pixel within the roi
+                                roi = tuple(np.mean(edges, axis = 0).astype(int))
+                                break
+                        '''
 
                 if edgeFound:
-                    break 
+                    break
 
             # fill in the entirety of this encompassed area (flood fill)
-            print("staring flood")
-            grid = flood_fill(grid, roi, 1)
+            gridN = flood_fill(grid, roi0, 1)
+            plt.imshow(gridN); plt.show()            
+            plt.imshow(grid); plt.show()
 
             # add this annotation to the mask
 
