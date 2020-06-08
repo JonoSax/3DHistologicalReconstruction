@@ -12,6 +12,7 @@ from glob import glob
 import openslide 
 import matplotlib.pyplot as plt
 from scipy.interpolate import interpolate
+from .Utilities import *
 
 # simple dictionary used to convert to SI unit between the different scales in the ndpi and ndpa files
 # It is using millimeters as the base unit (ie multiple of 1)
@@ -112,18 +113,25 @@ def readndpa(annotationsSRC, specimen = ''):
     for spec in range(len(ndpaNames)):
 
         # create txt file which contains these co-ordinates
-        f = open(str(ndpaNames[spec]) + ".pos", 'w')
+        # f = open(str(ndpaNames[spec]) + ".pos", 'w')
+
+        stacks = list()
+
+        # create the file name
+        dirSave = str(ndpaNames[spec] + ".pos")
 
         # npdi properties
         centreShift = np.hstack([xShift[spec], yShift[spec]])
-        topLeftShift = np.hstack([xDim[spec]/2, yDim[spec]/2])
+        topLeftShift = np.hstack([xDim[spec]/(2 * xRes[spec]), yDim[spec]/(2 * yRes[spec])])
         scale = np.hstack([xRes[spec], yRes[spec]])
         posSpec = posAll[spec]
-        f.write("NUMBER_OF_ANNOTATIONS=" + str(len(posSpec)) + "\n")
+        # f.write("NUMBER_OF_ANNOTATIONS=" + str(len(posSpec)) + "\n")
         for i in range(len(posAll[spec])):
-
+            
             # co-ordinate transformation
             stack = ((posSpec[i] - centreShift + topLeftShift ) * scale).astype(int)
+            X, Y = stack.shape
+            stacks.append(stack)
 
             # stack = np.unique(stack, axis=0)          # remove any duplicate co-ordinates, 
             #                                           NOTE: this is removed so that co-ordinates have continuity 
@@ -136,8 +144,10 @@ def readndpa(annotationsSRC, specimen = ''):
             #   x0, y0
             #   x1, y1
             #   .....
-            X, Y = stack.shape
+
+            '''
             f.write("Annotation:" + str(i) + "\nEntries:" + str(X) + "\n")
+            f.write("xDim:" + str(xDim) + "\nyDim:" + str(yDim) + "\n")
             for x in range(X):
                 for y in range(Y):
                     f.write(str(stack[x, y]))
@@ -145,9 +155,12 @@ def readndpa(annotationsSRC, specimen = ''):
                         f.write(",")
                     else:
                         f.write("\n")
-            
+            '''
             # plt.scatter(stack[:, 0], -stack[:, 1])            # shows that currently there is correct identification 
             #                                                       of the annotations
+        
+        listToTxt(stacks, dirSave, Entries = str(len(posAll[spec])), xDim = str(xDim[spec]), yDim = str(yDim[spec]))
+
         # plt.show()
 
     print("Co-ordinates extracted and saved in " + annotationsSRC)
@@ -182,8 +195,8 @@ def normaliseNDPA(slicesDir):
         yShift.append(int(slideProperties['hamamatsu.YOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
         xRes = int(slideProperties['tiff.XResolution']) / unit                              # scale is unit dependent
         yRes = int(slideProperties['tiff.YResolution']) / unit                              # scale is unit dependent                       
-        xDim.append(int(slideProperties['openslide.level[0].width'])/xRes)                  # assumed always in pixels   
-        yDim.append(int(slideProperties['openslide.level[0].height'])/yRes)                 # assumed always in pixels
+        xDim.append(int(slideProperties['openslide.level[0].width']))                       # assumed always in pixels   
+        yDim.append(int(slideProperties['openslide.level[0].height']))                      # assumed always in pixels
 
         xResolution.append(xRes)
         yResolution.append(yRes)  
