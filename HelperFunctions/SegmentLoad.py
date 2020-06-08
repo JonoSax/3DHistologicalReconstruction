@@ -130,38 +130,12 @@ def readndpa(annotationsSRC, specimen = ''):
             
             # co-ordinate transformation
             stack = ((posSpec[i] - centreShift + topLeftShift ) * scale).astype(int)
-            X, Y = stack.shape
+            
+            # save into a list
             stacks.append(stack)
 
-            # stack = np.unique(stack, axis=0)          # remove any duplicate co-ordinates, 
-            #                                           NOTE: this is removed so that co-ordinates have continuity 
-            #                                           (it can be assumed that points were drawn succissevly)
-
-            # write the information into a txt file
-            # structure: each file is the name of the ndpa file it is represnting
-            #   Annotation_[number]
-            #   Entries_[lines of co-ordinates]
-            #   x0, y0
-            #   x1, y1
-            #   .....
-
-            '''
-            f.write("Annotation:" + str(i) + "\nEntries:" + str(X) + "\n")
-            f.write("xDim:" + str(xDim) + "\nyDim:" + str(yDim) + "\n")
-            for x in range(X):
-                for y in range(Y):
-                    f.write(str(stack[x, y]))
-                    if (y+1)%Y:
-                        f.write(",")
-                    else:
-                        f.write("\n")
-            '''
-            # plt.scatter(stack[:, 0], -stack[:, 1])            # shows that currently there is correct identification 
-            #                                                       of the annotations
-        
+        # save the entire list as a txt file per utilities saving structure
         listToTxt(stacks, dirSave, Entries = str(len(posAll[spec])), xDim = str(xDim[spec]), yDim = str(yDim[spec]))
-
-        # plt.show()
 
     print("Co-ordinates extracted and saved in " + annotationsSRC)
 
