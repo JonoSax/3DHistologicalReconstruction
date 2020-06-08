@@ -27,23 +27,35 @@ def listToTxt(data, dir, **kwargs):
     f = open(dir, 'w')
 
     # declar
-    f.write("ArgumnetNo_" + str(len(kwargs)) + "\n")
+    f.write("ArgNo_" + str(len(kwargs)) + "\n")
+
+    argK = list()
+    argV = list()
+
+    for k in kwargs.keys():
+        argK.append(k)
+
+    for v in kwargs.values():
+        argV.append(v)
 
     # write the arguments at the top of the file
-    for arg in kwargs.values():
-        f.write("Arg_" + str(arg) + "\n")        
+    for i in range(len(kwargs)):
+        f.write(argK[i] + "_" + argV[i] + "\n")        
 
-    X, Y = data.shape
-    f.write("Rows_" + str(X) + "\n")
-    f.write("Cols_" + str(Y) + "\n")
+    for i in range(len(data)):
+        f.write("NewListEntry\n")
+        sample = data[i]
+        X, Y = sample.shape
+        f.write("Rows_" + str(X) + "\n")
+        f.write("Cols_" + str(Y) + "\n")
 
-    for x in range(X):
-        for y in range(Y):
-            f.write(str(data[x, y]))
-            if (y+1)%Y:
-                f.write(",")
-            else:
-                f.write("\n")
+        for x in range(X):
+            for y in range(Y):
+                f.write(str(sample[x, y]))
+                if (y+1)%Y:
+                    f.write(",")
+                else:
+                    f.write("\n")
 
     f.write("EndData")
 
