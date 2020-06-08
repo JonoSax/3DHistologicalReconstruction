@@ -8,6 +8,9 @@ regions which are the annotate tissue
 import os
 import numpy as np
 from glob import glob
+import matplotlib.pyplot as plt
+from skimage.segmentation import flood_fill
+
 
 
 def annotationsReader(annotationDirs):
@@ -51,48 +54,92 @@ def segmentedAreas(kernel, segmentSRC, segmentName = ''):
     # Input:    (kernel), Square kernel size (pixels)
     #           (imageSRC), data source directory
     #           (imageName), OPTIONAL to specify which samples to process
-    # Output:   ()
+    # Output:   (), saves a mask of the images identifying the annotated tissue
 
-    annotationsDir = glob(segmentSRC + segmentName + "*.pos")
-    annotations = annotationsReader(annotationsDir)
+    specimenDir = glob(segmentSRC + segmentName + "*.pos")
+    specimenAnnotations = annotationsReader(specimenDir)
 
-    for a in annotationsDir:
-        specimen = annotations[a]
+    # create a mask for all the specimens
+    for a in specimenAnnotations:
+        print("annotation analysed: " + str(a))
+        annoSpec = specimenAnnotations[a]
 
-        for n in range(len(specimen)):
+        # perform mask building per annotation
+        for n in range(len(annoSpec)):
+            print("annotation no: " + str(n))
 
             # process per annotation
-            annotation = specimen[n]
+            annotation = annoSpec[n]
 
-            # perform interpolation from a normalised co-ordinate system
+            # shift the annotation to a (0, 0) origin
             xmin = annotation[:, 0].min()
             ymin = annotation[:, 1].min()
             annotationM = annotation - [xmin, ymin]
 
-            # create a grid array for interpolation
+            # create a grid array for interpolation for the annotation of interest
             xmax = annotation[:, 0].max()
             ymax = annotation[:, 1].max()
-            grid = np.zeros([xmax-xmin, ymax-ymin])
+            grid = np.zeros([xmax-xmin+1, ymax-ymin+1])     # NOTE: added one so that the entire bounds of the co-ordinates are stored... 
 
-            # identify all the points between each annotated point 
-            x_p, y_p = annotationM[0]
-            for x, y in annotationM[1:-1]:
+            # interpolate between each annotated point creating a continuous border of the annotation
+            x_p, y_p = annotationM[-1]
+            for x, y in annotationM:
+
+                # number of points needed for a continuous border
+                num = sum(np.abs(np.subtract((x, y),(x_p, y_p))))
+
+                # generating the x and y region points
+                x_r = np.linspace(x, x_p, num+1).astype(int)
+                y_r = np.linspace(y, y_p, num+1).astype(int)
+                extrapolated = np.stack([x_r, y_r], axis = 1)
+
+                # set these points as true 
+                for x_e, y_e in extrapolated:
+                    grid[x_e, y_e] = 1
                 
-                m = (y - y_p) / (x - x_p)
-                if x > x_p:
-                    g = -1
-                else:
-                    g = 1
-                x_r = np.arange(x, x_p, g)
-
-                grid[x, y] = 1
+                # save previous point to i
                 x_p, y_p = x, y
 
-            # fill in the entirety of this encompassed area
+            # find a point inside the roi
+            for x in range(grid.shape[0]):
+                edges = np.zeros([2, 2])
+                startFound = False  
+                edgeFound = False 
 
-            # save the complete pixel locations of the annotations
+                # for every y point
+                for y in range(1, grid.shape[1]-1):
+
+                    # check if there is a raising edge point on this row
+                    if (grid[x, y+1] == 0) & (grid[x, y] == 1):
+                        edges[0, :] = [x, y]
+                        startFound = True
+                        
+                    # check if there is a falling edge point on this row
+                    elif (grid[x, y-1] == 0) & (grid[x, y] == 1) & startFound:
+                        edges[1, :] = [x, y]
+                        
+                        # find the middle of the edge --> assumed this will be a pixel within the roi
+                        roi = tuple(np.mean(edges, axis = 0).astype(int))
+                        edgeFound = True
+                        break
+
+                if edgeFound:
+                    break 
+
+            # fill in the entirety of this encompassed area (flood fill)
+            print("staring flood")
+            grid = flood_fill(grid, roi, 1)
+
+            # add this annotation to the mask
 
             pass
+
+
+        # perform global subtractions to remove the non-ROIs
+        
+        # save the complete mask of the specimen as a txt file
+
+        pass
 
     pass
 
