@@ -15,7 +15,7 @@ from Utilities import *
 
 def segmentedAreas(kernel, segmentSRC, segmentName = ''):
 
-    # This function create a mask of the annotations which encompass the target tissue.
+    # This function create a mask of the annotations which encompass the target tissue for the target resolution and kernel size.
     # Input:    (kernel), Square kernel size (pixels)
     #           (imageSRC), data source directory
     #           (imageName), OPTIONAL to specify which samples to process
@@ -38,14 +38,13 @@ def maskCreator(specimenDir):
 
     for specimen in specimenDir:
 
+        # open the manual annotations file
         annoSpec, argsDict = txtToList(specimen)
 
         denseAnnotations = list()
             
-
-        # perform mask building per annotation
-        # for n in range(len(annoSpec)):
-        for n in range(6):
+        # --- perform mask building per annotation
+        for n in range(len(annoSpec)):
             print("annotation no: " + str(n))
 
             # process per annotation
@@ -152,13 +151,13 @@ def maskCreator(specimenDir):
             denseGrid = np.stack(np.where(gridN == 1), axis = 1) + [xmin, ymin]
             denseAnnotations.append(denseGrid)
         
-        # --- all annotation mask created an added to list denseAnnotations
-
         # perform a boundary search to investigate which masks are within which sections
         annoID = np.arange(len(denseAnnotations))
         targetTissue = list()
 
-        for s in annoID:
+        # --- identify the target tissue between paired annotations
+        while len(annoID) > 0:
+            s = annoID[0]
             print("\nAnnotation " + str(s))
             annoID = np.delete(annoID, np.where(annoID == s)[0][0])      # as you find matches remove from array search
             
@@ -180,26 +179,24 @@ def maskCreator(specimenDir):
                 # logic operators to check if there is an encompassed area
                 mInsideBool = (mXmax <= sXmax) & (mYmax <= sYmax) & (mXmin >= sXmin) & (mYmin >= sYmin)
                 mOutsideBool = (mXmax >= sXmax) & (mYmax >= sYmax) & (mXmin <= sXmin) & (mYmin <= sYmin)
+
                 # check if match is inside the search
                 if mInsideBool or mOutsideBool:
-                    print("inside: " + str(mInsideBool) + " outside: " + str(mOutsideBool))
+                    # print("inside: " + str(mInsideBool) + " outside: " + str(mOutsideBool))
+                    annoID = np.delete(annoID, np.where(annoID == m)[0][0])
                     annotatedROI = coordMatch(search, match)
                     break
                 
                 # if no match is found assumed that there is no annotated centre
                 else:
-                    # 
                     annotatedROI = search
                     print("there is no identified centre")
-            annoID = np.delete(annoID, np.where(annoID == m)[0][0])
 
             # denseMatrixViewer(annotatedROI)
             targetTissue.append(annotatedROI)
 
-        # save the mask as a txt file of pixel co-ordinates
-        listToTxt(annotationsMask, str(specimenDir[0] + ".mask"))
-
-    pass
+        # save the mask as a txt file of all the pixel co-ordinates of the target tissue
+        listToTxt(targetTissue, str(specimenDir[0] + ".mask"))
             
         # save the complete mask of the specimen as a txt file
 
@@ -217,167 +214,5 @@ def coordMatch(array1, array2):
 
     return(roi)
 
-
-
-search = np.array([[22894,  6368],
-       [22894,  6369],
-       [22894,  6370],
-       [22894,  6371],
-       [22894,  6372],
-       [22894,  6373],
-       [22894,  6374],
-       [22894,  6375],
-       [22894,  6376],
-       [22894,  6377],
-       [22894,  6378],
-       [22894,  6379],
-       [22894,  6380],
-       [22894,  6381],
-       [22894,  6382],
-       [22894,  6383],
-       [22894,  6384],
-       [22894,  6385],
-       [22894,  6386],
-       [22894,  6387],
-       [22894,  6388],
-       [22894,  6389],
-       [22894,  6390],
-       [22894,  6391],
-       [22894,  6392],
-       [22894,  6393],
-       [22894,  6394],
-       [22895,  6353],
-       [22895,  6354],
-       [22895,  6355],
-       [22895,  6356],
-       [22895,  6357],
-       [22895,  6358],
-       [22895,  6359],
-       [22895,  6360],
-       [22895,  6361],
-       [22895,  6362],
-       [22895,  6363],
-       [22895,  6364],
-       [22895,  6365],
-       [22895,  6366],
-       [22895,  6367],
-       [22895,  6368],
-       [22895,  6369],
-       [22895,  6370],
-       [22895,  6371],
-       [22895,  6372],
-       [22895,  6373],
-       [22895,  6374],
-       [22895,  6375],
-       [22895,  6376],
-       [22895,  6377],
-       [22895,  6378],
-       [22895,  6379],
-       [22895,  6380],
-       [22895,  6381],
-       [22895,  6382],
-       [22895,  6383],
-       [22895,  6384],
-       [22895,  6385],
-       [22895,  6386],
-       [22895,  6387],
-       [22895,  6388],
-       [22895,  6389],
-       [22895,  6390],
-       [22895,  6391],
-       [22895,  6392],
-       [22895,  6393],
-       [22895,  6394],
-       [22895,  6395],
-       [22895,  6396],
-       [22895,  6397],
-       [22895,  6398],
-       [22895,  6399],
-       [22895,  6400],
-       [22895,  6401],
-       [22895,  6402],
-       [22895,  6403],
-       [22895,  6404],
-       [22895,  6405],
-       [22895,  6406],
-       [22895,  6407],
-       [22895,  6408],
-       [22895,  6409],
-       [22895,  6410],
-       [22895,  6411],
-       [22895,  6412],
-       [22895,  6413],
-       [22895,  6414],
-       [22895,  6415],
-       [22895,  6416],
-       [22895,  6417],
-       [22895,  6418],
-       [22895,  6419],
-       [22895,  6420],
-       [22895,  6421],
-       [22895,  6422],
-       [22895,  6423],
-       [22895,  6424],
-       [22895,  6425]])
-
-'''
-match = np.array([[22820,  6297],
-       [22820,  6298],
-       [22820,  6299],
-       [22820,  6300],
-       [22820,  6301],
-       [22820,  6302],
-       [22820,  6303],
-       [22820,  6304],
-       [22820,  6305],
-       [22820,  6306],
-       [22820,  6307],
-       [22820,  6308],
-       [22820,  6309],
-       [22820,  6310],
-       [22820,  6311],
-       [22820,  6312],
-       [22821,  6272],
-       [22821,  6273],
-       [22821,  6274],
-       [22821,  6275],
-       [22821,  6276],
-       [22821,  6277],
-       [22821,  6278],
-       [22821,  6279],
-       [22821,  6280],
-       [22821,  6281],
-       [22821,  6282],
-       [22821,  6283],
-       [22821,  6284],
-       [22821,  6285],
-       [22821,  6286],
-       [22821,  6287],
-       [22821,  6288],
-       [22821,  6289],
-       [22821,  6290],
-       [22821,  6291],
-       [22821,  6292],
-       [22821,  6293],
-       [22821,  6294],
-       [22821,  6295],
-       [22821,  6296],
-       [22821,  6297],
-       [22821,  6298],
-       [22821,  6299],
-       [22821,  6300],
-       [22821,  6301],
-       [22821,  6302],
-       [22821,  6303],
-       [22821,  6304],
-       [22821,  6305]])
-'''
-
-match = search[70:100]
-
-# coordMatch(search, match)
-
-
-segmentSRC = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 
 segmentedAreas(100, segmentSRC)
