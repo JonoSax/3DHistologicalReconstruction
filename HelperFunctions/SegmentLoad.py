@@ -29,6 +29,8 @@ unitDict = {
 
 def readndpa(annotationsSRC, specimen = ''):
 
+    print("\nSTARTING SEGMENTLOAD/READNDPA\n")
+
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points and converts
     # them into their pixel location equivalents
     # Input:    (annotationsSRC), Directory for the ndpi files
@@ -140,6 +142,8 @@ def readndpa(annotationsSRC, specimen = ''):
     print("Co-ordinates extracted and saved in " + annotationsSRC)
 
 def normaliseNDPA(slicesDir):
+
+    print("\nSTARTING SEGMENTLOAD/NORMALISENDPA\n")
 
     # This functions reads the properties of the ndpi files and extracts the properties 
     # of the file.
