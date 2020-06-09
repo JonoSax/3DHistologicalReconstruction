@@ -5,8 +5,44 @@ menial tasks not directly related to the extraction of relevant information
 
 import numpy as np
 import matplotlib.pyplot as plt
+from shutil import copy
+import os
+
+def trainingDirs(data, target, label, *args):
+
+    print("\nSTARTING UTILITIES/TRAININGDIRS\n")
+
+    # This function takes data and copies it from that location into a new directory containing all the training data
+    # of the true labels
+    # Inputs:   (data), the directory of the data
+    #           (target), the location of the directory to save the data (either pre-existing or new)
+    #           (label), the label for the data being moved (either into an existing folder or new)
+    #           (*args), sub-directories that can be created
+    # Outputs:  (), the directory is populated with true data labels to be used
+
+    # create the label folder 
+    try:
+        os.mkdir(target + label)
+    except:
+        pass
+
+    # create subdirectories (optional)
+    for d in args:
+        dir = target + label
+        dirn = dir + "/" + d
+        dir = dirn
+        try:
+            os.mkdir(dir + "/" + d)
+        except OSError:
+            print("\nReplacing existing files\n")
+
+    # copy the data into created folders
+    copy(data, dirn)
 
 def listToTxt(data, dir, **kwargs):
+
+    print("\nSTARTING UTILITIES/LISTTOTXT\n")
+
     # Converts a list of information into a txt folder with the inputted name
     # Inputs:   (data), the list to be saved
     #           (dir), the exact name and path which this list will be saved as
@@ -65,6 +101,9 @@ def listToTxt(data, dir, **kwargs):
     f.close()
 
 def txtToList(dir):
+
+    print("\nSTARTING UTILITIES/TXTTOLIST\n")
+
     # Reads in a text file which was saved with the listToTxt function
     # Inputs:   (dir), the name/s of the file/s
     # Outputs:  (dataMain), a list containing the data
@@ -100,17 +139,19 @@ def txtToList(dir):
 
     return(sampleList, args)
 
-
 def denseMatrixViewer(coords):
+
+    print("\nSTARTING UTILITIES/DENSEMATRIXVIEWER\n")
+
     # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
     # which can be view with matplotlib
     # Inputs:   (coords), the coordinates
     # Outputs:  (), produces a plot to view
 
-    Xmax = coords[:, 0].max()
-    Xmin = coords[:, 0].min()
-    Ymax = coords[:, 1].max()
-    Ymin = coords[:, 1].min()
+    Xmax = int(coords[:, 0].max())
+    Xmin = int(coords[:, 0].min())
+    Ymax = int(coords[:, 1].max())
+    Ymin = int(coords[:, 1].min())
 
     coordsNorm = coords - [Xmin, Ymin]
 
@@ -118,7 +159,7 @@ def denseMatrixViewer(coords):
 
     X, Y = coords.shape
     for x in range(X):
-        xp, yp = coordsNorm[x, :]
+        xp, yp = coordsNorm[x, :].astype(int)
         area[xp, yp] = 1
 
     plt.imshow(area)
