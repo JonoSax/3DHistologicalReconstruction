@@ -11,7 +11,7 @@ from skimage.measure import block_reduce
 from PIL import Image
 from glob import glob
 import sys
-from Utilities import *
+from .Utilities import *
 
 # kernel = 150
 # imageSRC =  "Data.nosync/testing/"
@@ -23,7 +23,7 @@ tifLevels = [0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20]
 
 def segmentation(kernel, size, imageSRC, imageName = ''):
 
-    print("\nSTARTING WSILOAD/SEGMENTATION\n")
+    print("\nSTARTING WSILOAD/SEGMENTATION")
 
     # This moves the quadrants into training/testing data based on the annotations provided
     # Input:    (annotations), directory/ies which contain the txt files of the annotation co-ordinates 
@@ -53,6 +53,8 @@ def segmentation(kernel, size, imageSRC, imageName = ''):
         maskAnno = open(md)
         argNo = int(maskAnno.readline().replace("ArgNo_", ""))
         entries = int(maskAnno.readline().replace("ListEntries_", ""))
+
+        # process per identified feature
         for annotation in range(entries):
 
             # iterate through all the annotations of the mask in the txt file
@@ -60,10 +62,9 @@ def segmentation(kernel, size, imageSRC, imageName = ''):
             cols = int(maskAnno.readline().replace("Cols_", ""))
             anno = np.zeros([rows, cols])
 
-            # read in the positions of the mask
+            # read in the positions of the single annotated mask
+            print("rows:" + str(rows))
             for r in range(rows):
-                if r%1000 == 0:
-                    print("row: " + str(r))
                 values = maskAnno.readline().split(",")
 
                 for c in range(cols):
@@ -87,10 +88,12 @@ def segmentation(kernel, size, imageSRC, imageName = ''):
 
                     # move the identified segments into a folder specifically containing true label data
                     trainingDirs(quadrantData, targetTissueDir, 'Vessels', 'K=' + str(kernel) + "_S=" + str(size))
+    
+    print("ENDING WSILOAD/SEGMENTATION\n")
 
 def quadrants(kernel, size, imageSRC, imageName = '', makeQuads = True):
 
-    print("\nSTARTING WSILOAD/QUADRANTS\n")
+    print("\nSTARTING WSILOAD/QUADRANTS")
 
     # This function quadrants the tif image into n x n images and saves them in a new directory
     # Input:    (kernel), Square kernel size (pixels)
@@ -137,20 +140,21 @@ def quadrants(kernel, size, imageSRC, imageName = '', makeQuads = True):
             acr = int(width / kernel)
 
             # quadrant tissue
-            for w in range(acr):
-                for h in range(up):
-                    quadrant = img[0 + kernel * h:kernel + kernel * h, 0 + kernel * w:kernel + kernel * w, :]
+            for x in range(acr):
+                for y in range(up):
+                    quadrant = img[0 + kernel * y:kernel + kernel * y, 0 + kernel * x:kernel + kernel * x, :]
                     # print(image+"_tiles/quadrant_"+str(h)+"_"+str(w)+"_"+str(image))
-                    cv2.imwrite(dir + "/quadrant_" + str(w) + "_" + str(h) + ".tif", quadrant)
-                    print("width = " + str(w) + "/" + str(acr) + ", height = " + str(h) + "/" + str(up))
+                    cv2.imwrite(dir + "/quadrant_" + str(y) + "_" + str(x) + ".tif", quadrant)
+                    print("x = " + str(x) + "/" + str(acr) + ", y = " + str(y) + "/" + str(up))
 
             print(imageTIF + " done")
 
+    print("ENDING WSILOAD/QUADRANTS\n")
     return(dirs)
 
 def ndpiLoad(sz, src):
 
-    print("\nSTARTING WSILOAD/NDPILOAD\n")
+    print("\nSTARTING WSILOAD/NDPILOAD")
 
     # This function extracts tif files from the raw ndpi files. This uses the 
     # ndpitool from https://www.imnc.in2p3.fr/pagesperso/deroulers/software/ndpitools/ 
@@ -175,7 +179,11 @@ def ndpiLoad(sz, src):
                                                                     # duplication of the same file, however 
                                                                     # if there is z shift then this will fail
         os.rename(extractedName, dirSRC + nameSRC + "_" + str(mag) + ".tif")
+    
+    print("ENDING WSILOAD/NDPILOAD\n")
 
+'''
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 
 segmentation(100, 4, data, imageName = 'testWSIMod')
+'''
