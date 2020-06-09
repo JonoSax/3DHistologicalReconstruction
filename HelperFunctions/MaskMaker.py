@@ -10,13 +10,15 @@ import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 from skimage.segmentation import flood_fill
-from Utilities import *
+from .Utilities import *
 
 # magnification levels of the tif files available
 tifLevels = [0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20]
 
 
 def segmentedAreas(size, segmentSRC, segmentName = ''):
+
+    print("\nSTARTING MASKMAKER/SEGMENTEDAREAS\n")
 
     # This function create a mask of the annotations which encompass the target tissue for the target resolution and kernel size.
     # Input:    (kernel), Square kernel size (pixels)
@@ -28,10 +30,16 @@ def segmentedAreas(size, segmentSRC, segmentName = ''):
 
     # get the masks of each of the annotations
     specMask = maskCreator(size, specimenDir)
+    print("ENDING MASKMAKER/SEGMENTEDAREAS\n")
+
 
 
 
 def maskCreator(size, specimenDir):
+
+    print("\nSTARTING MASKMAKER/MASKCREATOR\n")
+
+    # TODO: Seperate into two functions the mask building and target tissue identification
 
     # This function takes the manual annotations and turns them into a dense matrix which 
     # has identified all the pixel which the annotations encompass at the user chosen scale
@@ -167,6 +175,7 @@ def maskCreator(size, specimenDir):
             try:
                 gridN = flood_fill(grid, roi, 1)
             except:
+                gridN = grid
                 print("     Flood not performed on annotaiton " + str(n))
 
             # --- save the mask identified in a dense form and re-position into the SCALED global space
@@ -222,16 +231,19 @@ def maskCreator(size, specimenDir):
                     print("there is no identified centre")
 
             # view the roi
-            denseMatrixViewer(annotatedROI)
+            # denseMatrixViewer(annotatedROI)
 
             targetTissue.append(annotatedROI)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
         listToTxt(targetTissue, str(specimenDir[0] + "_size_" + str(size) + ".mask"))
-            
-        # save the complete mask of the specimen as a txt file
+    
+    print("ENDING MASKMAKER/MASKCREATOR\n")
 
 def coordMatch(array1, array2):
+
+    print("\nSTARTING MASKMAKER/COORDMATCH\n")
+
     # This function removes the values of the smaller array from the larger array to identify the roi.
     # Inputs:   (largerArray), numpy.array which contains vector values. MUST be the larger dimension 
     #           (smallerArray), numpy.array which contains vector values. MUST be the smaller dimension 
@@ -243,8 +255,10 @@ def coordMatch(array1, array2):
     # only pass through the entires which occur once --> removes the points of overlap
     roi = uniq[np.where(count == 1)]
 
+    print("ENDING MASKMAKER/COORDMATCH\n")
     return(roi)
 
+'''
 # data directory
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 size = 6
@@ -255,3 +269,4 @@ name = 'testWSIMod'
 
 # create the masks of the annotationes
 segmentedAreas(size, data, name)
+'''
