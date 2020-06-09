@@ -10,10 +10,13 @@ import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 from skimage.segmentation import flood_fill
-from .Utilities import *
+from Utilities import *
+
+# magnification levels of the tif files available
+tifLevels = [0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20]
 
 
-def segmentedAreas(segmentSRC, segmentName = ''):
+def segmentedAreas(size, segmentSRC, segmentName = ''):
 
     # This function create a mask of the annotations which encompass the target tissue for the target resolution and kernel size.
     # Input:    (kernel), Square kernel size (pixels)
@@ -24,17 +27,20 @@ def segmentedAreas(segmentSRC, segmentName = ''):
     specimenDir = glob(segmentSRC + segmentName + "*.pos")
 
     # get the masks of each of the annotations
-    specMask = maskCreator(specimenDir)
+    specMask = maskCreator(size, specimenDir)
 
 
 
-def maskCreator(specimenDir):
+def maskCreator(size, specimenDir):
 
-    # This function takes the manual annotations and turn them into a dense matrix which 
-    # has identified all the pixel which the annotations encompass
-    # Inputs:   (specimenAnnotations), list of the annotations as loaded by annotationsReaders
+    # This function takes the manual annotations and turns them into a dense matrix which 
+    # has identified all the pixel which the annotations encompass at the user chosen scale
+    # Inputs:   (size), the user chosen scale which refers to the zoom level of the tif file extracted
+    #           (specimenAnnotations), list of the annotations as loaded by annotationsReaders
     # Outputs:  (maskDirs), directories to the files which contains all pixel locations for the
     #           annotations of the  highest resolultion tif file 
+
+    scale = tifLevels[size] / max(tifLevels)
 
     for specimen in specimenDir:
 
@@ -45,20 +51,33 @@ def maskCreator(specimenDir):
             
         # --- perform mask building per annotation
         for n in range(len(annoSpec)):
-            print("annotation no: " + str(n))
+
+            print("\nAnnotation " + str(n) + "/" + str(len(annoSpec)))
 
             # process per annotation
             annotation = annoSpec[n]
 
-            # shift the annotation to a (0, 0) origin
-            xmin = int(annotation[:, 0].min())
-            ymin = int(annotation[:, 1].min())
-            annotationM = annotation - [xmin, ymin]
+            # scale the annotation
+            annotationScaled = annotation * scale
 
-            # create a grid array for interpolation for the annotation of interest
-            xmax = int(annotation[:, 0].max())
-            ymax = int(annotation[:, 1].max())
-            grid = np.zeros([xmax-xmin+3, ymax-ymin+3])     # NOTE: added one so that the entire bounds of the co-ordinates are stored... 
+            # shift the annotation to a (0, 0) origin 
+            xminO = int(annotationScaled[:, 0].min())
+            yminO = int(annotationScaled[:, 1].min())
+            annotationU, posU = np.unique((annotationScaled - [xminO, yminO]).astype(int), axis = 0, return_index = True)           
+
+            # get the properties of the new scaled grid
+            xmax = int(annotationScaled[:, 0].max())
+            ymax = int(annotationScaled[:, 1].max())
+            xmin = int(annotationScaled[:, 0].min())
+            ymin = int(annotationScaled[:, 1].min())
+
+            # after np.unique the entries are ordered by value which breaks the interpolation step as it works on the 
+            # assumption of sequential points. So re-order the now downsampled hand annotations
+            posM, annotationM = zip(*sorted(zip(posU, annotationU)))
+            annotationM = np.array(annotationM)
+
+            # scaled grid
+            grid = np.zeros([xmax-xmin+3, ymax-ymin+3])     # NOTE: added 3 so that the entire bounds of the co-ordinates are stored... 
 
             # --- Interpolate between each annotated point creating a continuous border of the annotation
             x_p, y_p = annotationM[-1]      # initialise with the last point for continuity 
@@ -145,20 +164,30 @@ def maskCreator(specimenDir):
                     break
 
             # floodfill in the entirety of this encompassed area (flood fill) 
-            gridN = flood_fill(grid, roi, 1)
+            try:
+                gridN = flood_fill(grid, roi, 1)
+            except:
+                print("     Flood not performed on annotaiton " + str(n))
 
-            # --- save the mask identified in a dense form and re-position into global space
+            # --- save the mask identified in a dense form and re-position into the SCALED global space
             denseGrid = np.stack(np.where(gridN == 1), axis = 1) + [xmin, ymin]
+            # denseMatrixViewer(denseGrid)
+            # plt.imshow(grid); plt.show()
             denseAnnotations.append(denseGrid)
+
+
+        print("mask building complete")
+
         
         # perform a boundary search to investigate which masks are within which sections
         annoID = np.arange(len(denseAnnotations))
+
         targetTissue = list()
 
         # --- identify the target tissue between paired annotations
         while len(annoID) > 0:
             s = annoID[0]
-            print("\nAnnotation " + str(s))
+            print("\nAnnotation " + str(s) + "/" + str(len(annoID)))
             annoID = np.delete(annoID, np.where(annoID == s)[0][0])      # as you find matches remove from array search
             
             # annotation to perform search
@@ -198,7 +227,7 @@ def maskCreator(specimenDir):
             targetTissue.append(annotatedROI)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
-        listToTxt(targetTissue, str(specimenDir[0] + ".mask"))
+        listToTxt(targetTissue, str(specimenDir[0] + "_size_" + str(size) + ".mask"))
             
         # save the complete mask of the specimen as a txt file
 
@@ -215,3 +244,14 @@ def coordMatch(array1, array2):
     roi = uniq[np.where(count == 1)]
 
     return(roi)
+
+# data directory
+data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
+size = 6
+kernel = 100
+name = 'testWSIMod'
+# Extract the manual co-ordinates of the annotated tissue
+# SegmentLoad.readndpa(data)
+
+# create the masks of the annotationes
+segmentedAreas(size, data, name)
