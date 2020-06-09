@@ -10,7 +10,7 @@ import os
 
 def trainingDirs(data, target, label, *args):
 
-    print("\nSTARTING UTILITIES/TRAININGDIRS\n")
+    print("\nSTARTING UTILITIES/TRAININGDIRS")
 
     # This function takes data and copies it from that location into a new directory containing all the training data
     # of the true labels
@@ -20,28 +20,37 @@ def trainingDirs(data, target, label, *args):
     #           (*args), sub-directories that can be created
     # Outputs:  (), the directory is populated with true data labels to be used
 
-    # create the label folder 
+    # create the target tissue folder 
+    try:
+        os.mkdir(target)
+    except:
+        pass
+
+    # create the label folder
     try:
         os.mkdir(target + label)
     except:
         pass
 
     # create subdirectories (optional)
+    dir = target + label
     for d in args:
-        dir = target + label
         dirn = dir + "/" + d
-        dir = dirn
         try:
             os.mkdir(dir + "/" + d)
         except OSError:
             print("\nReplacing existing files\n")
+        dir = dirn
+
 
     # copy the data into created folders
     copy(data, dirn)
+    print("STARTING UTILITIES/TRAININGDIRS\n")
+
 
 def listToTxt(data, dir, **kwargs):
 
-    print("\nSTARTING UTILITIES/LISTTOTXT\n")
+    print("\nSTARTING UTILITIES/LISTTOTXT")
 
     # Converts a list of information into a txt folder with the inputted name
     # Inputs:   (data), the list to be saved
@@ -99,10 +108,12 @@ def listToTxt(data, dir, **kwargs):
     f.write("EndData")
 
     f.close()
+    print("ENDING UTILITIES/LISTTOTXT\n")
+
 
 def txtToList(dir):
 
-    print("\nSTARTING UTILITIES/TXTTOLIST\n")
+    print("\nSTARTING UTILITIES/TXTTOLIST")
 
     # Reads in a text file which was saved with the listToTxt function
     # Inputs:   (dir), the name/s of the file/s
@@ -137,11 +148,12 @@ def txtToList(dir):
 
         sampleList.append(storedData)
 
+    print("ENDING UTILITIES/TXTTOLIST\n")
     return(sampleList, args)
 
 def denseMatrixViewer(coords):
 
-    print("\nSTARTING UTILITIES/DENSEMATRIXVIEWER\n")
+    print("\nSTARTING UTILITIES/DENSEMATRIXVIEWER")
 
     # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
     # which can be view with matplotlib
@@ -164,3 +176,25 @@ def denseMatrixViewer(coords):
 
     plt.imshow(area)
     plt.show()
+
+    print("STARTING UTILITIES/DENSEMATRIXVIEWER\n")
+
+def quadrantLines(dir, kernel):
+    print("\nSTARTING UTILITIES/QUADRANTLINES")
+
+    # This function adds the quadrant lines onto the tif file
+    # Inputs:   (dir), the SPECIFIC name of the image 
+    #           (kernel), kernel size
+    # Outputs:  (), re-saves the image with quadrant lines drawn over it
+
+    print("ENDING UTILITIES/QUADRANTLINES\n")
+
+def maskCover(dir, mask):
+    print("\nSTARTING UTILITIES/QUADRANTLINES")
+
+    # This function adds the masks onto the tif file
+    # Inputs:   (dir), the SPECIFIC name of the image 
+    #           (mask), mask information
+    # Outputs:  (), re-saves the image with the mask area as an inverse colour area
+
+    print("ENDING UTILITIES/QUADRANTLINES\n")
