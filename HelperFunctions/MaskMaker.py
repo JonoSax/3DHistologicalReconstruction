@@ -26,56 +26,56 @@ def maskCreator(size, specimenSRC, segmentName = ''):
     # has identified all the pixel which the annotations encompass at the user chosen scale
     # Inputs:   (size), the user chosen scale which refers to the zoom level of the tif file extracted
     #           (specimenAnnotations), list of the annotations as loaded by annotationsReaders
-    # Outputs:  (maskDirs), directories to the files which contains all pixel locations for the
-    #           annotations of the  highest resolultion tif file 
+    # Outputs:  (), txt files which contains all pixel locations for the specified resolution
+    #            of the tif file
 
-    specimenDir = glob(specimenSRC + segmentName + "*.pos")
-
+    specimenPosDir = glob(specimenSRC + segmentName + "*.pos")
     scale = tifLevels[size] / max(tifLevels)
-
-    for specimen in specimenDir:
+    
+    for specimen in specimenPosDir:
 
         # open the manual annotations file
         annoSpec, argsDict = txtToList(specimen)
         
         # find the encomappsed areas of each annotations
-        denseAnnotations = maskFinder(annoSpec, scale)
+        denseAnnotations = maskFinder(annoSpec, scale, 6)
         
         # of the identified areas, find the roi between overlapping ares
         targetTissue = roiFinder(denseAnnotations)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
-        listToTxt(targetTissue, str(specimenDir[0] + "_size_" + str(size) + ".mask"))
+        listToTxt(targetTissue, str(specimenPosDir[0] + "_size_" + str(size) + ".mask"))
     
     print("ENDING MASKMAKER/MASKCREATOR\n")
 
-def coordMatch(array1, array2):
-
-    # This function removes the values of the smaller array from the larger array to identify the roi.
-    # Inputs:   (largerArray), numpy.array which contains vector values. MUST be the larger dimension 
-    #           (smallerArray), numpy.array which contains vector values. MUST be the smaller dimension 
-    # Outputs:  (roi), essentailly the areas which are unique to the larger array
-
-    # get each array entry repeated once and count its occurence
-    uniq, count = np.unique(np.concatenate([array1, array2]), return_counts=True, axis = 0)
-
-    # only pass through the entires which occur once --> removes the points of overlap
-    roi = uniq[np.where(count == 1)]
-
-    return(roi)
-
-def maskFinder(annoSpec, scale):
+def maskFinder(annoSpec, scale, num = ""):
 
     # This function takes the manual annotations and turns them into a mask which 
     # encompasses the inner area
     # Inputs:   (annoSpec), the annotations for a single specimen
     #           (scale), the scaling factor to apply between the raw data and the chosen 
     #               tif size file to analyse
+    #           (num), OPTIONAL used for debugging to specify which annotations to process.
+    #               If num if only a single value it will process UNTIL that annotaiton.
+    #               If num is two values then it will process the RANGE of annotations from the start:end 
     # Outputs:  (denseAnnotations), a list containing the global co-ordinate position of ONLY
     #               the true values of the mask
 
     # --- perform mask building per annotation
     denseAnnotations = list()
+
+    # set the range of annotations to process (optional)
+    if type(num) is int:  
+        if (num < len(annoSpec)) & (num > 0):       
+            annoSpec = annoSpec[0:num]
+        else:
+            print("Number is not valid, not being used")
+    elif len(num) == 2:
+        if (num[0] > 0) & (num[1] < len(annoSpec)):
+            annoSpec = annoSpec[num[0]:num[1]+1]
+        else:
+            print("Range is not valid, not being used")
+
 
     for n in range(len(annoSpec)):
 
@@ -266,9 +266,24 @@ def roiFinder(denseAnnotations):
 
     return(targetTissue)
 
+def coordMatch(array1, array2):
+
+    # This function removes the values of the smaller array from the larger array to identify the roi.
+    # Inputs:   (largerArray), numpy.array which contains vector values. MUST be the larger dimension 
+    #           (smallerArray), numpy.array which contains vector values. MUST be the smaller dimension 
+    # Outputs:  (roi), essentailly the areas which are unique to the larger array
+
+    # get each array entry repeated once and count its occurence
+    uniq, count = np.unique(np.concatenate([array1, array2]), return_counts=True, axis = 0)
+
+    # only pass through the entires which occur once --> removes the points of overlap
+    roi = uniq[np.where(count == 1)]
+
+    return(roi)
+
 # data directory
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
-size = 2
+size = 4
 kernel = 100
 name = 'testWSI1'
 # Extract the manual co-ordinates of the annotated tissue
