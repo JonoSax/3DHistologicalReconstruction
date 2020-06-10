@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from shutil import copy
 import os
+import cv2
 
 def trainingDirs(data, target, label, *args):
 
@@ -46,7 +47,6 @@ def trainingDirs(data, target, label, *args):
     # copy the data into created folders
     copy(data, dirn)
     print("STARTING UTILITIES/TRAININGDIRS\n")
-
 
 def listToTxt(data, dir, **kwargs):
 
@@ -109,7 +109,6 @@ def listToTxt(data, dir, **kwargs):
 
     f.close()
     print("ENDING UTILITIES/LISTTOTXT\n")
-
 
 def txtToList(dir):
 
@@ -179,22 +178,69 @@ def denseMatrixViewer(coords):
 
     print("STARTING UTILITIES/DENSEMATRIXVIEWER\n")
 
-def quadrantLines(dir, kernel):
+def quadrantLines(dir, dirTarget, kernel):
     print("\nSTARTING UTILITIES/QUADRANTLINES")
 
     # This function adds the quadrant lines onto the tif file
-    # Inputs:   (dir), the SPECIFIC name of the image 
+    # Inputs:   (dir), the SPECIFIC name of the original image 
+    #           (dirTarget), the location to save the image
     #           (kernel), kernel size
     # Outputs:  (), re-saves the image with quadrant lines drawn over it
 
-    print("ENDING UTILITIES/QUADRANTLINES\n")
+    imgO = cv2.imread(dir)
+    hO, wO, cO = imgO.shape
 
-def maskCover(dir, mask):
-    print("\nSTARTING UTILITIES/QUADRANTLINES")
+    # if the image is more than 6 megapixels downsample 
+    if hO * wO >= 30 * 10 ** 6:
+        aspectRatio = hO/wO
+        imgR = cv2.resize(imgO, (6000, int(6000*aspectRatio)))
+    else:
+        imgR = img0
+
+    h, w, c = imgR.shape
+
+    # scale the kernel to the downsampled image
+    scale = h/hO
+    kernelS = int(kernel * scale)
+
+    wid = np.arange(0, w, kernelS)
+    hgt = np.arange(0, h, kernelS)
+
+    # draw verticl lines
+    for x in wid:
+        cv2.line(imgR, (x, 0), (x, h), (0, 0, 0), thickness=1)
+
+    # draw horizontal lines
+    for y in hgt:
+        cv2.line(imgR, (0, y), (w, y), (0, 0, 0), thickness=1)
+
+    newImg = dirTarget + "mod.jpeg"
+    cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 50])
+    # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
+
+    print("ENDING UTILITIES/QUADRANTLINES\n")
+    return(newImg, scale)
+
+def maskCover(scale, imgTarget, masks):
+    print("\nSTARTING UTILITIES/MASKCOVER")
 
     # This function adds the masks onto the tif file
-    # Inputs:   (dir), the SPECIFIC name of the image 
+    # Inputs:   (scale), the scale factor for the downsample image
+    #           (imgTarget), the image which the masks will be added to
     #           (mask), mask information
     # Outputs:  (), re-saves the image with the mask area as an inverse colour area
+    
+    # read in both original and target image
 
-    print("ENDING UTILITIES/QUADRANTLINES\n")
+    imgM = cv2.imread(imgTarget)
+
+    for mask in masks:
+
+        for x, y in mask:
+            # inverse colours of mask areas
+            imgM[y, x, :] = 255 - imgM[y, x, :]
+
+    cv2.imwrite(imgTarget, imgM)
+
+
+    print("ENDING UTILITIES/MASKCOVER\n")
