@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 from shutil import copy
 import os
 import cv2
+import tifffile as tifi
+
 
 def trainingDirs(data, target, label, *args):
 
@@ -182,12 +184,12 @@ def quadrantLines(dir, dirTarget, kernel):
     print("\nSTARTING UTILITIES/QUADRANTLINES")
 
     # This function adds the quadrant lines onto the tif file
-    # Inputs:   (dir), the SPECIFIC name of the original image 
+    # Inputs:   (dir), the SPECIFIC name of the original tif image 
     #           (dirTarget), the location to save the image
     #           (kernel), kernel size
     # Outputs:  (), re-saves the image with quadrant lines drawn over it
 
-    imgO = cv2.imread(dir)
+    imgO = tifi.imread(dir)
     hO, wO, cO = imgO.shape
 
     # if the image is more than 6 megapixels downsample 
@@ -195,7 +197,7 @@ def quadrantLines(dir, dirTarget, kernel):
         aspectRatio = hO/wO
         imgR = cv2.resize(imgO, (6000, int(6000*aspectRatio)))
     else:
-        imgR = img0
+        imgR = imgO
 
     h, w, c = imgR.shape
 
@@ -215,7 +217,7 @@ def quadrantLines(dir, dirTarget, kernel):
         cv2.line(imgR, (0, y), (w, y), (0, 0, 0), thickness=1)
 
     newImg = dirTarget + "mod.jpeg"
-    cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 50])
+    cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
     # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
 
     print("ENDING UTILITIES/QUADRANTLINES\n")

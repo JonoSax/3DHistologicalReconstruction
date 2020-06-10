@@ -11,7 +11,7 @@ from skimage.measure import block_reduce
 from PIL import Image
 from glob import glob
 import sys
-from Utilities import *
+from .Utilities import *
 
 # kernel = 150
 # imageSRC =  "Data.nosync/testing/"
@@ -38,15 +38,20 @@ def segmentation(kernel, size, imageSRC, imageName = ''):
     #       calculate the range of the values of each annotation to find which one is inside which 
 
     # get the mask directories --> already at the right pixel locations
-    imagesTIF = glob(imageSRC + imageName + "*_" + str(tifLevels[size]) + ".tif")
+
     masksDirs = glob(imageSRC + imageName + "*" + "_size_" + str(size) + ".mask")
+
+    sampleNames = glob(imageSRC + imageName + "*.ndpi"); 
+    for s in range(len(sampleNames)): 
+        sampleNames[s] = sampleNames[s].replace(imageSRC, "").replace(".ndpi", "")
 
     # specify the root directory where the identified tissue will be stored 
     targetTissueDir = imageSRC + 'targetTissue/'
 
     # split the data into quadrants
     quadDirs = quadrants(kernel, size, imageSRC, imageName, makeQuads = False)
-
+    
+    imagesTIF = glob(imageSRC + imageName + "*_" + str(tifLevels[size]) + ".tif")
 
 
     # seperate the segmentations per specimen
@@ -68,6 +73,12 @@ def segmentation(kernel, size, imageSRC, imageName = ''):
             # iterate through all the annotations of the mask in the txt file
             rows = int(maskAnno.readline().replace("Rows_", ""))
             cols = int(maskAnno.readline().replace("Cols_", ""))
+
+            # if the image is very low resolution sometimes return annotations which have
+            # been too simplified. Skip this annotation
+            if rows == 0:
+                continue
+
             anno = np.zeros([rows, cols])
 
             # read in the positions of the single annotated mask
@@ -93,13 +104,13 @@ def segmentation(kernel, size, imageSRC, imageName = ''):
                 
                 # if 90%+ of the pixels (totally arbituary number --> to investigate the effects of this) within a quadrant contain 
                 # target tissue, this can be identified as training data, move into appropriate folder
-                if comp[q] >= kernel**2 * 0.1: #NOTE CHANGE THIS
+                if comp[q] >= kernel**2 * 0.8: #NOTE CHANGE THIS
 
                     # the exact file name of the tile part
-                    quadrantData = imageSRC + imageName + "_" + str(tifLevels[size]) + ".tif_tiles@" + str(kernel) + "x" + str(kernel) + "/quadrant_" + str(quad[q][0]) + "_" + str(quad[q][1]) + ".tif"
+                    quadrantData = imageSRC + sampleNames[mn] + "_" + str(tifLevels[size]) + ".tif_tiles@" + str(kernel) + "x" + str(kernel) + "/quadrant_" + str(quad[q][1]) + "_" + str(quad[q][0]) + ".tif"
 
                     # move the identified segments into a folder specifically containing true label data
-                    # trainingDirs(quadrantData, targetTissueDir, 'Vessels', 'K=' + str(kernel) + "_S=" + str(size))
+                    trainingDirs(quadrantData, targetTissueDir, 'Vessels', 'K=' + str(kernel) + "_S=" + str(size))
     
         # add the mask annotations to the modified image for user verification
         maskCover(scale, modIMG, annoScaled)
@@ -200,6 +211,8 @@ def ndpiLoad(sz, src):
     print("ENDING WSILOAD/NDPILOAD\n")
 
 
+'''
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 
 segmentation(200, 4, data, imageName = 'testWSI1')
+'''

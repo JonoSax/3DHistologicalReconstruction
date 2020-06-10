@@ -10,7 +10,7 @@ import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 from skimage.segmentation import flood_fill
-from Utilities import *
+from .Utilities import *
 
 # magnification levels of the tif files available
 tifLevels = [0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20]
@@ -38,13 +38,13 @@ def maskCreator(size, specimenSRC, segmentName = ''):
         annoSpec, argsDict = txtToList(specimen)
         
         # find the encomappsed areas of each annotations
-        denseAnnotations = maskFinder(annoSpec, scale, 6)
+        denseAnnotations = maskFinder(annoSpec, scale)
         
         # of the identified areas, find the roi between overlapping ares
         targetTissue = roiFinder(denseAnnotations)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
-        listToTxt(targetTissue, str(specimenPosDir[0] + "_size_" + str(size) + ".mask"))
+        listToTxt(targetTissue, str(specimen + "_size_" + str(size) + ".mask"))
     
     print("ENDING MASKMAKER/MASKCREATOR\n")
 
@@ -280,7 +280,7 @@ def coordMatch(array1, array2):
     roi = uniq[np.where(count == 1)]
 
     return(roi)
-
+'''
 # data directory
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 size = 4
@@ -291,3 +291,4 @@ name = 'testWSI1'
 
 # create the masks of the annotationes
 maskCreator(size, data, name)
+'''

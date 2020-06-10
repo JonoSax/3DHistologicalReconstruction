@@ -22,8 +22,8 @@ Extent of training (epochs, batch)
 
 # data directory
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
-size = 2
-kernel = 50
+size = 5
+kernel = 30
 name = 'testWSI1'
 # Extract all the manual co-ordinates of the annotated tissue
 # SegmentLoad.readndpa(data, name)

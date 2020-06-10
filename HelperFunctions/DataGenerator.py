@@ -4,3 +4,5 @@ from the WSI and the other information and categorising them into classes
 appropriate for the ModelTrainer
 '''
 
+def main():
+    print("TO DO")
