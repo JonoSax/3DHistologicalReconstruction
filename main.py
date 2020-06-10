@@ -29,7 +29,7 @@ name = 'testWSI1'
 # SegmentLoad.readndpa(data, name)
 
 # create the masks of the annotationes
-# MaskMaker.segmentedAreas(size, data, name)
+# MaskMaker.maskCreator(size, data, name)
 
 # Load in the WSI segments, seperate the target tissue
 WSILoad.segmentation(kernel, size, data, name)
