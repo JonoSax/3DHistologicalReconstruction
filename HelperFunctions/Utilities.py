@@ -9,6 +9,11 @@ from shutil import copy
 import os
 import cv2
 import tifffile as tifi
+from glob import glob
+
+# magnification levels of the tif files available
+tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
+
 
 
 def trainingDirs(data, target, label, *args):
@@ -55,7 +60,7 @@ def listToTxt(data, dir, **kwargs):
     print("\nSTARTING UTILITIES/LISTTOTXT")
 
     # Converts a list of information into a txt folder with the inputted name
-    # Inputs:   (data), the list to be saved
+    # Inputs:   (data), the single list to be saved
     #           (dir), the exact name and path which this list will be saved as
     #           (*args), inputs that appear at the top of the saved file
     # Outputs:  (), txt file saved in directory 
@@ -82,6 +87,18 @@ def listToTxt(data, dir, **kwargs):
     argK = list()
     argV = list()
 
+    # ensure that the exact directory being specified exists, if not create it
+    dirSplit = dir.split("/")
+    dirToMake = ""
+    for d in range(dir.count("/")):
+        dirToMake += str(dirSplit[d] + "/")
+        try:
+            os.mkdir(dirToMake)
+        except:
+            pass
+
+
+    # get optional arguments
     for k in kwargs.keys():
         argK.append(k)
 
@@ -117,7 +134,7 @@ def txtToList(dir):
     print("\nSTARTING UTILITIES/TXTTOLIST")
 
     # Reads in a text file which was saved with the listToTxt function
-    # Inputs:   (dir), the name/s of the file/s
+    # Inputs:   (dir), the name of a single file
     # Outputs:  (dataMain), a list containing the data
     #           (dataArgs), a dictionary containing the argument data
 
@@ -224,10 +241,11 @@ def quadrantLines(dir, dirTarget, kernel):
     return(newImg, scale)
 
 def maskCover(scale, imgTarget, masks):
+
     print("\nSTARTING UTILITIES/MASKCOVER")
 
     # This function adds the masks onto the tif file
-    # Inputs:   (scale), the scale factor for the downsample image
+    # Inputs:   (scale), the scale factor for the downsampled image
     #           (imgTarget), the image which the masks will be added to
     #           (mask), mask information
     # Outputs:  (), re-saves the image with the mask area as an inverse colour area
@@ -246,3 +264,31 @@ def maskCover(scale, imgTarget, masks):
 
 
     print("ENDING UTILITIES/MASKCOVER\n")
+
+def ndpiLoad(sz, src):
+
+    print("\nSTARTING WSILOAD/NDPILOAD")
+
+    # This function extracts tif files from the raw ndpi files. This uses the 
+    # ndpitool from https://www.imnc.in2p3.fr/pagesperso/deroulers/software/ndpitools/ 
+    # Install as necessary. 
+    # Input:    (i), magnificataion level to be extracted from the ndpi file
+    #           options are 0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20
+    #           (src), file to be extracted with set magnification
+    # Output:   (), tif file of set magnification, saved in the same directory
+    #           (), the tif files extracted is renamed to be simplified
+    #           as just [name]_[magnification].tif
+
+    mag = tifLevels[sz]
+
+    os.system("ndpisplit -x" + str(mag) + " " + str(src))
+
+    nameSRC = src.split("/")[-1].split(".")[0]                    # photo name
+    dirSRC = src.split(nameSRC + ".ndpi")[0]                      # folder of photo
+
+    extractedName = glob(src.split(".ndpi")[0] + "*z0.tif")[0]    # NOTE, use of z0 is to prevent 
+                                                                # duplication of the same file, however 
+                                                                # if there is z shift then this will fail
+    os.rename(extractedName, dirSRC + nameSRC + "_" + str(sz) + ".tif")
+    
+    print("ENDING WSILOAD/NDPILOAD\n")

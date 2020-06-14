@@ -2,9 +2,11 @@ from . import DataGenerator
 from . import ModelTrainer
 from . import SegmentLoad
 from . import WSIPreProcessing
-from . import WSILoad
+from . import WSIExtract
 from . import Utilities
 from. import MaskMaker
+from. import WSILoad
+
 
 class data(object):
 

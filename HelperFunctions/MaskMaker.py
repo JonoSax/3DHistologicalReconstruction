@@ -13,10 +13,10 @@ from skimage.segmentation import flood_fill
 from .Utilities import *
 
 # magnification levels of the tif files available
-tifLevels = [0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20]
+tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
 
 
-def maskCreator(size, specimenSRC, segmentName = ''):
+def maskCreator(specimenSRC, segmentName = '', size = 0):
 
     print("\nSTARTING MASKMAKER/MASKCREATOR\n")
 
@@ -25,6 +25,7 @@ def maskCreator(size, specimenSRC, segmentName = ''):
     # This function takes the manual annotations and turns them into a dense matrix which 
     # has identified all the pixel which the annotations encompass at the user chosen scale
     # Inputs:   (size), the user chosen scale which refers to the zoom level of the tif file extracted
+    #               by default it is create a mask on the highest resolution
     #           (specimenAnnotations), list of the annotations as loaded by annotationsReaders
     # Outputs:  (), txt files which contains all pixel locations for the specified resolution
     #            of the tif file
@@ -44,7 +45,7 @@ def maskCreator(size, specimenSRC, segmentName = ''):
         targetTissue = roiFinder(denseAnnotations)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
-        listToTxt(targetTissue, str(specimen + "_size_" + str(size) + ".mask"))
+        listToTxt(targetTissue, str(specimen.replace(".ndpi.ndpa.pos", "") + "_" + str(size) + ".mask"))
     
     print("ENDING MASKMAKER/MASKCREATOR\n")
 

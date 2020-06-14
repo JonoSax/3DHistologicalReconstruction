@@ -10,9 +10,8 @@ jedi==0.17.0
 kiwisolver==1.2.0
 matplotlib==3.2.1
 networkx==2.4
-numpy==1.18.4
+numpy==1.18.5
 opencv-python==4.2.0.34
-openslide-python==1.1.1
 parso==0.7.0
 pexpect==4.8.0
 pickleshare==0.7.5
@@ -25,7 +24,10 @@ python-dateutil==2.8.1
 PyWavelets==1.1.1
 scikit-image==0.17.2
 scipy==1.4.1
+setuptools==45.3.0
 six==1.15.0
 tifffile==2020.5.30
 traitlets==4.3.3
 wcwidth==0.1.9
+openslide-python==1.1.1
+

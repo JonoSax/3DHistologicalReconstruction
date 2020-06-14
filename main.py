@@ -15,6 +15,7 @@ from glob import glob
     # is essentially a full workflow but is also not dependent on every sequential step being run
 
 # User input
+
 '''
 Folder location of slices
 Extent of training (epochs, batch)
@@ -22,17 +23,22 @@ Extent of training (epochs, batch)
 
 # data directory
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
-size = 5
+size = 4
 kernel = 30
-name = 'testWSI1'
+name = ''
+
 # Extract all the manual co-ordinates of the annotated tissue
-# SegmentLoad.readndpa(data, name)
+SegmentLoad.readndpa(data, name)
 
 # create the masks of the annotationes
-# MaskMaker.maskCreator(size, data, name)
+MaskMaker.maskCreator(data, name, size)
 
-# Load in the WSI segments, seperate the target tissue
-WSILoad.segmentation(kernel, size, data, name)
+# from the wsi, get the target tif resolution
+WSILoad.load(data, name, size)
+
+# Extract the target tissue from the tif files 
+WSIExtract.segmentation(data, name, size)
+
 
 # NOTE this could possible go into the WSILoad function
 # Perform pre-processing on the WSI to highlight features/remove background+artifacts 
@@ -43,4 +49,5 @@ DataGenerator.main()
 
 # Training the model
 ModelTrainer.main()
+
 
