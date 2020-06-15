@@ -6,6 +6,7 @@ from . import WSIExtract
 from . import Utilities
 from. import MaskMaker
 from. import WSILoad
+from. import targetTissue
 
 
 class data(object):
