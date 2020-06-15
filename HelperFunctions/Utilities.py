@@ -265,6 +265,43 @@ def maskCover(scale, imgTarget, masks):
 
     print("ENDING UTILITIES/MASKCOVER\n")
 
+def maskCover2(dir, dirTarget, masks):
+    print("\nSTARTING UTILITIES/QUADRANTLINES")
+
+    # This function adds the quadrant lines onto the tif file
+    # Inputs:   (dir), the SPECIFIC name of the tif image the mask was made on
+    #           (dirTarget), the location to save the image
+    #           (kernel), kernel size
+    # Outputs:  (), re-saves the image with quadrant lines drawn over it
+
+    imgO = tifi.imread(dir)
+    hO, wO, cO = imgO.shape
+
+    # if the image is more than 70 megapixels downsample 
+    if hO * wO >= 100 * 10 ** 6:
+        aspectRatio = hO/wO
+        imgR = cv2.resize(imgO, (10000, int(10000*aspectRatio)))
+    else:
+        imgR = imgO
+
+    h, w, c = imgR.shape
+
+    # scale the kernel to the downsampled image
+    scale = h/hO
+    for mask in masks:
+        maskN = np.unique((mask * scale).astype(int), axis = 0)
+        for x, y in maskN:
+            # inverse colours of mask areas
+            imgR[y, x, :] = 255 - imgR[y, x, :]
+
+    newImg = dirTarget + ".jpeg"
+    cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
+
+    print("ENDING UTILITIES/QUADRANTLINES\n")
+    return(newImg, scale)
+
+
 def ndpiLoad(sz, src):
 
     print("\nSTARTING WSILOAD/NDPILOAD")
