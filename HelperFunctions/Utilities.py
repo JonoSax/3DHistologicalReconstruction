@@ -192,7 +192,7 @@ def denseMatrixViewer(coords):
         xp, yp = coordsNorm[x, :].astype(int)
         area[xp, yp] = 1
 
-    plt.imshow(area)
+    plt.imshow(area, cmap = 'gray')
     plt.show()
 
     print("STARTING UTILITIES/DENSEMATRIXVIEWER\n")
