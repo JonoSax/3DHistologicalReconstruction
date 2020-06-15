@@ -18,7 +18,7 @@ def segmentation(imageSRC, imageName = '', size = 0):
 
     print("\nSTARTING WSIEXTRACT/SEGMENTATION")
 
-    # This moves the quadrants into training/testing data based on the annotations provided
+    # This function is extracting the exact annotated area of the vessel from the original tif
     # Input:    (size), image resolution to process
     #           (annotations), directory/ies which contain the txt files of the annotation co-ordinates 
     #               as extracted by SegmentLoad.py
@@ -35,7 +35,7 @@ def segmentation(imageSRC, imageName = '', size = 0):
     # get the tissue specific name
     sampleNames = list()
     for m in maskDirs: 
-        sampleNames.append(m.replace(imageSRC, "").replace(".mask", ""))
+        sampleNames.append(m.split("/")[-1].replace(".mask", ""))
 
     # combine the directories for referncing
     dirs = list()
@@ -52,9 +52,7 @@ def segmentation(imageSRC, imageName = '', size = 0):
     # process per specimen
     for maskDir, tifDir, sampleName in dirs:
 
-        maskCover
-
-        # read in the mask
+        # read in the mask (not the arguments --> shouldn't be any stored anyway...)
         mask = txtToList(maskDir)[0]
 
         # read in the tif 
@@ -77,6 +75,10 @@ def segmentation(imageSRC, imageName = '', size = 0):
             for x, y in anno.astype(int):
                 target[x-xmin, y-ymin, :] = tif[y, x, :]
 
-            cv2.imwrite(targetTissueDir + sampleName + "_n" + str(n) + ".tif", target.astype(np.uint8))
-        
+            cv2.imwrite(targetTissueDir + sampleName + "_n" + str(n) + "_vessel.tif", target.astype(np.uint8)) # NOTE ATM this is only for one class, vessels. In the future add arguments for different classes
+            
+        # create a user viewable image of the WSI and annotated areas
+        maskCover2(tifDir, imageSRC + sampleName + "masked", mask)
+        print("created " + imageSRC + sampleName + "masked")
+
 
