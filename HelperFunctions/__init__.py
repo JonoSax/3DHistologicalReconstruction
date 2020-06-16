@@ -1,12 +1,14 @@
-from . import DataGenerator
-from . import ModelTrainer
-from . import SegmentLoad
-from . import WSIPreProcessing
-from . import WSIExtract
+# link to all the HelperFunctions
+
 from . import Utilities
+from . import SegmentLoad
 from. import MaskMaker
 from. import WSILoad
+from . import WSIExtract
+from . import DataGenerator
 from. import targetTissue
+from . import ModelTrainer
+from. import ModelEvaluater
 
 
 class data(object):
