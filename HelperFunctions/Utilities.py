@@ -300,32 +300,3 @@ def maskCover2(dir, dirTarget, masks):
 
     print("ENDING UTILITIES/QUADRANTLINES\n")
     return(newImg, scale)
-
-
-def ndpiLoad(sz, src):
-
-    print("\nSTARTING WSILOAD/NDPILOAD")
-
-    # This function extracts tif files from the raw ndpi files. This uses the 
-    # ndpitool from https://www.imnc.in2p3.fr/pagesperso/deroulers/software/ndpitools/ 
-    # Install as necessary. 
-    # Input:    (i), magnificataion level to be extracted from the ndpi file
-    #           options are 0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20
-    #           (src), file to be extracted with set magnification
-    # Output:   (), tif file of set magnification, saved in the same directory
-    #           (), the tif files extracted is renamed to be simplified
-    #           as just [name]_[magnification].tif
-
-    mag = tifLevels[sz]
-
-    os.system("ndpisplit -x" + str(mag) + " " + str(src))
-
-    nameSRC = src.split("/")[-1].split(".")[0]                    # photo name
-    dirSRC = src.split(nameSRC + ".ndpi")[0]                      # folder of photo
-
-    extractedName = glob(src.split(".ndpi")[0] + "*z0.tif")[0]    # NOTE, use of z0 is to prevent 
-                                                                # duplication of the same file, however 
-                                                                # if there is z shift then this will fail
-    os.rename(extractedName, dirSRC + nameSRC + "_" + str(sz) + ".tif")
-    
-    print("ENDING WSILOAD/NDPILOAD\n")
