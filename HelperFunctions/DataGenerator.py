@@ -7,7 +7,7 @@ appropriate for the ModelTrainer
 from glob import glob
 from random import random
 import os
-from shutil import copy
+from shutil import copy, rmtree
 
 def main(dataSRC, portion, *args):
     # splits up the data acquired into testing and training as per tf requirements
@@ -25,23 +25,31 @@ def main(dataSRC, portion, *args):
     testDir = dataTF + 'test/'
 
     # create the directories which store the testing and training data
-    cond = False
-    while cond == False:
+    cond0 = False
+    cond1 = False
+    while (cond0 == False) & (cond1 == False):
         try:
             os.mkdir(dataTF) 
+            print("Created " + str(dataTF))
         except:
             try:
                 os.mkdir(trainDir)
                 os.mkdir(testDir)
+                print("     Created " + str(trainDir.replace(dataTF, "")))
+                print("     Created " + str(testDir.replace(dataTF, "")))
             except:
                 for a in args:
                     try:
+                        # ensure that the directory is empty by removing it then re-creating it
                         os.mkdir(trainDir + a)
-                        os.mkdir(testDir + a)
+                        print("         Created " + str(a))
                     except:
-                        cond = True
-        
-
+                        cond0 = True
+                    try:
+                        os.mkdir(testDir + a)
+                        print("         Created " + str(a))
+                    except:
+                        cond1 = True
 
     # search for all the data segments
     imgs = glob(dataSource + "*.tif")
