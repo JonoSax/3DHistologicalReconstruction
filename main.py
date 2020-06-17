@@ -21,33 +21,43 @@ Folder location of slices
 Extent of training (epochs, batch)
 '''
 
-# data directory
-data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
-size = 4
+# dataHome is where all the directories created for information are stored 
+dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/'
+
+# dataTrain is where the ndpi and ndpa files are stored 
+dataTrain = dataHome + 'HistologicalTraining/'
+
+# data directory containing the wsi images to be assessed
+dataAssess = dataHome + "samples/"
+
+size = 2
 kernel = 30
-name = ''
+name = 'testWSI1'
+portion = 0.2
+
+# NOTE: update directories used between dataHome and dataTrain
 
 # Extract all the manual co-ordinates of the annotated tissue
-SegmentLoad.readndpa(data, name)
+SegmentLoad.readndpa(dataTrain, name)
+#
+## create the masks of the annotationes
+MaskMaker.maskCreator(dataTrain, name, size)
+#
+## from the wsi, get the target tif resolution
+WSILoad.load(dataTrain, name, size)
+# WSILoad.load(dataAssess, name, size)
 
-# create the masks of the annotationes
-MaskMaker.maskCreator(data, name, size)
+## Extract the target tissue from the tif files 
+WSIExtract.segmentation(dataTrain, name, size)
+#
+## create quadrants of the target tissue from the extracted tissue
+targetTissue.quadrant(dataTrain, name, kernel)
 
-# from the wsi, get the target tif resolution
-WSILoad.load(data, name, size)
+# Creating the training data --> NOTE every time it does this it creates a replaces the previous testing/training data
+DataGenerator.main(dataTrain, portion, 'vessel')
 
-# Extract the target tissue from the tif files 
-WSIExtract.segmentation(data, name, size)
+# Training the model --> note this should never be commented out, only set to False
+modelDir, class2feat = ModelTrainer.train(dataTrain, name = 'text', epoch=4, train = True)
 
-
-# NOTE this could possible go into the WSILoad function
-# Perform pre-processing on the WSI to highlight features/remove background+artifacts 
-WSIPreProcessing.main()
-
-# Creating the training data
-DataGenerator.main()
-
-# Training the model
-ModelTrainer.main()
-
+# ModelEvaluater.main(dataTrain, dataAssess, modelDir, class2feat)
 

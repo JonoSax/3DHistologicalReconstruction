@@ -14,7 +14,7 @@ from .Utilities import *
 tifLevels = [0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20]
 
 
-def segmentation(imageSRC, imageName = '', size = 0):
+def segmentation(dataTrain, imageName = '', size = 0):
 
     print("\nSTARTING WSIEXTRACT/SEGMENTATION")
 
@@ -27,15 +27,12 @@ def segmentation(imageSRC, imageName = '', size = 0):
     # Output:   (), saves the tissue which has been annotated into a new directory
 
     # get the mask directories --> already at the right pixel locations
-    maskDirs = glob(imageSRC + imageName + "*_" + str(size) + ".mask")
+    maskDirs = glob(dataTrain + 'maskFiles/' + imageName + "*_" + str(size) + ".mask")
 
-    # get the tif fiel directories
-    tifDirs = glob(imageSRC + imageName + "*_" + str(size) + ".tif")
+    # get the tif file directories
+    tifDirs = glob(dataTrain + 'tifFiles/' + imageName + "*_" + str(size) + ".tif")
 
-    # get the tissue specific name
-    sampleNames = list()
-    for m in maskDirs: 
-        sampleNames.append(m.split("/")[-1].replace(".mask", ""))
+    sampleNames = nameFromPath(tifDirs)
 
     # combine the directories for referncing
     dirs = list()
@@ -43,7 +40,7 @@ def segmentation(imageSRC, imageName = '', size = 0):
         dirs.append((maskDirs[i], tifDirs[i], sampleNames[i]))
 
     # specify the root directory where the identified tissue will be stored 
-    targetTissueDir = imageSRC + 'targetTissue/'
+    targetTissueDir = dataTrain + 'targetTissue/'
     try:
         os.mkdir(targetTissueDir)
     except:
@@ -78,7 +75,7 @@ def segmentation(imageSRC, imageName = '', size = 0):
             cv2.imwrite(targetTissueDir + sampleName + "_n" + str(n) + "_vessel.tif", target.astype(np.uint8)) # NOTE ATM this is only for one class, vessels. In the future add arguments for different classes
             
         # create a user viewable image of the WSI and annotated areas
-        maskCover2(tifDir, imageSRC + sampleName + "masked", mask)
-        print("created " + imageSRC + sampleName + "masked")
+        maskCover2(tifDir, dataTrain + 'maskFiles' + sampleName + "masked", mask)
+        print("created " + dataTrain + sampleName + "masked")
 
 

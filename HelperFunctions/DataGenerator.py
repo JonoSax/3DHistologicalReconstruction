@@ -9,9 +9,9 @@ from random import random
 import os
 from shutil import copy, rmtree
 
-def main(dataSRC, portion, *args):
+def main(dataTrain, portion, *args):
     # splits up the data acquired into testing and training as per tf requirements
-    # Inputs:   (dataSRC), location of data
+    # Inputs:   (dataTrain), location of data
     #           (portion), the fraction of data to be used in testing
     #           (*args), the classes to be used, ATM not really utilised because this is a one class problem but could be enhanced
     # Outputs:  (), copies the associated files of the segmentations into the testing/training folder
@@ -19,8 +19,8 @@ def main(dataSRC, portion, *args):
     # NOTE: if this script is run more than once, because of the random number usage, will almost inevitbly cause images to appear in 
     # test and train folders...... ENSURE that the folder is cleared before running this script
 
-    dataSource = dataSRC + 'segmentedTissue/'
-    dataTF = dataSRC + 'segmentedTissueSorted/'
+    dataSource = dataTrain + 'segmentedTissue/'
+    dataTF = dataTrain + 'segmentedTissueSorted/'
     trainDir = dataTF + 'train/'
     testDir = dataTF + 'test/'
 
@@ -60,7 +60,6 @@ def main(dataSRC, portion, *args):
         for arg in args:
             if img.find(arg) > 0:
                 break
-
         
         # get a random number
         r = random()

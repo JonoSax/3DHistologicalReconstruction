@@ -300,3 +300,36 @@ def maskCover2(dir, dirTarget, masks):
 
     print("ENDING UTILITIES/QUADRANTLINES\n")
     return(newImg, scale)
+
+def dataPrepare0(imgDir):
+
+    # this function prepares an array of data for the network
+    # MAKE A NEW ONE FOR EACH METHOD OF PROCESSING
+    # Inputs:   (imgDir), a list containing the image directories of data
+    # Outputs:  (arrayP), the array of data now standardised for processing
+
+    array = np.array([cv2.imread(fname, 0) for fname in imgDir]) 
+
+    # normalise data to be within a range of 0 to 1 for each image
+    arrayP = np.array([(a-np.min(a))/(np.max(a) - np.min(a)) for a in array])
+
+    # ensure a 4d tensor is created
+    while len(arrayP.shape) < 4:
+        arrayP = np.expand_dims(arrayP, -1)
+
+    return(arrayP)
+
+def nameFromPath(paths):
+    # this function extracts the name from a path
+    # Inputs:   (paths), either a list or string of paths 
+    # Outputs:  (names), elist of the names from the paths
+
+    if type(paths) is list:
+        names = list()
+        for path in paths:
+            names.append(path.split("/")[-1].split(".")[0])
+
+    elif type(paths) is str:
+        names = paths.split("/")[-1].split(".")[0]
+
+    return names

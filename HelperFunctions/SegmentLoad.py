@@ -27,21 +27,28 @@ unitDict = {
     'centimeter':1*10**1
 }
 
-def readndpa(annotationsSRC, specimen = ''):
+def readndpa(dataTrain, specimen = ''):
 
     print("\nSTARTING SEGMENTLOAD/READNDPA\n")
 
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points and converts
     # them into their pixel location equivalents
-    # Input:    (annotationsSRC), Directory for the ndpi files
+    # Input:    (dataTrain), Directory for the ndpi files
     #           (annotationName), the specimen name/s to specifically investigate (optional, if not
     #                               chosen then will investigate the entire directory)
-    # Output:   A list containing numpy arrays which have the recorded positions of the drawn points on the slide. Each
-    #           entry to the list refers to a section drawn
+    # Output:   (), Saves a txt file of the recorded positions of the drawn points on the slide. Each
+    #           entry to the list refers to a section drawn. Saved in the folder, posFiles
 
     # get the directories of all the specimes of interest
-    ndpaNames = glob(annotationsSRC + specimen + "*.ndpa")
-    ndpiNames = glob(annotationsSRC + specimen + "*.ndpi")      # need this for the properties of the image
+    ndpaNames = glob(dataTrain + specimen + "*.ndpa")
+    ndpiNames = glob(dataTrain + specimen + "*.ndpi")      # need this for the properties of the image
+
+    # create the directory to store posFiles
+    dataPos = dataTrain + 'posFiles/'
+    try:
+        os.mkdir(dataPos)
+    except: 
+        pass
 
     posAll = list()
 
@@ -118,9 +125,9 @@ def readndpa(annotationsSRC, specimen = ''):
         # f = open(str(ndpaNames[spec]) + ".pos", 'w')
 
         stacks = list()
-
+        nameFromPath
         # create the file name
-        dirSave = str(ndpaNames[spec] + ".pos")
+        dirSave = nameFromPath(ndpaNames[spec]) + ".pos"
 
         # npdi properties
         centreShift = np.hstack([xShift[spec], yShift[spec]])
@@ -137,9 +144,9 @@ def readndpa(annotationsSRC, specimen = ''):
             stacks.append(stack)
 
         # save the entire list as a txt file per utilities saving structure
-        listToTxt(stacks, dirSave, Entries = str(len(posAll[spec])), xDim = str(xDim[spec]), yDim = str(yDim[spec]))
+        listToTxt(stacks, dataPos + dirSave, Entries = str(len(posAll[spec])), xDim = str(xDim[spec]), yDim = str(yDim[spec]))
 
-    print("Co-ordinates extracted and saved in " + annotationsSRC)
+    print("Co-ordinates extracted and saved in " + dataTrain)
 
 def normaliseNDPA(slicesDir):
 

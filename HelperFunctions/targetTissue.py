@@ -8,11 +8,11 @@ import cv2
 from glob import glob
 from .Utilities import *
 
-def quadrant(data, name = '', size = 0, kernel = 50):
+def quadrant(dataTrain, name = '', size = 0, kernel = 50):
 
     # this function takes a single image of tissue and divides it into quadrants of target tissue
     # which are then saved in a new training directory
-    # Inputs:   (data), directory of data 
+    # Inputs:   (dataTrain), directory of data 
     #           (name), OPTIONAL specific name 
     #           (size), level tif to use, defaults to the largest resolution 
     #           (kernel), kernel size in pixel, defaults to 50
@@ -20,17 +20,17 @@ def quadrant(data, name = '', size = 0, kernel = 50):
     #               a threshold % of the target tissue
 
     # we know that the target tissue is stored in targetTissue directory created
-    dirTarget = data + 'targetTissue/'
+    dirTarget = dataTrain + 'targetTissue/'
 
     # ensure that a directory for the segmented tissue exists
-    dirSegment = data + 'segmentedTissue/'
+    dirSegment = dataTrain + 'segmentedTissue/'
     try:
         os.mkdir(dirSegment)
     except:
         pass
 
     # get all the annotated sections
-    segments = glob(dirTarget + "*.tif")
+    segments = glob(dirTarget + name + "*.tif")
 
     # quadrant each segmented image into kernel size images containing a set % of target
     # tissue

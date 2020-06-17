@@ -12,24 +12,23 @@ import sys
 from .Utilities import *
 
 # kernel = 150
-# imageSRC =  "Data.nosync/testing/"
+# dataTrain =  "Data.nosync/testing/"
 # size = 0
 
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
 
 
-def load(imageSRC, imageName = '', size = 0):
+def load(dataTrain, imageName = '', size = 0):
 
     print("\nSTARTING WSILOAD/SEGMENTATION")
 
     # This moves the quadrants into training/testing data based on the annotations provided
-    # Input:    (size), image size to extract, defaults to the largest one
-    #           (imageSRC), directory/ies which contain the txt files of the annotation co-ordinates 
+    # Input:    (dataTrain), directory/ies which contain the txt files of the annotation co-ordinates 
     #               as extracted by SegmentLoad.py
     #           (imageName), list of the directories of the quandrated tif files as sectioned by quadrants
+    #           (size), image size to extract, defaults to the largest one
     # Output:   (), the tif file at the chosen level of magnification
-    #           (dirs), directories of the tif files
 
     # What needs to happen is there needs to be some kind of recognition of when annotations are coupled
     # IDEA: use the x and y median values to find annotations which are close to each other
@@ -37,14 +36,18 @@ def load(imageSRC, imageName = '', size = 0):
 
     # convert ndpi images into tif files of set size
 
-    imagesNDPI = glob(imageSRC + imageName + "*.ndpi")
-    dirs = list()
+    # create a folder for the tif files
+    dataTif = dataTrain + 'tifFiles'
+    try:
+        os.mkdir(dataTif)
+    except:
+        pass
 
-    # convert the ndpi into 
+    imagesNDPI = glob(dataTrain + imageName + "*.ndpi")
+    
+    # convert the ndpi into a tif
     for img in imagesNDPI:
-        dirs.append(dpiLoad(size, img))
-
-    return(dirs)
+        ndpiLoad(size, img)
 
 
 def ndpiLoad(sz, src):
@@ -57,9 +60,7 @@ def ndpiLoad(sz, src):
     # Input:    (i), magnificataion level to be extracted from the ndpi file
     #           options are 0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20
     #           (src), file to be extracted with set magnification
-    # Output:   (), tif file of set magnification, saved in the same directory
-    #           (), the tif files extracted is renamed to be simplified
-    #           as just [name]_[magnification].tif
+    # Output:   (), tif file of set magnification, saved in the tifFiles directory
 
     mag = tifLevels[sz]
 
@@ -72,10 +73,9 @@ def ndpiLoad(sz, src):
                                                                 # duplication of the same file, however 
                                                                 # if there is z shift then this will fail
 
-    imgDir = extractedName, dirSRC + nameSRC + "_" + str(sz) + ".tif"
-    os.rename(imgDir)
+    imgDir = dirSRC + 'tifFiles/' + nameSRC + "_" + str(sz) + ".tif"
+    os.rename(extractedName, imgDir)
 
-    return (imgDir)
     
     print("ENDING WSILOAD/NDPILOAD\n")
 '''

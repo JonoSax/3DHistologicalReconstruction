@@ -16,7 +16,7 @@ from .Utilities import *
 tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
 
 
-def maskCreator(specimenSRC, segmentName = '', size = 0):
+def maskCreator(dataTrain, segmentName = '', size = 0):
 
     print("\nSTARTING MASKMAKER/MASKCREATOR\n")
 
@@ -28,9 +28,17 @@ def maskCreator(specimenSRC, segmentName = '', size = 0):
     #               by default it is create a mask on the highest resolution
     #           (specimenAnnotations), list of the annotations as loaded by annotationsReaders
     # Outputs:  (), txt files which contains all pixel locations for the specified resolution
-    #            of the tif file
+    #            of the tif file 
 
-    specimenPosDir = glob(specimenSRC + segmentName + "*.pos")
+    specimenPosDir = glob(dataTrain + "posFiles/" + segmentName + "*.pos")
+
+    # create the maskFiles directory
+    dataMask = dataTrain + "maskFiles/"
+    try: 
+        os.mkdir(dataMask)
+    except:
+        pass
+    
     scale = tifLevels[size] / max(tifLevels)
     
     for specimen in specimenPosDir:
@@ -45,7 +53,7 @@ def maskCreator(specimenSRC, segmentName = '', size = 0):
         targetTissue = roiFinder(denseAnnotations)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
-        listToTxt(targetTissue, str(specimen.replace(".ndpi.ndpa.pos", "") + "_" + str(size) + ".mask"))
+        listToTxt(targetTissue, dataMask + nameFromPath(specimen) + "_" + str(size) + ".mask")
     
     print("ENDING MASKMAKER/MASKCREATOR\n")
 
