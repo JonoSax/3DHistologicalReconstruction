@@ -50,7 +50,7 @@ def readndpa(dataTrain, specimen = ''):
     except: 
         pass
 
-    posAll = list()
+    posAll = {}
 
     # go through each ndpa file of interest and extract the RAW co-ordinates into a list.
     # this list is indexed as follows:
@@ -109,7 +109,7 @@ def readndpa(dataTrain, specimen = ''):
 
         print(str(len(posA)/sections*100)+"% of section " + name + " found")
         file.close()
-        posAll.append(posA)
+        posAll[nameFromPath(name)] = posA
 
     # NOTE: Probably could combine the loop which reads in the information per specimen and the loop
     # which saves it in the .pos format 
@@ -119,6 +119,36 @@ def readndpa(dataTrain, specimen = ''):
 
     # apply the necessary transformations to extracted co-ordinates to convert to pixel represnetations
     # with the origin in the top left corner of the image and save them as a txt file for all npda files
+
+    for spec in ndpaNames:
+
+        # create txt file which contains these co-ordinates
+        # f = open(str(ndpaNames[spec]) + ".pos", 'w')
+
+        stacks = list()
+        # create the file name
+        specName = nameFromPath(spec)
+        dirSave = specName + ".pos"
+
+        # npdi properties
+        centreShift = np.hstack([xShift[specName], yShift[specName]])
+        topLeftShift = np.hstack([xDim[specName]/(2 * xRes[specName]), yDim[specName]/(2 * yRes[specName])])
+        scale = np.hstack([xRes[specName], yRes[specName]])
+        posSpec = posAll[specName]
+        # f.write("NUMBER_OF_ANNOTATIONS=" + str(len(posSpec)) + "\n")
+        for posSpec in posAll[specName]:
+            
+            # co-ordinate transformation
+            stack = ((posSpec - centreShift + topLeftShift ) * scale).astype(int)
+            
+            # save into a list
+            stacks.append(stack)
+
+        # save the entire list as a txt file per utilities saving structure
+        listToTxt(stacks, dataPos + dirSave, Entries = str(len(posSpec)), xDim = str(xDim[specName]), yDim = str(yDim[specName]))
+
+
+    '''
     for spec in range(len(ndpaNames)):
 
         # create txt file which contains these co-ordinates
@@ -145,7 +175,7 @@ def readndpa(dataTrain, specimen = ''):
 
         # save the entire list as a txt file per utilities saving structure
         listToTxt(stacks, dataPos + dirSave, Entries = str(len(posAll[spec])), xDim = str(xDim[spec]), yDim = str(yDim[spec]))
-
+    '''
     print("Co-ordinates extracted and saved in " + dataTrain)
 
 def normaliseNDPA(slicesDir):
@@ -155,24 +185,49 @@ def normaliseNDPA(slicesDir):
     # This functions reads the properties of the ndpi files and extracts the properties 
     # of the file.
     # Inputs:   (data), list of directory/ies containing all the ndpi files of interest
-    # Output:   (xShift),       # x shift of the slide scanner centre from image centre in physical units (nm)
-    #           (yShift),       # y shift of the slide scanner centre from image centre in physical units (nm)
-    #           (xResolution),  # x scale of physical units to pixels
-    #           (yResolution),  # y scale of physical units to pixels
-    #           (xDim),         # width (pixels) of highest resolution of tif stored
-    #           (yDim),         # height (pixels) of highest resolution of tif stored 
+    # Output:   (xShift),       # dictionary of x shift of the slide scanner centre from image centre in physical units (nm)
+    #           (yShift),       # dictionary of y shift of the slide scanner centre from image centre in physical units (nm)
+    #           (xResolution),  # dictionary of x scale of physical units to pixels
+    #           (yResolution),  # dictionary of y scale of physical units to pixels
+    #           (xDim),         # dictionary of width (pixels) of highest resolution of tif stored
+    #           (yDim),         # dictionary of height (pixels) of highest resolution of tif stored 
 
     # data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
     # data = '/Volumes/Storage/H653A_11.3 new/'
-
+    '''
     xShift = list()
     yShift = list()
     xResolution = list()
     yResolution = list()
     xDim = list()
     yDim = list()
+    '''
+    # dictionaries
+    xShift = {}
+    yShift = {}
+    xResolution = {}
+    yResolution = {}
+    xDim = {}
+    yDim = {}
+
+    for slicedir in slicesDir:
+        
+        slicedirName = nameFromPath(slicedir)
+
+        slideProperties = openslide.OpenSlide(slicedir).properties                          # all ndpi properties
+        unit = unitDict[slideProperties['tiff.ResolutionUnit']]                             # get the unit multiplier so that all units are in mm
+        xShift[slicedirName] = (int(slideProperties['hamamatsu.XOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
+        yShift[slicedirName] = (int(slideProperties['hamamatsu.YOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
+        xRes = int(slideProperties['tiff.XResolution']) / unit                              # scale is unit dependent
+        yRes = int(slideProperties['tiff.YResolution']) / unit                              # scale is unit dependent                       
+        xDim[slicedirName] = (int(slideProperties['openslide.level[0].width']))                       # assumed always in pixels   
+        yDim[slicedirName] = (int(slideProperties['openslide.level[0].height']))                      # assumed always in pixels
+
+        xResolution[slicedirName] = xRes
+        yResolution[slicedirName] = yRes
 
 
+    '''
     for slicedir in slicesDir:
         slideProperties = openslide.OpenSlide(slicedir).properties                          # all ndpi properties
         unit = unitDict[slideProperties['tiff.ResolutionUnit']]                             # get the unit multiplier so that all units are in mm
@@ -185,5 +240,6 @@ def normaliseNDPA(slicesDir):
 
         xResolution.append(xRes)
         yResolution.append(yRes)  
+    '''
 
     return (xShift, yShift, xResolution, yResolution, xDim, yDim)
