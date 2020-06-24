@@ -14,6 +14,15 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interpolate
 from .Utilities import *
 
+class specDict:
+
+    ndpi = {}
+    ndpa = {}
+
+    def __init__(self, ndpi, ndpa):
+        self.ndpi = ndpi
+        self.ndpa = ndpa
+
 # simple dictionary used to convert to SI unit between the different scales in the ndpi and ndpa files
 # It is using millimeters as the base unit (ie multiple of 1)
 unitDict = {
@@ -27,21 +36,28 @@ unitDict = {
     'centimeter':1*10**1
 }
 
-def readndpa(dataTrain, specimen = ''):
+def readannotations(dataTrain, specimen = ''):
 
     print("\nSTARTING SEGMENTLOAD/READNDPA\n")
 
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points and converts
     # them into their pixel location equivalents
     # Input:    (dataTrain), Directory for the ndpi files
-    #           (annotationName), the specimen name/s to specifically investigate (optional, if not
+    #           (specimen), the specimen name/s to specifically investigate (optional, if not
     #                               chosen then will investigate the entire directory)
     # Output:   (), Saves a txt file of the recorded positions of the drawn points on the slide. Each
     #           entry to the list refers to a section drawn. Saved in the folder, posFiles
 
     # get the directories of all the specimes of interest
-    ndpaNames = glob(dataTrain + specimen + "*.ndpa")
-    ndpiNames = glob(dataTrain + specimen + "*.ndpi")      # need this for the properties of the image
+    ndpaNames = sorted(glob(dataTrain + specimen + "*.ndpa"))
+    ndpiNames = sorted(glob(dataTrain + specimen + "*.ndpi"))      # need this for the properties of the image
+
+    
+    for ndpa in ndpaNames:
+        specDict.ndpa[nameFromPath(ndpa)] = ndpa
+
+    for ndpi in ndpiNames:
+        specDict.ndpi[nameFromPath(ndpi)] = ndpi
 
     # create the directory to store posFiles
     dataPos = dataTrain + 'posFiles/'
@@ -49,8 +65,6 @@ def readndpa(dataTrain, specimen = ''):
         os.mkdir(dataPos)
     except: 
         pass
-
-    posAll = {}
 
     # go through each ndpa file of interest and extract the RAW co-ordinates into a list.
     # this list is indexed as follows:
@@ -60,83 +74,37 @@ def readndpa(dataTrain, specimen = ''):
     #               co-ordinates1
     #               ....
     #       ...
-    for name in ndpaNames:
+    for spec in specDict.ndpa.keys():
 
-        # ndpa file
-        file = open(name)
+        ndpaPath = specDict.ndpa[spec]
+        ndpiPath = specDict.ndpi[spec]
 
-        # find the number of sections identified in slice --> Used to validate that the search is completed
-        sections = open(name).read().count("ndpviewstate id=")
+        # get the drawn annotations
+        posA = getAnnotations(ndpaPath)
 
-        # extract all info from text file line by line
-        doco = list(file.readlines())
+        # NOTE: Probably could combine the loop which reads in the information per specimen and the loop
+        # which saves it in the .pos format 
 
-        # declare list and array
-        posA = list()
-        pos = np.empty([0, 2])
-        l = 0
+        # get the ndpi properties of all the specimes of interest
+        xShift, yShift, xRes, yRes, xDim, yDim = normaliseNDPA(ndpiPath)
 
-        # NOTE the skips in this loop are hard coded because as far as i can tell
-        # they are enitrely predictable --> ONLY WORKS IF THERE ARE ONLY FREE HAND ANNOTATIONS
-        while l < len(doco):
-
-            # get the unit used in the co-ordinates
-            if "<coordformat>" in doco[l]:
-
-                unit = doco[l]
-                unitStr = unit.replace("<coordformat>", "").replace("</coordformat>\n", "").replace(" ", "")
-                unit = unitDict[unitStr]
-                l+=12
-
-            elif "<point>" in doco[l]:                # indicates an annotated point
-
-                x = doco[l+1]
-                y = doco[l+2]
-
-                x = x.replace("<x>", ""); x = int(x.replace("</x>\n", "")) * unit       # convert the positions into mm
-                y = y.replace("<y>", ""); y = int(y.replace("</y>\n", "")) * unit       # convert the positions into mm
-                pos = np.vstack((pos, [x, y])) 
-                l += 4  # jump 4 line to the next set of co-ordinates
-
-            elif "</pointlist>" in doco[l]:
-                posA.append(pos)        #end of the annotation detected 
-                pos = np.empty([0, 2])
-
-                l+=6   # jump 18 lines to the next section of co-ordinates
-
-            else:
-                l+=1    # if no info found, just iterate through
-
-        print(str(len(posA)/sections*100)+"% of section " + name + " found")
-        file.close()
-        posAll[nameFromPath(name)] = posA
-
-    # NOTE: Probably could combine the loop which reads in the information per specimen and the loop
-    # which saves it in the .pos format 
-
-    # get the ndpi properties of all the specimes of interest
-    xShift, yShift, xRes, yRes, xDim, yDim = normaliseNDPA(ndpiNames)
-
-    # apply the necessary transformations to extracted co-ordinates to convert to pixel represnetations
-    # with the origin in the top left corner of the image and save them as a txt file for all npda files
-
-    for spec in ndpaNames:
+        # apply the necessary transformations to extracted co-ordinates to convert to pixel represnetations
+        # with the origin in the top left corner of the image and save them as a txt file for all npda files
 
         # create txt file which contains these co-ordinates
         # f = open(str(ndpaNames[spec]) + ".pos", 'w')
 
         stacks = list()
         # create the file name
-        specName = nameFromPath(spec)
-        dirSave = specName + ".pos"
+        dirSave = spec + ".pos"
 
         # npdi properties
-        centreShift = np.hstack([xShift[specName], yShift[specName]])
-        topLeftShift = np.hstack([xDim[specName]/(2 * xRes[specName]), yDim[specName]/(2 * yRes[specName])])
-        scale = np.hstack([xRes[specName], yRes[specName]])
-        posSpec = posAll[specName]
+        centreShift = np.hstack([xShift, yShift])
+        topLeftShift = np.hstack([xDim/(2 * xRes), yDim/(2 * yRes)])
+        scale = np.hstack([xRes, yRes])
+
         # f.write("NUMBER_OF_ANNOTATIONS=" + str(len(posSpec)) + "\n")
-        for posSpec in posAll[specName]:
+        for posSpec in posA:
             
             # co-ordinate transformation
             stack = ((posSpec - centreShift + topLeftShift ) * scale).astype(int)
@@ -145,7 +113,7 @@ def readndpa(dataTrain, specimen = ''):
             stacks.append(stack)
 
         # save the entire list as a txt file per utilities saving structure
-        listToTxt(stacks, dataPos + dirSave, Entries = str(len(posSpec)), xDim = str(xDim[specName]), yDim = str(yDim[specName]))
+        listToTxt(stacks, dataPos + dirSave, Entries = str(len(posSpec)), xDim = str(xDim), yDim = str(yDim))
 
 
     '''
@@ -178,7 +146,79 @@ def readndpa(dataTrain, specimen = ''):
     '''
     print("Co-ordinates extracted and saved in " + dataTrain)
 
-def normaliseNDPA(slicesDir):
+def readlandmarks(dataTrain, specimen = ''):
+    
+    # This function reads a NDPA file and extracts the co-ordinate of the landmarks and converts
+    # them into their pixel location equivalents
+    # Input:    (dataTrain), Directory for the ndpi files
+    #           (annotationName), the specimen name/s to specifically investigate (optional, if not
+    #                               chosen then will investigate the entire directory)
+    # Output:   (), Saves a txt file of the landmkars positions on the slide. Each
+    #           entry to the list refers to a section drawn. Saved in the folder, landmarkFiles
+    pass
+
+
+def getAnnotations(ndpaPath):
+
+    # This function specifically reads the drawn annotations on the file
+    # Input:    (ndpaPath), ndpafile path
+    # Outputs:  (posA), list of co-ordinates of the annotations
+
+    # ndpa file
+    file = open(ndpaPath)
+
+    # extract all info from text file line by line
+    doco = list(file.readlines())
+
+    # find the number of sections identified in slice --> Used to validate that the search is completed
+    sections = open(ndpaPath).read().count("ndpviewstate id=")
+
+    # declare list and array
+    posA = list()
+    pos = np.empty([0, 2])
+    l = 0
+
+    # NOTE the skips in this loop are hard coded because as far as i can tell
+    # they are enitrely predictable --> ONLY WORKS IF THERE ARE ONLY FREE HAND ANNOTATIONS
+    while l < len(doco):
+
+        # get the unit used in the co-ordinates
+        if "<coordformat>" in doco[l]:
+
+            unit = doco[l]
+            unitStr = unit.replace("<coordformat>", "").replace("</coordformat>\n", "").replace(" ", "")
+            unit = unitDict[unitStr]
+            l+=12
+
+        elif "<point>" in doco[l]:                # indicates an annotated point
+
+            x = doco[l+1]
+            y = doco[l+2]
+
+            x = x.replace("<x>", ""); x = int(x.replace("</x>\n", "")) * unit       # convert the positions into mm
+            y = y.replace("<y>", ""); y = int(y.replace("</y>\n", "")) * unit       # convert the positions into mm
+            pos = np.vstack((pos, [x, y])) 
+            l += 4  # jump 4 line to the next set of co-ordinates
+
+        elif "</pointlist>" in doco[l]:
+            posA.append(pos)        #end of the annotation detected 
+            pos = np.empty([0, 2])
+
+            l+=6   # jump 18 lines to the next section of co-ordinates
+
+        else:
+            l+=1    # if no info found, just iterate through
+    
+    # NOTE this needs to be upated to represented ONLY the drawn points
+    # and nothing else
+    print(str(len(posA)/sections*100)+"% of section " + nameFromPath(ndpaPath) + " found")
+
+    file.close()
+
+    return(posA)
+
+    
+def normaliseNDPA(sliceDir):
 
     print("\nSTARTING SEGMENTLOAD/NORMALISENDPA\n")
 
@@ -201,6 +241,20 @@ def normaliseNDPA(slicesDir):
     yResolution = list()
     xDim = list()
     yDim = list()
+
+    for slicedir in slicesDir:
+    slideProperties = openslide.OpenSlide(slicedir).properties                          # all ndpi properties
+    unit = unitDict[slideProperties['tiff.ResolutionUnit']]                             # get the unit multiplier so that all units are in mm
+    xShift.append(int(slideProperties['hamamatsu.XOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
+    yShift.append(int(slideProperties['hamamatsu.YOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
+    xRes = int(slideProperties['tiff.XResolution']) / unit                              # scale is unit dependent
+    yRes = int(slideProperties['tiff.YResolution']) / unit                              # scale is unit dependent                       
+    xDim.append(int(slideProperties['openslide.level[0].width']))                       # assumed always in pixels   
+    yDim.append(int(slideProperties['openslide.level[0].height']))                      # assumed always in pixels
+
+    xResolution.append(xRes)
+    yResolution.append(yRes)  
+    '''
     '''
     # dictionaries
     xShift = {}
@@ -209,6 +263,7 @@ def normaliseNDPA(slicesDir):
     yResolution = {}
     xDim = {}
     yDim = {}
+    
 
     for slicedir in slicesDir:
         
@@ -225,21 +280,21 @@ def normaliseNDPA(slicesDir):
 
         xResolution[slicedirName] = xRes
         yResolution[slicedirName] = yRes
-
-
     '''
-    for slicedir in slicesDir:
-        slideProperties = openslide.OpenSlide(slicedir).properties                          # all ndpi properties
-        unit = unitDict[slideProperties['tiff.ResolutionUnit']]                             # get the unit multiplier so that all units are in mm
-        xShift.append(int(slideProperties['hamamatsu.XOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
-        yShift.append(int(slideProperties['hamamatsu.YOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
-        xRes = int(slideProperties['tiff.XResolution']) / unit                              # scale is unit dependent
-        yRes = int(slideProperties['tiff.YResolution']) / unit                              # scale is unit dependent                       
-        xDim.append(int(slideProperties['openslide.level[0].width']))                       # assumed always in pixels   
-        yDim.append(int(slideProperties['openslide.level[0].height']))                      # assumed always in pixels
 
-        xResolution.append(xRes)
-        yResolution.append(yRes)  
-    '''
+    
+    slicedirName = nameFromPath(sliceDir)
+
+    slideProperties = openslide.OpenSlide(sliceDir).properties                          # all ndpi properties
+    unit = unitDict[slideProperties['tiff.ResolutionUnit']]                             # get the unit multiplier so that all units are in mm
+    xShift = (int(slideProperties['hamamatsu.XOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
+    yShift = (int(slideProperties['hamamatsu.YOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
+    xRes = int(slideProperties['tiff.XResolution']) / unit                              # scale is unit dependent
+    yRes = int(slideProperties['tiff.YResolution']) / unit                              # scale is unit dependent                       
+    xDim = (int(slideProperties['openslide.level[0].width']))                       # assumed always in pixels   
+    yDim = (int(slideProperties['openslide.level[0].height']))                      # assumed always in pixels
+
+    xResolution = xRes
+    yResolution = yRes
 
     return (xShift, yShift, xResolution, yResolution, xDim, yDim)
