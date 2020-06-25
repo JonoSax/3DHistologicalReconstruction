@@ -216,7 +216,6 @@ def dictToTxt(data, dir, **kwargs):
     
     f.close()
 
-
 def txtToDict(dir):
 
     # Reads in a text file which was saved with the dictToTxt function
@@ -408,9 +407,43 @@ def nameFromPath(paths):
     if type(paths) is list:
         names = list()
         for path in paths:
-            names.append(path.split("/")[-1].split(".")[0])
+            # choose the last part of the path, remove the suffix and the sizing convention
+            names.append(path.split("/")[-1].split(".")[0].split("_")[0])
 
     elif type(paths) is str:
-        names = paths.split("/")[-1].split(".")[0]
+        names = paths.split("/")[-1].split(".")[0].split("_")[0]
 
     return names
+
+def dictOfDirs(**kwargs):
+
+    # this function takes a list of directories and a key name and puts them 
+    # into a dictionary which is named after the sample name
+    # Inputs:   (kwargs), needs the file type name and then a list of directories
+    # Outputs:  (dictToWrite), a dictinoary which contains dictionaries of the samples
+    #               and each of the files associated with it
+
+    dictToWrite = {}
+
+    f = kwargs.keys()
+
+    # get all the names
+    names = list()
+    for k in kwargs.keys():
+        names.append(nameFromPath(kwargs[k]))
+
+    # get all the unique names
+    names = np.unique(np.array(names))
+
+
+    for n in names:
+        dictToWrite[n] = {}
+
+    for k in kwargs.keys():
+        path = kwargs[k]
+
+        for p in path:
+            dictToWrite[nameFromPath(p)][k] = p
+
+
+    return(dictToWrite)
