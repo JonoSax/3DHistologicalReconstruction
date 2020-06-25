@@ -169,6 +169,87 @@ def txtToList(dir):
     print("ENDING UTILITIES/TXTTOLIST\n")
     return(sampleList, args)
 
+def dictToTxt(data, dir, **kwargs):
+
+    # This function saves a dictionary as a txt file
+    # Converts a dictinoary into a txt file with the inputted name
+    # Inputs:   (data), the single list to be saved
+    #           (dir), the exact name and path which this list will be saved as
+    #           (*args), inputs that appear at the top of the saved file
+    # Outputs:  (), txt file saved in directory 
+    
+    f = open(dir, 'w')
+
+    # declar
+    f.write("ArgNo_" + str(len(kwargs)) + "\n")
+
+    argK = list()
+    argV = list()
+
+    # ensure that the exact directory being specified exists, if not create it
+    dirSplit = dir.split("/")
+    dirToMake = ""
+    for d in range(dir.count("/")):
+        dirToMake += str(dirSplit[d] + "/")
+        try:
+            os.mkdir(dirToMake)
+        except:
+            pass
+
+    # get optional arguments
+    for k in kwargs.keys():
+        argK.append(k)
+
+    for v in kwargs.values():
+        argV.append(v)
+
+    # write the arguments at the top of the file
+    for i in range(len(kwargs)):
+        f.write(argK[i] + "_" + argV[i] + "\n")        
+    
+    f.write("Entries:" + str(len(data.keys())) + "\n")
+    for n in data.keys():
+        f.write(n + ":")
+        for v in data[n]:
+            f.write(str(v) + " ")
+        f.write("\n")
+    
+    f.close()
+
+
+def txtToDict(dir):
+
+    # Reads in a text file which was saved with the dictToTxt function
+    # Inputs:   (dir), the name of a single file
+    # Outputs:  (dataMain), a list containing the data
+    #           (dataArgs), a dictionary containing the argument data
+
+    f = open(dir, 'r')
+
+    # argument numbers
+    argNo = int(f.readline().replace("ArgNo_", ""))
+
+    # store the arguments in a dictionary
+    args = {}
+    for i in range(argNo):
+        arg = f.readline().split("_")
+        args[arg[0]] = arg[1].replace("\n", "")
+
+    # use to verify all the information has been collected
+
+    sampleDict = {}
+    dictNo = int(f.readline().replace("Entries:", ""))
+    for n in range(dictNo):
+        info = f.readline().split(":")
+        key = info[0]
+        data = info[1].replace("\n", "")
+
+        # save data as a dictionary
+        sampleDict[key] = np.array(data.split(" ")[0:-1]).astype(int)
+
+
+    return(sampleDict, args)
+
 def denseMatrixViewer(coords):
 
     print("\nSTARTING UTILITIES/DENSEMATRIXVIEWER")
