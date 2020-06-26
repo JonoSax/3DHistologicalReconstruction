@@ -23,11 +23,11 @@ def main(dataHome, dataAssess, savedModel, class2feat):
     print("Model used\n" + str(savedModel.split("/")[-1])) 
     model =  tf.keras.models.load_model(savedModel)
     
-    # get the dims of the KERNEL used for model training (ignoring the number of images per input)
+    # get the dims of the KERNEL used for model training (ignoring the number of images per input, assumes 4D input)
     hk, wk, ck = model.input.shape[1:4]
 
     # get all the images
-    imgs = glob(dataAssess + "*.png")
+    imgs = glob(dataAssess + "*")
     for img in imgs:
         # wsi = tifi.imread(img)
         wsi = cv2.imread(img)
@@ -68,11 +68,11 @@ def main(dataHome, dataAssess, savedModel, class2feat):
 
             if (hw == hk) & (ww == wk):
                 # if the image is the same size as the kernel then the whole data is represented in a single label
-                print("    Label = " + img.split("/")[-1] + " Predicted = " + str(class2feat[int(quadLabels[0])]))
+                print("    Label = " + img.split("/")[-1] + " Predicted = " + str(class2feat[int(quadLabels[0])]) + "\n")
             
             else:
                 # if the image is not the same size, just trace the progress
-                print("x=" + str(x) + "/" + str(quadH))
+                print("x=" + str(x) + "/" + str(quadH) + "\n")
 
         
 
