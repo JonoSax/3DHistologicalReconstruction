@@ -78,15 +78,6 @@ def listToTxt(data, dir, **kwargs):
     [xXyY],...
     EndData
     '''
-
-    f = open(dir, 'w')
-
-    # declar
-    f.write("ArgNo_" + str(len(kwargs)) + "\n")
-
-    argK = list()
-    argV = list()
-
     # ensure that the exact directory being specified exists, if not create it
     dirSplit = dir.split("/")
     dirToMake = ""
@@ -96,6 +87,15 @@ def listToTxt(data, dir, **kwargs):
             os.mkdir(dirToMake)
         except:
             pass
+
+
+    f = open(dir, 'w')
+
+    # declar
+    f.write("ArgNo_" + str(len(kwargs)) + "\n")
+
+    argK = list()
+    argV = list()
 
 
     # get optional arguments
@@ -170,7 +170,6 @@ def txtToList(dir):
     return(sampleList, args)
 
 def dictToTxt(data, dir, **kwargs):
-
     # This function saves a dictionary as a txt file
     # Converts a dictinoary into a txt file with the inputted name
     # Inputs:   (data), the single list to be saved
@@ -178,6 +177,18 @@ def dictToTxt(data, dir, **kwargs):
     #           (*args), inputs that appear at the top of the saved file
     # Outputs:  (), txt file saved in directory 
     
+    # ensure that the exact directory being specified exists, if not create it
+    dirSplit = dir.split("/")
+    dirToMake = ""
+    for d in range(dir.count("/")):
+        dirToMake += str(dirSplit[d] + "/")
+        try:
+            os.mkdir(dirToMake)
+        except:
+            pass
+
+
+
     f = open(dir, 'w')
 
     # declar
@@ -408,10 +419,21 @@ def nameFromPath(paths):
         names = list()
         for path in paths:
             # choose the last part of the path, remove the suffix and the sizing convention
-            names.append(path.split("/")[-1].split(".")[0].split("_")[0])
+            name = path.split("/")[-1].split(".")[0]
+
+            # if there is a size parameter, remove the last part of the name 
+            # NOTE this is hard coded where each slide is named as [sampleName]_[sampleNo]
+            if len(name.split("_")) > 2:
+                name = "_".join(name.split("_")[0:-1])
+            
+            names.append(name)
 
     elif type(paths) is str:
-        names = paths.split("/")[-1].split(".")[0].split("_")[0]
+        names = paths.split("/")[-1].split(".")[0]
+        # if there is a size parameter, remove the last part of the name 
+        # NOTE this is hard coded where each slide is named as [sampleName]_[sampleNo]
+        if len(names.split("_")) > 2:
+            names = "_".join(names.split("_")[0:-1])
 
     return names
 
