@@ -49,17 +49,13 @@ def readannotations(dataTrain, specimen = ''):
     #                   annotations, saved in posFiles
     #                   pins, saved in featFiles
 
+    # NOTE: update this script to use dictOfDirs
+
     # get the directories of all the specimes of interest
     ndpaNames = sorted(glob(dataTrain + specimen + "*.ndpa"))
     ndpiNames = sorted(glob(dataTrain + specimen + "*.ndpi"))      # need this for the properties of the image
 
-    
-    for ndpa in ndpaNames:
-        specDict.ndpa[nameFromPath(ndpa)] = ndpa
-
-    for ndpi in ndpiNames:
-        specDict.ndpi[nameFromPath(ndpi)] = ndpi
-
+    specDict = dictOfDirs(ndpa = ndpaNames, ndpi = ndpiNames)
 
     # go through each ndpa file of interest and extract the RAW co-ordinates into a list.
     # this list is indexed as follows:
@@ -69,10 +65,10 @@ def readannotations(dataTrain, specimen = ''):
     #               co-ordinates1
     #               ....
     #       ...
-    for spec in specDict.ndpa.keys():
+    for spec in specDict.keys():
 
-        ndpaPath = specDict.ndpa[spec]
-        ndpiPath = specDict.ndpi[spec]
+        ndpaPath = specDict[spec]['ndpa']
+        ndpiPath = specDict[spec]['ndpi']
 
         # get the drawn annotations
         posA = getAnnotations(ndpaPath)
@@ -107,8 +103,10 @@ def readannotations(dataTrain, specimen = ''):
             info[feat] = ((info[feat] - centreShift + topLeftShift ) * scale).astype(int)
 
         # save the entire list as a txt file per utilities saving structure
-        listToTxt(stacks, dataTrain + 'posFiles/' + spec + ".pos", Entries = str(len(posSpec)), xDim = str(xDim), yDim = str(yDim))
-        dictToTxt(info, dataTrain + 'featFiles/' + spec + ".feat")
+        if len(stacks) > 0:
+            listToTxt(stacks, dataTrain + 'posFiles/' + spec + ".pos", Entries = str(len(posSpec)), xDim = str(xDim), yDim = str(yDim))
+        if len(info) > 0:
+            dictToTxt(info, dataTrain + 'featFiles/' + spec + ".feat")
 
     '''
     for spec in range(len(ndpaNames)):
@@ -169,7 +167,7 @@ def readlandmarks(ndpaPath):
 
             # get the title
             l-=10
-            title = doco[l].replace("<title>", "").replace("</title>\n", "").replace(" ", "")
+            title = (doco[l].replace("<title>", "").replace("</title>\n", "").replace(" ", "")).lower()
 
             # get the unit used
             l+=2
@@ -247,7 +245,10 @@ def getAnnotations(ndpaPath):
     
     # NOTE this needs to be upated to represented ONLY the drawn points
     # and nothing else
-    print(str(len(posA)/sections*100)+"% of section " + nameFromPath(ndpaPath) + " found")
+    try:
+        print(str(len(posA)/sections*100)+"% of section " + nameFromPath(ndpaPath) + " found")
+    except:
+        print("0 sections found")
 
     file.close()
 
