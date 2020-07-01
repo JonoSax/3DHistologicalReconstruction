@@ -28,7 +28,7 @@ def align(data, name = '', size = 0, extracting = True):
     # create the dictionary of the directories
     featDirs = dictOfDirs(feat = dataFeat, tif = dataTif)
 
-    shapes = {}
+    feats = {}
     tifShapes = {}
     for spec in featDirs.keys():
 
@@ -36,213 +36,36 @@ def align(data, name = '', size = 0, extracting = True):
         corners, tifShape = segmentExtract(data, featDirs[spec], size, False)
         
         for t in tifShape.keys():
-            # NOTE this assumes that appending the features occurs in sequential order... CONFIRM
             tifShapes[t] = tifShape[t]
 
         # get the feature specific positions
         # NOTE that the list order is in descending order (eg 1a, 1b, 2a, 2b...)
-        shape = featAdapt(data, featDirs[spec], corners, size)
+        feat = featAdapt(data, featDirs[spec], corners, size)
 
-        for s in shape.keys():
-            # NOTE this assumes that appending the features occurs in sequential order... CONFIRM
-            shapes[s] = shape[s]
+        for s in feat.keys():
+            feats[s] = feat[s]
+
+    segName = data + name + 'segmentedSamples/*' + str(size)
 
     # get the segmented images
-    dataSegment = dictOfDirs(segments = glob(data + name + 'segmentedSamples/*' + str(size) + '.tif'))
+    dataSegment = dictOfDirs(segments = glob(segName + '.tif'))
 
-    shiftStore = {}
+    # get translation vector of the slice feature shifts 
+    for i in range(5):
+        print("\nAlignmnet " + str(i))
+        tifShapes, feats = shiftFeatures(tifShapes, dataSegment, feats, size, saving = True)
+        dataSegment = dictOfDirs(segments = glob(segName + '_aligned.tif'))    # use the most recently aligned images
+        # print(feats['H653A_48a'])
 
-    segments = list(shapes.keys())
-    shiftStore[segments[0]] = (np.array([0, 0]))
-    ref = shapes[segments[0]]
-    for i in segments[1:]:
-
-        tar = shapes[i]
-
-        # get all the features which both slices have
-        tarL = list(tar.keys())
-        refL = list(ref.keys())
-        feat, c = np.unique(refL + tarL, return_counts=True)
-        commonFeat = feat[np.where(c == 2)]
-
-        # create the numpy array with ONLY the common features and their positions
-        tarP = list()
-        refP = list()
-        for cf in commonFeat:
-            tarP.append(tar[cf])
-            refP.append(ref[cf])
-        tarP = np.array(tarP)
-        refP = np.array(refP)
-
-        # get the shift needed and store
-        res = minimize(objectiveCartesian, (0, 0), args=(tarP, refP), method = 'Nelder-Mead', tol = 1e-6)
-        shift = np.round(res.x).astype(int)
-        shiftStore[i] = shift
-
-        # ensure the shift of frame is passed onto the next frame
-        ref = {}
-        for i in tar.keys():
-            ref[i] = tar[i] - shift
-
-    # get the measure of the amount of shift
-    ss = dictToArray(shiftStore)
-
-    maxSx = np.max(ss[:, 0])
-    maxSy = np.max(ss[:, 1])
-    minSx = np.min(ss[:, 0])
-    minSy = np.min(ss[:, 1])
-
-    tsa = dictToArray(tifShapes)
-
-    # NOTE use tsathe tifShapes list to do this part
-    # shapes = [img0, img1, img2, img3, img4] --> is now feats
-    # standardise the size of all the images by fitting them into the largest possible dimensions
-    fx, fy, fc = np.max(tsa, axis = 0)
+    shiftFeatures(tifShapes, dataSegment, feats, size, saving = True)
     
+    # shiftFeatures(translationVector, tifShapes, dataSegment, feats, size, saving = True)
 
-    # create the new area for all images stored
-    newFieldO = np.zeros([fx + maxSx - minSx, fy + maxSy - minSy, 3]).astype(np.uint8)
-    fieldResizeO = np.zeros([fx, fy, fc]).astype(np.uint8)   # create an empty matrix to store the image
-
-    # for n in range(len(shiftStore)):
-    for n in dataSegment:
-
-        field = cv2.cvtColor(cv2.imread(dataSegment[n]['segments']), cv2.COLOR_BGR2RGB)
-
-        # put the original image into a standardised shape image
-        fieldR = fieldResizeO.copy()
-        w, h, c = tifShapes[n]                         
-        fieldR[:w, :h, :] += field
-        # plt.imshow(fieldR); plt.show()
-
-        newField = newFieldO.copy()
-
-        xp = -shiftStore[n][0] + maxSx
-        yp = -shiftStore[n][1] + maxSy
-
-        newField[xp:(xp+fx), yp:(yp+fy), :] = fieldR
-        
-        # save newField as the img
-
-        # plt.imshow(newField); plt.show()
-
-
-        for s in shapes[n].keys():       # use the target keys in case there are features not common to the previous original 
-            v = shapes[n][s]
-            pos = tuple(np.round(v - shiftStore[n]).astype(int))
-            newField = cv2.circle(newField, pos, 100, (255, 0, 0), 100) 
-
-        x, y, c = newField.shape
-        # cv2.imwrite(nameFromPath(dataSegment[n]) + '.jpg', cv2.cvtColor(cv2.resize(adjustImg, (1000, int(1000 * x/y))), cv2.COLOR_BGR2RGB))
-        img = cv2.cvtColor(cv2.resize(newField, (1000, int(1000 * x/y))), cv2.COLOR_BGR2RGB) 
-        # plt.imshow(img); plt.show()
-        cv2.imwrite(data + name + 'segmentedSamples/' + n + "_" + str(size) + 'annotated.jpg', img)
-
-
-        '''
-        # perform the fitting of the slices
-        refO = feats[0]         # this is the feature being fitted for, initial call
-        im = cv2.cvtColor(cv2.imread(dataSegment[0]), cv2.COLOR_BGR2RGB)
-        adjustImg = np.zeros([im.shape[0], im.shape[1], 3]).astype(np.uint8)
-        x, y, c = adjustImg.shape
-        for i in refO.keys():       # use the target keys in case there are features
-            adjustImg = cv2.circle(im, tuple(refO[i]), 100, (255, 0, 0), 100)
-        ''' 
-
-
-    # plt.imshow(newField); plt.show()
-
-    print('done')
-
-
-
+    print('Alignment complete')
 
     pass
 
-        # NOTE TODO perform rotational optimisation fit
-
-
-
-
-def objectiveCartesian(pos, *args):
-
-    # this function is working out the x and y translation to minimise error between co-ordinates
-    # Inputs:   (pos), translational vector to optimise
-    #           (args), the reference and target co-ordinates to fit for
-    # Outputs:  (err), the squarred error of vectors given the shift pos
-
-    ref = args[0]   # the first argument is ALWAYS the reference
-    tar = args[1]   # the second argument is ALWAYS the target
-
-    # error calcuation
-    err = np.sum((tar + pos - ref)**2)
-
-    return(err)      
-
-def objectivePolar(w, *args):
-
-    # this function is working out the rotational translation to minimise error between co-ordinates
-    # Inputs:   (w), angular translation to optimise
-    #           (args), the reference and target co-ordinates to fit for
-    # Outputs:  (err), the squarred error of vectors given the shift pos
-
-    ref = args[0]   # the first argument is ALWAYS the reference
-    tar = args[1]   # the second argument is ALWAYS the target
-
-    # error calculation
-    # err = something
-
-    return(err)      
-
-def featAdapt(data, featDir, corners, size):
-
-    # this function take the features of the annotated features and converts
-    # them into the local co-ordinates which are used to align the tissues
-    # Inputs:   (data), home directory for all the info
-    #           (featDir), the dictionary containing the sample specific dirs
-    #           (corners), the global co-ordinate of the top left edge of the img extracted
-    #           (size), the size of the image being processed
-    # Outputs:  (), save a dictionary of the positions of the annotations relative to
-    #               the segmented tissue, saved in the segmented sample folder with 
-    #               corresponding name
-    #           (specFeatOrder), 
-
-    featInfo = txtToDict(featDir['feat'])[0]
-    scale = tifLevels[size] / max(tifLevels)
-    featName = list(featInfo.keys())
-    nameSpec = nameFromPath(featDir['feat'])
-
-    # remove all the positional arguments
-    locations = ["top", "bottom", "right", "left"]
-    for n in range(len(featName)):  # NOTE you do need to do this rather than dict.keys() because dictionaries don't like changing size...
-        f = featName[n]
-        for l in locations:
-            m = f.find(l)
-            if m >= 0:
-                featInfo.pop(f)
-
-    featKey = list()
-    for f in sorted(featInfo.keys()):
-        key = f.split("_")
-        featKey.append(key)
-    
-    # create a dictionary per identified sample 
-    specFeatInfo = {}
-    specFeatOrder = {}
-    for v in np.unique(np.array(featKey)[:, 1]):
-        specFeatInfo[v] = {}
-
-    # allocate the scaled and normalised sample to the dictionary PER specimen
-    for f, p in featKey:
-        specFeatInfo[p][f] = (featInfo[f + "_" + p] * scale).astype(int)  - corners[p]
-        
-    # save the dictionary
-    for p in specFeatInfo.keys():
-        name = nameFromPath(featDir['tif']) + p + "_" + str(size) + ".feat"
-        specFeatOrder[nameSpec+p] = specFeatInfo[p]
-        dictToTxt(specFeatInfo[p], data + "segmentedSamples/" + name)
-
-    return(specFeatOrder)
+    # NOTE TODO perform rotational optimisation fit
 
 def segmentExtract(data, featDir, size, extracting = True):
 
@@ -330,6 +153,225 @@ def segmentExtract(data, featDir, size, extracting = True):
     return(areas, tifShape)
 
         # plt.imshow(tifSeg); plt.show()
+
+def featAdapt(data, featDir, corners, size):
+
+    # this function take the features of the annotated features and converts
+    # them into the local co-ordinates which are used to align the tissues
+    # Inputs:   (data), home directory for all the info
+    #           (featDir), the dictionary containing the sample specific dirs
+    #           (corners), the global co-ordinate of the top left edge of the img extracted
+    #           (size), the size of the image being processed
+    # Outputs:  (), save a dictionary of the positions of the annotations relative to
+    #               the segmented tissue, saved in the segmented sample folder with 
+    #               corresponding name
+    #           (specFeatOrder), 
+
+    featInfo = txtToDict(featDir['feat'])[0]
+    scale = tifLevels[size] / max(tifLevels)
+    featName = list(featInfo.keys())
+    nameSpec = nameFromPath(featDir['feat'])
+
+    # remove all the positional arguments
+    locations = ["top", "bottom", "right", "left"]
+    for n in range(len(featName)):  # NOTE you do need to do this rather than dict.keys() because dictionaries don't like changing size...
+        f = featName[n]
+        for l in locations:
+            m = f.find(l)
+            if m >= 0:
+                featInfo.pop(f)
+
+    featKey = list()
+    for f in sorted(featInfo.keys()):
+        key = f.split("_")
+        featKey.append(key)
+    
+    # create a dictionary per identified sample 
+    specFeatInfo = {}
+    specFeatOrder = {}
+    for v in np.unique(np.array(featKey)[:, 1]):
+        specFeatInfo[v] = {}
+
+    # allocate the scaled and normalised sample to the dictionary PER specimen
+    for f, p in featKey:
+        specFeatInfo[p][f] = (featInfo[f + "_" + p] * scale).astype(int)  - corners[p]
+        
+    # save the dictionary
+    for p in specFeatInfo.keys():
+        name = nameFromPath(featDir['tif']) + p + "_" + str(size) + ".feat"
+        specFeatOrder[nameSpec+p] = specFeatInfo[p]
+        dictToTxt(specFeatInfo[p], data + "segmentedSamples/" + name)
+
+    return(specFeatOrder)
+
+def shiftFeatures(tifShapes, dataSegment, feats, size, saving = False):
+
+    # Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
+    # Inputs:   (translationVector), the shift required to align the images
+    #           (tifShapes), the size of each image being processed
+    #           (dataSegment), dictionary of the dirs for the extracted speciment tissues
+    #           (feats), the identified features for each sample
+    #           (saving), boolean which controls if the results of the fitting are saved, defaults off
+    # Outputs:  (), saves an image of the tissue with the necessary padding to ensure all images are the same size and roughly aligned if saving is True
+    #           (feats), the NEW positions of the features after adustment of the translation information
+    #           (tifShapes), the NEW size of each image that has been aligned
+    
+    # find the optimum translation to minimise the error between features
+    translationVector = alignPoints(feats)
+
+    # get the measure of the amount of shift
+    ss = dictToArray(translationVector)
+    maxSy = np.max(ss[:, 0])
+    maxSx = np.max(ss[:, 1])
+    minSy = np.min(ss[:, 0])
+    minSx = np.min(ss[:, 1])
+
+    # get the maximum dimensions of all the tif images
+    tsa = dictToArray(tifShapes)
+    mx, my, mc = np.max(tsa, axis = 0)
+
+    # get the dims of the total field size to be created for all the images stored
+    xF, yF, cF = (mx + maxSx - minSx, my + maxSy - minSy, mc)       # NOTE this will always be slightly larger than necessary because to work it    
+                                                                    # out precisely I would have to know what the max displacement + size of the img
+                                                                    # is... this is over-estimating the size needed but is much simpler
+
+    # adjust the translations of each image and save the new images with the adjustment
+    for n in dataSegment:
+
+        dirn = dataSegment[n]['segments']
+    
+        dirToSave = regionOfPath(dirn) + n + "_" + str(size)
+    
+        # adjust the translation vector 
+        pos = {}
+        for s in feats[n].keys():       # use the target keys in case there are features not common to the previous original 
+            feats[n][s] = tuple(np.round(feats[n][s] - translationVector[n] + np.array([maxSy, maxSx]).astype(int)))
+        
+        # only if saving will the whole image be processed
+        if saving:
+            field = cv2.imread(dirn)
+            # plotPoints(dirToSave + '_nomod.jpg', dirn, feats[n])
+            # field = (np.zeros(list(field.shape)) * 255).astype(np.uint8)      # this is used to essentially create a mask of the image for debugging
+
+            # put the original image into a standardised shape image
+            fieldR = np.zeros([mx, my, mc]).astype(np.uint8)            # empty matrix to store the SINGLE image, standardisation
+            w, h, c = field.shape                         
+            fieldR[:w, :h, :] += field                                  # add the image INTO the standard window
+
+            # adjust the position of the image within the ENTIRE frame
+            newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
+            yp = -translationVector[n][0] + maxSy
+            xp = -translationVector[n][1] + maxSx
+            print(newField.shape)
+            print("x0 = " + str(xp) + " x1 = " + str(xp+mx))
+            print("y0 = " + str(yp) + " y1 = " + str(yp+my))
+            newField[xp:(xp+mx), yp:(yp+my), :] += fieldR
+
+            # re-assign the shape of the image
+            tifShapes[n] = newField.shape
+
+            # plotPoints(dirToSave + '_normfield.jpg', fieldR, feats[n]) # plots features on the image with padding for max image size
+            plotPoints(dirToSave + '_allfield.jpg', newField, feats[n])                     # plots features on the image with padding for all image translations 
+            cv2.imwrite(dirToSave + '_aligned.tif', newField)                               # saves the adjusted image at full resolution 
+
+        print("done translation of " + n)
+
+    return(tifShapes, feats)
+
+def alignPoints(feats):
+
+    # get the shift of each frame
+    # Inputs:   (feats), dictionary of each feature
+    # Outputs:  (shiftStore), list of points store
+
+    shiftStore = {}
+    segments = list(feats.keys())
+    shiftStore[segments[0]] = (np.array([0, 0]))
+    ref = feats[segments[0]]
+
+    for i in segments[1:]:
+
+        tar = feats[i]
+
+        # get all the features which both slices have
+        tarL = list(tar.keys())
+        refL = list(ref.keys())
+        feat, c = np.unique(refL + tarL, return_counts=True)
+        commonFeat = feat[np.where(c == 2)]
+
+        # create the numpy array with ONLY the common features and their positions
+        tarP = list()
+        refP = list()
+        for cf in commonFeat:
+            tarP.append(tar[cf])
+            refP.append(ref[cf])
+        tarP = np.array(tarP)
+        refP = np.array(refP)
+
+        # get the shift needed and store
+        res = minimize(objectiveCartesian, (0, 0), args=(tarP, refP), method = 'Nelder-Mead', tol = 1e-6)
+        shift = np.round(res.x).astype(int)
+        shiftStore[i] = shift
+
+        # ensure the shift of frame is passed onto the next frame
+        ref = {}
+        for i in tar.keys():
+            ref[i] = tar[i] - shift
+
+    return(shiftStore)
+
+def plotPoints(dir, imgO, points):
+
+    # plot circles on annotated points
+    # Inputs:   (dir), either a directory (in which case load the image) or the numpy array of the image
+    #           (img), image directory
+    #           (points), dictionary of points which refer to the co-ordinates on the image
+    # Outputs:  (), saves downsampled jpg image with the points annotated
+
+    if type(imgO) is str:
+        imgO = cv2.imread(imgO)
+
+    img = imgO.copy()
+
+    for s in points:       # use the target keys in case there are features not common to the previous original 
+        si = 50
+        pos = tuple(np.round(points[s]).astype(int))
+        img = cv2.circle(img, pos, si, (255, 0, 0), si) 
+
+    x, y, c = img.shape
+    imgResize = cv2.resize(img, (1000, int(1000 * x/y)))
+    
+    cv2.imwrite(dir, img,  [cv2.IMWRITE_JPEG_QUALITY, 20])
+
+def objectiveCartesian(pos, *args):
+
+    # this function is working out the x and y translation to minimise error between co-ordinates
+    # Inputs:   (pos), translational vector to optimise
+    #           (args), the reference and target co-ordinates to fit for
+    # Outputs:  (err), the squarred error of vectors given the shift pos
+
+    ref = args[0]   # the first argument is ALWAYS the reference
+    tar = args[1]   # the second argument is ALWAYS the target
+
+    # error calcuation
+    err = np.sum((tar + pos - ref)**2)
+
+    return(err)      
+
+def objectivePolar(w, *args):
+
+    # this function is working out the rotational translation to minimise error between co-ordinates
+    # Inputs:   (w), angular translation to optimise
+    #           (args), the reference and target co-ordinates to fit for
+    # Outputs:  (err), the squarred error of vectors given the shift pos
+
+    ref = args[0]   # the first argument is ALWAYS the reference
+    tar = args[1]   # the second argument is ALWAYS the target
+
+    # error calculation
+    # err = something
+
+    return(err)      
 
 # dataHome is where all the directories created for information are stored 
 dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/'
