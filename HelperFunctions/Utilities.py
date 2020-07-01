@@ -415,25 +415,51 @@ def nameFromPath(paths):
     # Inputs:   (paths), either a list or string of paths 
     # Outputs:  (names), elist of the names from the paths
 
-    if type(paths) is list:
-        names = list()
-        for path in paths:
-            # choose the last part of the path, remove the suffix and the sizing convention
-            name = path.split("/")[-1].split(".")[0]
+    pathStr = False
+    if type(paths) is str:
+        paths = [paths]
+        pathStr = True
 
-            # if there is a size parameter, remove the last part of the name 
-            # NOTE this is hard coded where each slide is named as [sampleName]_[sampleNo]
-            if len(name.split("_")) > 2:
-                name = "_".join(name.split("_")[0:-1])
-            
-            names.append(name)
+    names = list()
+    for path in paths:
+        # choose the last part of the path and the suffix
+        name = path.split("/")[-1].split(".")[0]
 
-    elif type(paths) is str:
-        names = paths.split("/")[-1].split(".")[0]
         # if there is a size parameter, remove the last part of the name 
         # NOTE this is hard coded where each slide is named as [sampleName]_[sampleNo]
-        if len(names.split("_")) > 2:
-            names = "_".join(names.split("_")[0:-1])
+        if len(name.split("_")) > 2:
+            name = "_".join(name.split("_")[0:2])
+        
+        names.append(name)
+
+    # if the path input is a string, it will expect an output of a string as well
+    if pathStr:
+        names = names[0]
+
+    return names
+
+def regionOfPath(paths, n = 1):
+    # this function extracts the user defined position of the (ie what is the path 1 directory up, 2....)
+    # Inputs:   (paths), either a list or string of paths 
+    #           (n), how many levels of directories up you want to move, defaults to moving up one level
+    # Outputs:  (names), elist of the names from the paths
+
+    pathStr = False
+    if type(paths) is str:
+        paths = [paths]
+        pathStr = True
+
+    names = list()
+    for path in paths:
+
+        # select the region of the path you are interested in
+        name = "/".join(path.split("/")[:-n]) + "/"
+        
+        names.append(name)
+
+    # if the path input is a string, it will expect an output of a string as well
+    if pathStr:
+        names = names[0]
 
     return names
 
@@ -469,3 +495,18 @@ def dictOfDirs(**kwargs):
 
 
     return(dictToWrite)
+
+def dictToArray(d):
+
+    # converts a dictionary into a nparray. This works for only 1 layered dictionaries into a 2D matrix
+    # Input:    (d), dictionary
+    # Output:   (l), list
+
+    l = list(d.values())
+    
+    list(d.values())
+    for i in range(len(l)):
+        l[i] = list(l[i])
+    l = np.array(l)
+
+    return(l)
