@@ -5,10 +5,12 @@ from . import SegmentLoad
 from. import MaskMaker
 from. import WSILoad
 from . import WSIExtract
+from. import noiseClassGen
 from . import DataGenerator
 from. import targetTissue
 from . import ModelTrainer
 from. import ModelEvaluater
+from. import SegmentID
 
 
 class data(object):
