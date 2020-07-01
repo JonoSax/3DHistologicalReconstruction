@@ -18,8 +18,6 @@ tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
 
 def maskCreator(dataTrain, segmentName = '', size = 0):
 
-    print("\nSTARTING MASKMAKER/MASKCREATOR\n")
-
     # TODO: Seperate into two functions the mask building and target tissue identification
 
     # This function takes the manual annotations and turns them into a dense matrix which 
@@ -31,13 +29,6 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
     #            of the tif file 
 
     specimenPosDir = glob(dataTrain + "posFiles/" + segmentName + "*.pos")
-
-    # create the maskFiles directory
-    dataMask = dataTrain + "maskFiles/"
-    try: 
-        os.mkdir(dataMask)
-    except:
-        pass
     
     scale = tifLevels[size] / max(tifLevels)
     
@@ -53,14 +44,12 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
         targetTissue = roiFinder(denseAnnotations)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
-        listToTxt(targetTissue, dataMask + nameFromPath(specimen) + "_" + str(size) + ".mask")
+        listToTxt(targetTissue, dataTrain + "maskFiles/" + nameFromPath(specimen) + "_" + str(size) + ".mask")
     
-    print("ENDING MASKMAKER/MASKCREATOR\n")
-
 def maskFinder(annoSpec, scale, num = ""):
 
     # This function takes the manual annotations and turns them into a mask which 
-    # encompasses the inner area
+    # encompasses the inner area of the circled vessels
     # Inputs:   (annoSpec), the annotations for a single specimen
     #           (scale), the scaling factor to apply between the raw data and the chosen 
     #               tif size file to analyse
@@ -96,7 +85,7 @@ def maskFinder(annoSpec, scale, num = ""):
         # scale the annotation
         annotationScaled = annotation * scale
 
-        # shift the annotation to a (0, 0) origin 
+        # shift the individual annotation to a (0, 0) origin and scale to the actual image size
         xminO = int(annotationScaled[:, 0].min())
         yminO = int(annotationScaled[:, 1].min())
         annotationU, posU = np.unique((annotationScaled - [xminO, yminO]).astype(int), axis = 0, return_index = True)           
@@ -266,7 +255,7 @@ def roiFinder(denseAnnotations):
             # if no match is found assumed that there is no annotated centre
             else:
                 annotatedROI = search
-                print("     anno " + str(s) + " is not matched with anno " + str(m))
+                # print("     anno " + str(s) + " is not matched with anno " + str(m))
 
         # view the roi
         # denseMatrixViewer(annotatedROI)
