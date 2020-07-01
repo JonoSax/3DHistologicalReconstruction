@@ -38,8 +38,6 @@ unitDict = {
 
 def readannotations(dataTrain, specimen = ''):
 
-    print("\nSTARTING SEGMENTLOAD/READNDPA\n")
-
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points and converts
     # them into their pixel location equivalents
     # Input:    (dataTrain), Directory for the ndpi files
@@ -296,54 +294,6 @@ def normaliseNDPA(sliceDir):
 
     # data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
     # data = '/Volumes/Storage/H653A_11.3 new/'
-    '''
-    xShift = list()
-    yShift = list()
-    xResolution = list()
-    yResolution = list()
-    xDim = list()
-    yDim = list()
-
-    for slicedir in slicesDir:
-    slideProperties = openslide.OpenSlide(slicedir).properties                          # all ndpi properties
-    unit = unitDict[slideProperties['tiff.ResolutionUnit']]                             # get the unit multiplier so that all units are in mm
-    xShift.append(int(slideProperties['hamamatsu.XOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
-    yShift.append(int(slideProperties['hamamatsu.YOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
-    xRes = int(slideProperties['tiff.XResolution']) / unit                              # scale is unit dependent
-    yRes = int(slideProperties['tiff.YResolution']) / unit                              # scale is unit dependent                       
-    xDim.append(int(slideProperties['openslide.level[0].width']))                       # assumed always in pixels   
-    yDim.append(int(slideProperties['openslide.level[0].height']))                      # assumed always in pixels
-
-    xResolution.append(xRes)
-    yResolution.append(yRes)  
-    '''
-    '''
-    # dictionaries
-    xShift = {}
-    yShift = {}
-    xResolution = {}
-    yResolution = {}
-    xDim = {}
-    yDim = {}
-    
-
-    for slicedir in slicesDir:
-        
-        slicedirName = nameFromPath(slicedir)
-
-        slideProperties = openslide.OpenSlide(slicedir).properties                          # all ndpi properties
-        unit = unitDict[slideProperties['tiff.ResolutionUnit']]                             # get the unit multiplier so that all units are in mm
-        xShift[slicedirName] = (int(slideProperties['hamamatsu.XOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
-        yShift[slicedirName] = (int(slideProperties['hamamatsu.YOffsetFromSlideCentre']) * 10**-6)    # assumed nm, converted to mm
-        xRes = int(slideProperties['tiff.XResolution']) / unit                              # scale is unit dependent
-        yRes = int(slideProperties['tiff.YResolution']) / unit                              # scale is unit dependent                       
-        xDim[slicedirName] = (int(slideProperties['openslide.level[0].width']))                       # assumed always in pixels   
-        yDim[slicedirName] = (int(slideProperties['openslide.level[0].height']))                      # assumed always in pixels
-
-        xResolution[slicedirName] = xRes
-        yResolution[slicedirName] = yRes
-    '''
-
     
     slicedirName = nameFromPath(sliceDir)
 
