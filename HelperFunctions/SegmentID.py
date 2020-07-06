@@ -26,8 +26,8 @@ def align(data, name = '', size = 0, extracting = True):
     # Outputs:  (), extracts the tissue sample from the slide
 
     # get the file of the features information 
-    dataFeat = sorted(glob(data + name + 'featFiles/*.feat'))[0:3]
-    dataTif = sorted(glob(data + name + 'tifFiles/*' + str(size) + '.tif'))[0:3]
+    dataFeat = sorted(glob(data + name + 'featFiles/*.feat'))
+    dataTif = sorted(glob(data + name + 'tifFiles/*' + str(size) + '.tif'))
 
     # create the dictionary of the directories
     featDirs = dictOfDirs(feat = dataFeat, tif = dataTif)
@@ -60,23 +60,22 @@ def align(data, name = '', size = 0, extracting = True):
 
         for s in feat.keys():
             feats[s] = feat[s]
-
-    segName = data + name + 'segmentedSamples/*' + str(size)
-
-    # get the segmented images
-    dataSegment = dictOfDirs(segments = glob(segName + '.tif'))
-
+    
     # get affine transformation information of the features for optimal fitting
     t_shiftFeatures_a = clock()
-    translateNet, rotateNet = shiftFeatures(dataSegment, feats)
+
+    translateNet, rotateNet, feats = shiftFeatures(feats)
+
     t_shiftFeatures_b = clock()
     times['shiftFeatures'] = t_shiftFeatures_b - t_shiftFeatures_a
 
     # apply the transformations to the samples
+    segName = data + name + 'segmentedSamples/*' + str(size) + '.tif'
 
-    dataSegment = dictOfDirs(segments = glob(segName + '_aligned.tif'))    # use the most recently aligned images
+    # get the segmented images
+    dataSegment = dictOfDirs(segments = glob(segName))
 
-    transformSamples(dataSegment, tifShapes, translateNet, rotateNet, size)
+    transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, size)
     # print(feats['H653A_48a'])
 
     
@@ -225,27 +224,13 @@ def featAdapt(data, featDir, corners, size):
 
     return(specFeatOrder)
 
-def shiftFeatures(dataSegment, feats):
+def shiftFeatures(feats):
 
     # Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
-    # Inputs:   (tifShapes), the size of each image being processed
-    #           (dataSegment), dictionary of the dirs for the extracted speciment tissues
-    #           (feats), the identified features for each sample
+    # Inputs:   (feats), the identified features for each sample
     # Outputs:  (translateNet), the translation information to be applied per image
     #           (rotateNet), the rotation information to be applied per image
 
-    # NOTE at the moment the translation and rotation needs to occur all at once.... 
-    # REMEMBER that you can do all the translations and rototations on the features 
-    # etc and THEN do the image transformations.... 
-    # ALSO the standardised image size can be done seperately.....
-
-    # NOTE try and save all the translations and rotations so that the processes can iterate and the FINAL call is to apply to the image sequentially
-    translate = list()
-    rotate = list()
-
-    # ---------- translate the features and get the transformation info ----------
-
-    
     translate = {}
     rotate = {}
 
@@ -255,6 +240,10 @@ def shiftFeatures(dataSegment, feats):
     translateNet = {}
     rotateNet = {}
 
+    # initialise the first sample with no transformation
+    translateNet[featNames[0]] = np.array([0, 0])
+    rotateNet[featNames[0]] = cv2.getRotationMatrix2D((1, 1), 0, 1)
+
     # perform transformations on neighbouring slices and build them up as you go
     for i in range(len(featNames)-1):
 
@@ -263,6 +252,17 @@ def shiftFeatures(dataSegment, feats):
         for fn in featNames[i:i+2]:
             featsO[fn] = feats[fn]
 
+        featsMod = featsO.copy()
+
+        # -------- translation only --------
+        '''
+        translation, featsMod, err = translatePoints(featsMod)
+        feats[fn] = featsMod[fn]
+        translateNet[fn] = translation[fn]      # assigning rather than iterating over 
+        rotateNet[fn] = cv2.getRotationMatrix2D((1, 1), 0, 1)
+        '''
+
+        # -------- translation and rotation --------
         translateNet[fn] = np.zeros(2).astype(int)
 
         featsMod = featsO.copy()
@@ -277,7 +277,7 @@ def shiftFeatures(dataSegment, feats):
 
             # find the optimum rotational adjustment
             rotationAdjustment, featsMod, err = rotatePoints(featsT)
-
+        
         # apply ONLY the translation transformations to the original features so that the adjustments are made 
         # to the optimised feature positions
         for f in featsO[fn]:
@@ -287,13 +287,14 @@ def shiftFeatures(dataSegment, feats):
         rotationAdjustment, featsFinal, errF = rotatePoints(featsO)
         rotateNet[fn] = rotationAdjustment[fn]
         feats[fn] = featsFinal[fn]                      # re-assign the new feature positions to fit for
+        
 
         # after the fitting, apply the translation to the features
         # perform a final rotational fitting to get a SINGLE rotational transformation from this optimal position
 
-    return(translateNet, rotateNet)
+    return(translateNet, rotateNet, feats)
 
-def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, size, saving = True):
+def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, size, saving = True):
 
     # this function takes the affine transformation information and applies it to the samples
     # Inputs:   (dataSegment), directories
@@ -324,32 +325,43 @@ def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, size, savi
     for n in dataSegment:
 
         dirn = dataSegment[n]['segments']
-        dirToSave = regionOfPath(dirn) + n + "_" + str(size)
+        dirToSave = regionOfPath(dirn) + "view" + n + "_" + str(size)
         
         # only if saving will the whole image be processed
         if saving:
             field = cv2.imread(dirn)
-            # plotPoints(dirToSave + '_nomod.jpg', dirn, feats[n])
-            # field = (np.zeros(list(field.shape)) * 255).astype(np.uint8)      # this is used to essentially create a mask of the image for debugging
 
+            fx, fy, fc = field.shape
+
+            # field = (np.ones((fx, fy, fc)) * 255).astype(np.uint8)      # this is used to essentially create a mask of the image for debugging
+
+            # warp = cv2.warpAffine(field, rotateNet['H653A_48a'], (fy, fx))
+            warp = cv2.warpAffine(field, rotateNet[n], (fy, fx))
+
+            # plotPoints(dirToSave + '_nomod.jpg', dirn, feats[n])
+
+            '''
             # put the original image into a standardised shape image
             fieldR = np.zeros([mx, my, mc]).astype(np.uint8)            # empty matrix to store the SINGLE image, standardisation
             w, h, c = field.shape                         
             fieldR[:w, :h, :] += field                                  # add the image INTO the standard window
             # adjust the position of the image within the ENTIRE frame
+            '''
             newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
 
             # NOTE this needs to also include the rotational component
-            yp = -translationVector[n][0] + maxSy
-            xp = -translationVector[n][1] + maxSx
-            newField[xp:(xp+mx), yp:(yp+my), :] += fieldR
+            yp = -translateNet[n][0] + maxSy
+            xp = -translateNet[n][1] + maxSx
+            newField[xp:(xp+fx), yp:(yp+fy), :] += warp
 
             # re-assign the shape of the image
             tifShapes[n] = newField.shape
 
+            featSpecAdjust = dictToArray(feats[n]) + np.array([maxSy, maxSx])
+
             # plotPoints(dirToSave + '_normfield.jpg', fieldR, feats[n]) # plots features on the image with padding for max image size
-            plotPoints(dirToSave + '_allfield.jpg', newField, feats[n])                     # plots features on the image with padding for all image translations 
-            cv2.imwrite(dirToSave + '_aligned.tif', newField)                               # saves the adjusted image at full resolution 
+            plotPoints(dirToSave + '_allfieldRotated.jpg', newField, featSpecAdjust)                     # plots features on the image with padding for all image translations 
+            # cv2.imwrite(dirToSave + '_aligned.tif', newField)                               # saves the adjusted image at full resolution 
 
             # print(newField.shape)
             # print("x0 = " + str(xp) + " x1 = " + str(xp+mx))
@@ -450,17 +462,20 @@ def plotPoints(dir, imgO, points):
     # plot circles on annotated points
     # Inputs:   (dir), either a directory (in which case load the image) or the numpy array of the image
     #           (img), image directory
-    #           (points), dictionary of points which refer to the co-ordinates on the image
+    #           (points), dictionary or array of points which refer to the co-ordinates on the image
     # Outputs:  (), saves downsampled jpg image with the points annotated
+
+    if type(points) is dict:
+        points = dictToArray(points)
 
     if type(imgO) is str:
         imgO = cv2.imread(imgO)
 
     img = imgO.copy()
 
-    for s in points:       # use the target keys in case there are features not common to the previous original 
+    for p in points:       # use the target keys in case there are features not common to the previous original 
         si = 50
-        pos = tuple(np.round(points[s]).astype(int))
+        pos = tuple(np.round(p).astype(int))
         img = cv2.circle(img, pos, si, (255, 0, 0), si) 
 
     x, y, c = img.shape
@@ -524,12 +539,16 @@ def objectivePolar(w, *args):
     # process per target feature
     tarNames = list(tar)
     tarN = {}
+
+    # adjust the position of the features by w degrees
+    # NOTE this is being processed per point instead of all at once because of the fact that rotating points causes
+    # a 'blurring' of the new point and to identify what the new point is from this 'blur', we have to be able 
+    # to recognise each point. I have decided it is simpler to identify each point by processing each one individually, 
+    # rather than doing some kind of k-means clustering rubbish etc. 
     for n in range(len(tarNames)):
 
         i = tarNames[n]
-
         featPos = tarA[n, :]
-
 
         # find the max size a matrix would need to be to allow this vector to perform a 360º rotation
         ext = ceil(np.sqrt(np.sum((featPos-centre)**2)))
@@ -554,7 +573,6 @@ def objectivePolar(w, *args):
         # apply transformation to normalise and extract ONLY the value with the largest portion of its rotation
         tarN[i] = ((tarPossible[np.argmax(v)] + centre - ext)*scale).astype(int)
     
-
     # error calculation
     # convert dictionaries to np arrays
     tarNa = dictToArray(tarN, int)
@@ -568,9 +586,8 @@ def objectivePolar(w, *args):
     if minimising:
         return(err)  
     else:
-        return(rot, tarN, err)
-
-        
+        rotFinal = cv2.getRotationMatrix2D(tuple(centre*scale), -w, 1)
+        return(rotFinal, tarN, err)
 
 def findCentre(pos):
 
