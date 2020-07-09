@@ -21,7 +21,7 @@ def main(dataTrain, kernel, number):
         noiseImg = (np.random.random((kernel, kernel, 3))*255).astype(np.uint8)
 
         cv2.imwrite(dataNoise + 'noise_n_' + str(n) + ".tif", noiseImg)
-
+'''
 # dataHome is where all the directories created for information are stored 
 dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/'
 
@@ -29,3 +29,4 @@ dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentati
 dataTrain = dataHome + 'HistologicalTraining/'
 
 main(dataTrain, 50, 5)
+'''

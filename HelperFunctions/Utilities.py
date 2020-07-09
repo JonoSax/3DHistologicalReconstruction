@@ -260,14 +260,14 @@ def txtToDict(dir):
 
     return(sampleDict, args)
 
-def denseMatrixViewer(coords):
-
-    print("\nSTARTING UTILITIES/DENSEMATRIXVIEWER")
+def denseMatrixViewer(coords, plot = True):
 
     # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
     # which can be view with matplotlib
     # Inputs:   (coords), the coordinates
+    #           (plot), boolean to control plotting
     # Outputs:  (), produces a plot to view
+    #           (area), the array 
 
     Xmax = int(coords[:, 0].max())
     Xmin = int(coords[:, 0].min())
@@ -283,8 +283,13 @@ def denseMatrixViewer(coords):
         xp, yp = coordsNorm[x, :].astype(int)
         area[xp, yp] = 1
 
-    plt.imshow(area, cmap = 'gray')
-    plt.show()
+    if plot:
+        plt.imshow(area, cmap = 'gray')
+        plt.show()
+
+    shift = (Xmin, Ymin)
+
+    return(area, shift)
 
     print("STARTING UTILITIES/DENSEMATRIXVIEWER\n")
 
@@ -478,7 +483,7 @@ def dictOfDirs(**kwargs):
     # get all the names
     names = list()
     for k in kwargs.keys():
-        names.append(nameFromPath(kwargs[k]))
+        names += nameFromPath(kwargs[k])
 
     # get all the unique names
     names = np.unique(np.array(names))
@@ -496,17 +501,13 @@ def dictOfDirs(**kwargs):
 
     return(dictToWrite)
 
-def dictToArray(d):
+def dictToArray(d, type = float):
 
     # converts a dictionary into a nparray. This works for only 1 layered dictionaries into a 2D matrix
     # Input:    (d), dictionary
-    # Output:   (l), list
+    #           (type), number type to use
+    # Output:   (l), array
 
-    l = list(d.values())
-    
-    list(d.values())
-    for i in range(len(l)):
-        l[i] = list(l[i])
-    l = np.array(l)
+    l = np.array(list(d.values())).astype(type)
 
     return(l)

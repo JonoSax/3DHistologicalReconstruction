@@ -40,28 +40,32 @@ def align(data, name = '', size = 0, extracting = True):
     times = {}
 
     for spec in featDirs.keys():
+        # for samples with identified features
+        try:
+            # extract the single segment
+            t_segExtract_a = clock()
+            corners, tifShape = segmentExtract(data, featDirs[spec], size, extracting)
+            t_segExtract_b = clock()
 
-        # extract the single segment
-        t_segExtract_a = clock()
-        corners, tifShape = segmentExtract(data, featDirs[spec], size, extracting = False)
-        t_segExtract_b = clock()
+            times['segmentExtract'] = t_segExtract_b - t_segExtract_a
+            
+            for t in tifShape.keys():
+                tifShapes[t] = tifShape[t]
 
-        times['segmentExtract'] = t_segExtract_b - t_segExtract_a
+            # get the feature specific positions
+            # NOTE that the list order is in descending order (eg 1a, 1b, 2a, 2b...)
+            t_featAdapt_a = clock()
+            feat = featAdapt(data, featDirs[spec], corners, size)
+            t_featAdapt_b = clock()
+
+            times['featAdapt'] = t_featAdapt_b - t_featAdapt_a
+
+            for s in feat.keys():
+                feats[s] = feat[s]
+
+        except:
+            print("No features for " + spec)
         
-        for t in tifShape.keys():
-            tifShapes[t] = tifShape[t]
-
-        # get the feature specific positions
-        # NOTE that the list order is in descending order (eg 1a, 1b, 2a, 2b...)
-        t_featAdapt_a = clock()
-        feat = featAdapt(data, featDirs[spec], corners, size)
-        t_featAdapt_b = clock()
-
-        times['featAdapt'] = t_featAdapt_b - t_featAdapt_a
-
-        for s in feat.keys():
-            feats[s] = feat[s]
-    
     # get affine transformation information of the features for optimal fitting
     t_shiftFeatures_a = clock()
 
@@ -76,15 +80,13 @@ def align(data, name = '', size = 0, extracting = True):
     # get the segmented images
     dataSegment = dictOfDirs(segments = glob(segName))
 
-    transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, size)
+    transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, size, extracting)
     # print(feats['H653A_48a'])
 
     
     # shiftFeatures(translationVector, tifShapes, dataSegment, feats, size, saving = True)
 
     print('Alignment complete')
-
-    pass
 
     # NOTE TODO perform rotational optimisation fit
 
@@ -168,8 +170,11 @@ def segmentExtract(data, featDir, size, extracting = True):
 
         if extracting:
             # save the segmented tissue
-            name = nameFromPath(featDir['tif']) + p + "_" + str(size) + '.tif'
-            tifi.imwrite(segSamples + name, tifSeg)
+            print("Extracting " + nameFromPath(featDir['tif']) + p)
+            nameP = nameFromPath(featDir['tif']) + p + "_" + str(size) + '.tif'
+            tifi.imwrite(segSamples + nameP, tifSeg)
+        else:
+            print("NOT Extracting, processing " + nameFromPath(featDir['tif']) + p)
 
     return(areas, tifShape)
 
@@ -243,7 +248,7 @@ def shiftFeatures(feats):
 
     # initialise the first sample with no transformation
     translateNet[featNames[0]] = np.array([0, 0])
-    rotateNet[featNames[0]] = cv2.getRotationMatrix2D((1, 1), 0, 1)
+    rotateNet[featNames[0]] = 0
 
     # perform transformations on neighbouring slices and build them up as you go
     for i in range(len(featNames)-1):
@@ -253,7 +258,7 @@ def shiftFeatures(feats):
         for fn in featNames[i:i+2]:
             featsO[fn] = feats[fn]
 
-        print("Transforming " + fn)
+        print("Transforming " + fn + " features")
 
         # -------- translation only --------
         '''
@@ -324,7 +329,7 @@ def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, siz
     for n in dataSegment:
 
         dirn = dataSegment[n]['segments']
-        dirToSave = regionOfPath(dirn) + n + "_" + str(size)
+        dirToSave = regionOfPath(dirn) + "annotated_" + n + "_" + str(size)
         
         field = cv2.imread(dirn)
 
@@ -334,21 +339,25 @@ def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, siz
         # field = (np.ones((fx, fy, fc)) * 255).astype(np.uint8)      # this is used to essentially create a mask of the image for debugging
         # warp = cv2.warpAffine(field, rotateNet['H653A_48a'], (fy, fx))    # this means there is no rotation applied
 
-        # apply the rotational transformation to the image
-        warp = cv2.warpAffine(field, rotateNet[n], (fy, fx))
-
         # translate the image  
         newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
         yp = -translateNet[n][0] + maxSy
         xp = -translateNet[n][1] + maxSx
-        newField[xp:(xp+fx), yp:(yp+fy), :] += warp
+        newField[xp:(xp+fx), yp:(yp+fy), :] += field
+
+        # apply the rotational transformation to the image
+        # centre = findCentre(dictToArray(feats[n]) + np.array([xp, yp]))
+        centre = findCentre(feats[n])
+
+        rot = cv2.getRotationMatrix2D(tuple(centre), -rotateNet[n], 1)
+        warped = cv2.warpAffine(newField, rot, (yF, xF))
 
         featSpecAdjust = dictToArray(feats[n]) + np.array([maxSy, maxSx])
-        plotPoints(dirToSave + '_aligned.jpg', newField, featSpecAdjust)                     # plots features on the image with padding for all image translations 
+        plotPoints(dirToSave + '_aligned.jpg', warped, featSpecAdjust)                     # plots features on the image with padding for all image translations 
         
         # this takes a while so optional
         if saving:
-            cv2.imwrite(dirToSave + '_aligned.tif', newField)                               # saves the adjusted image at full resolution 
+            cv2.imwrite(dirToSave + '_aligned.tif', warped)                               # saves the adjusted image at full resolution 
 
         print("done translation of " + n)
 
@@ -409,7 +418,9 @@ def rotatePoints(feats):
 
     rotationStore = {}
     segments = list(feats.keys())
-    rotationStore[segments[0]] = cv2.getRotationMatrix2D((0, 0), 0, 1)  # first segment has no rotational transform
+    # rotationStore[segments[0]] = cv2.getRotationMatrix2D((0, 0), 0, 1)  # first segment has no rotational transform
+    rotationStore[segments[0]] = 0
+    
     featsMod = feats.copy()
     ref = feats[segments[0]]
 
@@ -433,14 +444,14 @@ def rotatePoints(feats):
         # get the shift needed and store
         res = minimize(objectivePolar, (5), args=(refP, tarP, True), method = 'Nelder-Mead', tol = 1e-6) # NOTE create bounds on the rotation
         rotate, refR = objectivePolar(res.x, refP, tar, False)   # get the affine transformation used for the optimal rotation
-        rotationStore[i] = rotate
+        rotationStore[i] = float(rotate)
 
         # reassign this as the new feature
         featsMod[i] = refR
 
     return(rotationStore, featsMod)
 
-def plotPoints(dir, imgO, points):
+def plotPoints(dir, imgO, points, plot = False):
 
     # plot circles on annotated points
     # Inputs:   (dir), either a directory (in which case load the image) or the numpy array of the image
@@ -456,15 +467,22 @@ def plotPoints(dir, imgO, points):
 
     img = imgO.copy()
 
+    si = 50
     for p in points:       # use the target keys in case there are features not common to the previous original 
-        si = 50
         pos = tuple(np.round(p).astype(int))
         img = cv2.circle(img, pos, si, (255, 0, 0), si) 
+    
+    # plot the centre as well
+    img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
 
+    # resize the image
     x, y, c = img.shape
     imgResize = cv2.resize(img, (1000, int(1000 * x/y)))
-    
-    cv2.imwrite(dir, img,  [cv2.IMWRITE_JPEG_QUALITY, 20])
+
+    if plot:
+        plt.imshow(imgResize); plt.show()
+    else:
+        cv2.imwrite(dir, imgResize,  [cv2.IMWRITE_JPEG_QUALITY, 80])
 
 def objectiveCartesian(pos, *args):
 
@@ -500,6 +518,10 @@ def objectivePolar(w, *args):
     ref = args[0]   # the first argument is ALWAYS the reference
     tar = args[1]   # the second argument is ALWAYS the target
     minimising = args[2]
+    try:
+        plotting = args[3]
+    except:
+        plotting = False
     tarN = {}
 
     # this will shrink the matrices made and all the feature co-ordinates by this 
@@ -508,7 +530,7 @@ def objectivePolar(w, *args):
     scale = 10
 
     # find the centre of the target from the annotated points
-    tarA = (dictToArray(tar)/scale).astype(int)
+    tarA = np.round(dictToArray(tar)/scale).astype(int)
     centre = findCentre(tarA)       # this is the mean of all the features
 
     Xmax = int(tarA[:, 0].max())
@@ -516,10 +538,18 @@ def objectivePolar(w, *args):
     Ymax = int(tarA[:, 1].max())
     Ymin = int(tarA[:, 1].min())
 
-    x, y = (Xmax - Xmin + 1, Ymax - Ymin + 1)
+    y, x = (Ymax - Ymin, Xmax - Xmin)
 
-    # get the max distance of features
-    ext = ceil(np.sqrt(np.max(np.sum((tarA-centre)**2, axis = 1))))  
+    # create an array to contain all the points found and rotated
+    m = 40
+
+    # debugging stuff --> shows that the rotational transformation is correct on the features
+    # so it would suggest that the centre point on the image is not being matched up well
+    
+    if plotting:
+        totalField = np.zeros([y + int(2*m), x + int(2*m), 3])
+        cv2.circle(totalField, tuple(centre - [Xmin, Ymin]), 3, (0, 0, 255), 6)
+    
 
     # process per target feature
     tarNames = list(tar)
@@ -533,13 +563,16 @@ def objectivePolar(w, *args):
     for n in range(len(tarNames)):
 
         i = tarNames[n]
-        featPos = tarA[n, :]
+
+        # find the feature relative to the centre
+        featPos = tarA[n, :] - centre
 
         # find the max size a matrix would need to be to allow this vector to perform a 360º rotation
-        ext = ceil(np.sqrt(np.sum((featPos-centre)**2)))
-        fN = featPos - centre + ext
+        ext = ceil(np.sqrt(np.sum((featPos)**2)))
+        fN = featPos + ext          # place the feature within the bounding area ext x ext
         tarB = np.zeros([ext*2, ext*2])
         tarB[fN[0], fN[1]] = 1
+
 
         # create the rotational transformation and apply
         rot = cv2.getRotationMatrix2D((ext, ext), w, 1)
@@ -549,15 +582,24 @@ def objectivePolar(w, *args):
         tarPosWarp = np.array(np.where(warp > 0))                          
         tarPossible = np.stack([tarPosWarp[0, :], tarPosWarp[1, :]], axis = 1)     # array reshaped for consistency
 
+
         # get the non-zero values at the found positions
         #   NOTE the rotation causes the sum of a single point (ie 1) to be spread
         #   over several pixels. Find the spread pixel which has the greatest
         #   representation of the new co-ordinate and save that
         v = warp[tuple(tarPosWarp)]
         
+        newfeatPos = tarPossible[np.argmax(v)] + centre - ext
         # apply transformation to normalise and extract ONLY the value with the largest portion of its rotation
-        tarN[i] = ((tarPossible[np.argmax(v)] + centre - ext)*scale).astype(int)
+        tarN[i] = np.round((newfeatPos)*scale).astype(int)
 
+        
+        if plotting: 
+            cv2.circle(totalField, tuple([featPos[0] + centre[0] + m - Xmin, featPos[1] + centre[1] + m - Ymin]), 3, (255, 0, 0), 6)
+            cv2.circle(totalField, tuple([newfeatPos[0]+m - Xmin, newfeatPos[1]+m - Ymin]), 3, (0, 255, 0), 6)
+            # print([featPos[0] + centre[0] + m - Xmin, featPos[1] + centre[1] + m - Ymin])
+            plt.imshow(totalField); plt.show()        
+    # print("w = " + str(w))
     # if optimising, return the error. 
     # if not optimising, return the affine matrix used for the transform
     tarNa = dictToArray(tarN, int)
@@ -565,11 +607,12 @@ def objectivePolar(w, *args):
         # error calculation
         refa = dictToArray(ref, int)
         err = np.sum((tarNa - refa)**2)
+        # print("     err = " + str(err))
+
         return(err)  
 
     else:
-        rotFinal = cv2.getRotationMatrix2D(tuple(findCentre(tarNa)), -w, 1)
-        return(rotFinal, tarN)
+        return(w, tarN)
 
 def findCentre(pos):
 
@@ -577,11 +620,14 @@ def findCentre(pos):
     # Inputs:   (pos), array
     # Outputs:  (centre), the mean of the x and y points (rounded and as an int)
 
+    if type(pos) == dict:
+        pos = dictToArray(pos)
+
     centre = np.array([np.round(np.mean(pos[:, 0])), np.round(np.mean(pos[:, 1]))]).astype(int)
 
     return(centre)
 
-'''
+
 # dataHome is where all the directories created for information are stored 
 dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/'
 # dataHome = '/Volumes/Storage/'
@@ -592,5 +638,4 @@ dataTrain = dataHome + 'HistologicalTraining2/'
 name = ''
 size = 3
 
-align(dataTrain, name, size)
-'''
+align(dataTrain, name, size, True)

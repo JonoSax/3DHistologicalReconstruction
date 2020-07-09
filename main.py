@@ -25,31 +25,35 @@ Extent of training (epochs, batch)
 dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/'
 
 # dataTrain is where the ndpi and ndpa files are stored 
-dataTrain = dataHome + 'HistologicalTraining/'
+dataTrain = dataHome + 'HistologicalTraining2/'
 
 # data directory containing the wsi images to be assessed
 dataAssess = dataHome + "samples/"
 
-size = 2
+size = 3
 kernel = 30
-name = 'testWSI1'
+name = ''
 portion = 0.2
 
 # NOTE: update directories used between dataHome and dataTrain
 
 # Extract all the manual co-ordinates of the annotated tissue
-SegmentLoad.readndpa(dataTrain, name)
-#
+SegmentLoad.readannotations(dataTrain, name)
+
 ## create the masks of the annotationes
 MaskMaker.maskCreator(dataTrain, name, size)
-#
+
 ## from the wsi, get the target tif resolution
 WSILoad.load(dataTrain, name, size)
 # WSILoad.load(dataAssess, name, size)
 
+# extract the individual specmimens
+SegmentID.align(dataTrain, name, size)
+
 ## Extract the target tissue from the tif files 
 WSIExtract.segmentation(dataTrain, name, size)
-#
+
+'''
 ## create quadrants of the target tissue from the extracted tissue
 targetTissue.quadrant(dataTrain, name, kernel)
 
@@ -61,3 +65,4 @@ modelDir, class2feat = ModelTrainer.train(dataTrain, name = 'text', epoch=4, tra
 
 # ModelEvaluater.main(dataTrain, dataAssess, modelDir, class2feat)
 
+'''
