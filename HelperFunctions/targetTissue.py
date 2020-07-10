@@ -60,10 +60,10 @@ def quadrant(dataTrain, name = '', size = 0, kernel = 50):
                 # imgB = np.unique(np.stack([imgBs[0], imgBs[1]], axis = 1), axis = 0)
                 # denseMatrixViewer(imgB)
 
-                # if more than 90% of the points (TBC) within the kernel are target tissue
+                # if more than 95% of the points (TBC) within the kernel are target tissue
                 # then save the kerneled area as a training image
                 if imgBn < kernel ** 2 * 0.05:
-                    cv2.imwrite(dirSegment + str(name) + "_s" + str(size) + "_k" + str(kernel) + "_n" + str(n) + ".tif", imgK)
+                    cv2.imwrite(dirSegment + str(name) + "_" + str(n) + "_s" + str(size) + "_k" + str(kernel) + ".tif", imgK)
                     n+=1
 
         print(str(n) + " training samples created from " + str(name))

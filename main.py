@@ -22,21 +22,21 @@ Extent of training (epochs, batch)
 '''
 
 # dataHome is where all the directories created for information are stored 
-dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/'
+dataHome = '/Volumes/Storage/'
 
 # dataTrain is where the ndpi and ndpa files are stored 
-dataTrain = dataHome + 'HistologicalTraining2/'
+dataTrain = dataHome + 'FeatureID/'
 
 # data directory containing the wsi images to be assessed
 dataAssess = dataHome + "samples/"
 
 size = 3
-kernel = 30
+kernel = 50
 name = ''
 portion = 0.2
 
 # NOTE: update directories used between dataHome and dataTrain
-
+'''
 # Extract all the manual co-ordinates of the annotated tissue
 SegmentLoad.readannotations(dataTrain, name)
 
@@ -49,14 +49,14 @@ WSILoad.load(dataTrain, name, size)
 
 # extract the individual specmimens
 SegmentID.align(dataTrain, name, size)
+'''
 
 ## Extract the target tissue from the tif files 
 WSIExtract.segmentation(dataTrain, name, size)
+## create quadrants of the target tissue from the extracted tissue
+targetTissue.quadrant(dataTrain, name, size, kernel)
 
 '''
-## create quadrants of the target tissue from the extracted tissue
-targetTissue.quadrant(dataTrain, name, kernel)
-
 # Creating the training data --> NOTE every time it does this it creates a replaces the previous testing/training data
 DataGenerator.main(dataTrain, portion, 'vessel')
 
