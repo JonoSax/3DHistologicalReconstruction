@@ -18,8 +18,6 @@ tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
 
 def trainingDirs(data, target, label, *args):
 
-    print("\nSTARTING UTILITIES/TRAININGDIRS")
-
     # This function takes data and copies it from that location into a new directory containing all the training data
     # of the true labels
     # Inputs:   (data), the directory of the data
@@ -53,11 +51,8 @@ def trainingDirs(data, target, label, *args):
 
     # copy the data into created folders
     copy(data, dirn)
-    print("STARTING UTILITIES/TRAININGDIRS\n")
 
 def listToTxt(data, dir, **kwargs):
-
-    print("\nSTARTING UTILITIES/LISTTOTXT")
 
     # Converts a list of information into a txt folder with the inputted name
     # Inputs:   (data), the single list to be saved
@@ -127,11 +122,8 @@ def listToTxt(data, dir, **kwargs):
     f.write("EndData")
 
     f.close()
-    print("ENDING UTILITIES/LISTTOTXT\n")
 
 def txtToList(dir):
-
-    print("\nSTARTING UTILITIES/TXTTOLIST")
 
     # Reads in a text file which was saved with the listToTxt function
     # Inputs:   (dir), the name of a single file
@@ -166,7 +158,6 @@ def txtToList(dir):
 
         sampleList.append(storedData)
 
-    print("ENDING UTILITIES/TXTTOLIST\n")
     return(sampleList, args)
 
 def dictToTxt(data, dir, **kwargs):
@@ -291,10 +282,7 @@ def denseMatrixViewer(coords, plot = True):
 
     return(area, shift)
 
-    print("STARTING UTILITIES/DENSEMATRIXVIEWER\n")
-
 def quadrantLines(dir, dirTarget, kernel):
-    print("\nSTARTING UTILITIES/QUADRANTLINES")
 
     # This function adds the quadrant lines onto the tif file
     # Inputs:   (dir), the SPECIFIC name of the original tif image 
@@ -333,44 +321,18 @@ def quadrantLines(dir, dirTarget, kernel):
     cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
     # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
 
-    print("ENDING UTILITIES/QUADRANTLINES\n")
     return(newImg, scale)
 
-def maskCover(scale, imgTarget, masks):
+def maskCover(dir, dirTarget, masks):
 
-    print("\nSTARTING UTILITIES/MASKCOVER")
-
-    # This function adds the masks onto the tif file
-    # Inputs:   (scale), the scale factor for the downsampled image
-    #           (imgTarget), the image which the masks will be added to
-    #           (mask), mask information
-    # Outputs:  (), re-saves the image with the mask area as an inverse colour area
-    
-    # read in both original and target image
-
-    imgM = cv2.imread(imgTarget)
-
-    for mask in masks:
-
-        for x, y in mask:
-            # inverse colours of mask areas
-            imgM[y, x, :] = 255 - imgM[y, x, :]
-
-    cv2.imwrite(imgTarget, imgM)
-
-
-    print("ENDING UTILITIES/MASKCOVER\n")
-
-def maskCover2(dir, dirTarget, masks):
-    print("\nSTARTING UTILITIES/QUADRANTLINES")
-
-    # This function adds the quadrant lines onto the tif file
+    # This function adds add the mask outline to the image
     # Inputs:   (dir), the SPECIFIC name of the tif image the mask was made on
     #           (dirTarget), the location to save the image
     #           (kernel), kernel size
-    # Outputs:  (), re-saves the image with quadrant lines drawn over it
+    # Outputs:  (), re-saves the image with mask of the vessels drawn over it
 
     imgO = tifi.imread(dir)
+    imgO = cv2.cvtColor(imgO, cv2.COLOR_RGB2BGR)
     hO, wO, cO = imgO.shape
 
     # if the image is more than 70 megapixels downsample 
@@ -394,7 +356,6 @@ def maskCover2(dir, dirTarget, masks):
     cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
     # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
 
-    print("ENDING UTILITIES/QUADRANTLINES\n")
     return(newImg, scale)
 
 def dataPrepare0(imgDir):

@@ -75,7 +75,7 @@ def segmentation(dataTrain, imageName = '', size = 0):
             cv2.imwrite(targetTissueDir + sampleName + "_" + str(n) + "_vessel.tif", target.astype(np.uint8)) # NOTE ATM this is only for one class, vessels. In the future add arguments for different classes
             
         # create a user viewable image of the WSI and annotated areas
-        maskCover2(tifDir, dataTrain + 'maskFiles' + sampleName + "masked", mask)
+        maskCover(tifDir, dataTrain + 'maskFiles/' + sampleName + "masked", mask)
         print("created " + dataTrain + sampleName + "masked")
 
 
