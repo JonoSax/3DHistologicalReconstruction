@@ -108,34 +108,6 @@ def readannotations(dataTrain, specimen = ''):
         if len(info) > 0:
             dictToTxt(info, dataTrain + 'featFiles/' + spec + ".feat")
 
-    '''
-    for spec in range(len(ndpaNames)):
-
-        # create txt file which contains these co-ordinates
-        # f = open(str(ndpaNames[spec]) + ".pos", 'w')
-
-        stacks = list()
-        nameFromPath
-        # create the file name
-        dirSave = nameFromPath(ndpaNames[spec]) + ".pos"
-
-        # npdi properties
-        centreShift = np.hstack([xShift[spec], yShift[spec]])
-        topLeftShift = np.hstack([xDim[spec]/(2 * xRes[spec]), yDim[spec]/(2 * yRes[spec])])
-        scale = np.hstack([xRes[spec], yRes[spec]])
-        posSpec = posAll[spec]
-        # f.write("NUMBER_OF_ANNOTATIONS=" + str(len(posSpec)) + "\n")
-        for i in range(len(posAll[spec])):
-            
-            # co-ordinate transformation
-            stack = ((posSpec[i] - centreShift + topLeftShift ) * scale).astype(int)
-            
-            # save into a list
-            stacks.append(stack)
-
-        # save the entire list as a txt file per utilities saving structure
-        listToTxt(stacks, dataPos + dirSave, Entries = str(len(posAll[spec])), xDim = str(xDim[spec]), yDim = str(yDim[spec]))
-    '''
     print("Co-ordinates extracted and saved in " + dataTrain)
 
 def readlandmarks(ndpaPath):
