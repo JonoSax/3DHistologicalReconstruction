@@ -68,6 +68,8 @@ def readannotations(dataTrain, specimen = ''):
         ndpaPath = specDict[spec]['ndpa']
         ndpiPath = specDict[spec]['ndpi']
 
+        print("\n" + spec)
+
         # get the drawn annotations
         posA = getAnnotations(ndpaPath)
         info = readlandmarks(ndpaPath)
@@ -151,7 +153,7 @@ def readlandmarks(ndpaPath):
     doco = list(file.readlines())
 
     # find the number of annotations drawn in the slide --> Used to validate that the search is completed
-    sections = open(ndpaPath).read().count('type="pin"')
+    pins = open(ndpaPath).read().count('type="pin"')
 
     # declare list and array
     info = {}
@@ -187,6 +189,11 @@ def readlandmarks(ndpaPath):
             l += 1
 
     file.close()
+
+    try:
+        print(str(len(info)/pins*100)+"% of pins found")
+    except:
+        print("0 pins found")
 
     return(info)
 
@@ -241,12 +248,11 @@ def getAnnotations(ndpaPath):
         else:
             l+=1    # if no info found, just iterate through
     
-    # NOTE this needs to be upated to represented ONLY the drawn points
-    # and nothing else
+    # check to assess if all points found 
     try:
-        print(str(len(posA)/sections*100)+"% of section " + nameFromPath(ndpaPath) + " found")
+        print(str(len(posA)/sections*100)+"% of annotations found")
     except:
-        print("0 sections found")
+        print("0 annotations found")
 
     file.close()
 
@@ -279,8 +285,6 @@ def readXML(ndpaPath):
     pass
     
 def normaliseNDPA(sliceDir):
-
-    print("\nSTARTING SEGMENTLOAD/NORMALISENDPA\n")
 
     # This functions reads the properties of the ndpi files and extracts the properties 
     # of the file.

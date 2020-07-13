@@ -5,12 +5,12 @@ regions which are the annotate tissue
 
 '''
 
+from .Utilities import *
 import os
 import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 from skimage.segmentation import flood_fill
-from .Utilities import *
 
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
