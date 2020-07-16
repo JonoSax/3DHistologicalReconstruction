@@ -10,10 +10,6 @@ from PIL import Image
 from glob import glob
 from .Utilities import *
 
-# magnification levels of the tif files available
-tifLevels = [0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20]
-
-
 def segmentation(dataTrain, imageName = '', size = 0):
 
     # This function is extracting the exact annotated area of the vessel from the original tif
@@ -28,16 +24,13 @@ def segmentation(dataTrain, imageName = '', size = 0):
     maskDirs = sorted(glob(dataTrain + 'maskFiles/' + imageName + "*_" + str(size) + ".mask"))
 
     # get the tif file directories
-    tifDirs = sorted(glob(dataTrain + 'tifFiles/' + imageName + "*_" + str(size) + ".tif"))
+    tifDirs = sorted(glob(dataTrain + '/' + str(size) + '/tifFiles/' + imageName + "*_" + str(size) + ".tif"))
 
     sampleNames = nameFromPath(tifDirs)
 
     # specify the root directory where the identified tissue will be stored 
-    targetTissueDir = dataTrain + 'targetTissue/'
-    try:
-        os.mkdir(targetTissueDir)
-    except:
-        pass
+    targetTissueDir = dataTrain + '/' + str(size) + '/targetTissue/'
+    dirMaker(targetTissueDir)
 
     # process per specimen
     for maskDir, tifDir, sampleName in zip(maskDirs, tifDirs, sampleNames):

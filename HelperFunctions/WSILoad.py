@@ -16,7 +16,7 @@ from .Utilities import *
 # size = 0
 
 # magnification levels of the tif files available
-tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
+tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
 
 def load(dataTrain, imageName = '', size = 0):
@@ -35,21 +35,18 @@ def load(dataTrain, imageName = '', size = 0):
     # convert ndpi images into tif files of set size
 
     # create a folder for the tif files
-    dataTif = dataTrain + 'tifFiles'
-    try:
-        os.mkdir(dataTif)
-    except:
-        pass
+    dataTif = dataTrain + str(size) + '/tifFiles/'
+    dirMaker(dataTif)
 
-    imagesNDPI = glob(dataTrain + imageName + "*.ndpi")
+    imagesNDPI = sorted(glob(dataTrain + imageName + "*.ndpi"))
     
     # convert the ndpi into a tif
     for img in imagesNDPI:
         print(nameFromPath(img) + " converted @ " + str(tifLevels[size]) + " res")
-        ndpiLoad(size, img)
+        ndpiLoad(size, img, dataTif)
 
 
-def ndpiLoad(sz, src):
+def ndpiLoad(sz, src, dest):
 
     # This function extracts tif files from the raw ndpi files. This uses the 
     # ndpitool from https://www.imnc.in2p3.fr/pagesperso/deroulers/software/ndpitools/ 
@@ -57,6 +54,7 @@ def ndpiLoad(sz, src):
     # Input:    (i), magnificataion level to be extracted from the ndpi file
     #           options are 0.15625, 0.3125, 0.625, 1.25, 2.5, 5, 10, 20
     #           (src), file to be extracted with set magnification
+    #           (dest), destination
     # Output:   (), tif file of set magnification, saved in the tifFiles directory
 
     mag = tifLevels[sz]
@@ -70,7 +68,7 @@ def ndpiLoad(sz, src):
                                                                 # duplication of the same file, however 
                                                                 # if there is z shift then this will fail
 
-    imgDir = dirSRC + 'tifFiles/' + nameSRC + "_" + str(sz) + ".tif"
+    imgDir = dest + nameSRC + "_" + str(sz) + ".tif"
     os.rename(extractedName, imgDir)
 
     

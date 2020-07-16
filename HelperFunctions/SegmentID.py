@@ -14,7 +14,7 @@ from scipy.optimize import minimize
 from math import ceil
 from time import clock
 
-tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
+tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
 def align(data, name = '', size = 0, extracting = True):
 
@@ -28,8 +28,10 @@ def align(data, name = '', size = 0, extracting = True):
 
     # get the file of the features information 
     dataFeat = sorted(glob(data + 'featFiles/' + name + '*.feat'))
-    dataTif = sorted(glob(data + 'tifFiles/' + name + '*' + str(size) + '.tif'))
-
+    dataTif = sorted(glob(data + '/' + str(size) + '/tifFiles/' + name + '*' + str(size) + '.tif'))
+    segSamples = data + str(size) + '/segmentedSamples/'
+    alignedSamples = data + str(size) + '/alignedSamples/'
+    
     # create the dictionary of the directories
     featDirs = dictOfDirs(feat = dataFeat, tif = dataTif)
 
@@ -41,13 +43,13 @@ def align(data, name = '', size = 0, extracting = True):
         # for samples with identified features
         # try:
         # extract the single segment
-        corners, tifShape = segmentExtract(data, featDirs[spec], size, extracting)
+        corners, tifShape = segmentExtract(data, segSamples, featDirs[spec], size, extracting)
         
         for t in tifShape.keys():
             tifShapes[t] = tifShape[t]
 
         # get the feature specific positions
-        feat = featAdapt(data, featDirs[spec], corners, size)
+        feat = featAdapt(data, segSamples, featDirs[spec], corners, size)
 
         for s in feat.keys():
             feats[s] = feat[s]
@@ -59,19 +61,20 @@ def align(data, name = '', size = 0, extracting = True):
     translateNet, rotateNet, feats = shiftFeatures(feats)
 
     # apply the transformations to the samples
-    segName = data + 'segmentedSamples/' + name + "*" + str(size) + '.tif'
+    segName = segSamples + name + "*" + str(size) + '.tif'
 
     # get the segmented images
-    dataSegment = dictOfDirs(segments = glob(segName))
+    segmentedSamples = dictOfDirs(segments = glob(segName))
 
-    transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, size, extracting)
+    transformSamples(segmentedSamples, alignedSamples, tifShapes, translateNet, rotateNet, feats, size, extracting)
     
     print('Alignment complete')
 
-def segmentExtract(data, featDir, size, extracting = True):
+def segmentExtract(data, segSamples, featDir, size, extracting = True):
 
     # this funciton extracts the individaul sample from the slice
     # Inputs:   (data), home directory for all the info
+    #           (segSamples), destination
     #           (featDir), the dictionary containing the sample specific dirs 
     #           (size), the size of the image being processed
     #           (extracting), boolean whether to load in image and save new one
@@ -82,11 +85,8 @@ def segmentExtract(data, featDir, size, extracting = True):
     scale = tifLevels[size] / max(tifLevels)
 
     # create the directory to save the samples
-    segSamples = data + 'segmentedSamples/'
-    try:
-        os.mkdir(segSamples)
-    except:
-        pass
+    dirMaker(segSamples)
+
     tifShape = {}
     keys = list(featInfo.keys())
     bound = {}
@@ -158,11 +158,12 @@ def segmentExtract(data, featDir, size, extracting = True):
 
         # plt.imshow(tifSeg); plt.show()
 
-def featAdapt(data, featDir, corners, size):
+def featAdapt(data, dest, featDir, corners, size):
 
     # this function take the features of the annotated features and converts
     # them into the local co-ordinates which are used to align the tissues
     # Inputs:   (data), home directory for all the info
+    #           (dest), destination for outputs to be saved
     #           (featDir), the dictionary containing the sample specific dirs
     #           (corners), the global co-ordinate of the top left edge of the img extracted
     #           (size), the size of the image being processed
@@ -204,7 +205,7 @@ def featAdapt(data, featDir, corners, size):
     for p in specFeatInfo.keys():
         name = nameFromPath(featDir['tif']) + p + "_" + str(size) + ".feat"
         specFeatOrder[nameSpec+p] = specFeatInfo[p]
-        dictToTxt(specFeatInfo[p], data + "segmentedSamples/" + name)
+        dictToTxt(specFeatInfo[p], dest + name)
 
     return(specFeatOrder)
 
@@ -290,10 +291,11 @@ def shiftFeatures(feats):
 
     return(translateNet, rotateNet, feats)
 
-def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, size, saving = True):
+def transformSamples(src, dest, tifShapes, translateNet, rotateNet, feats, size, saving = True):
 
     # this function takes the affine transformation information and applies it to the samples
-    # Inputs:   (dataSegment), directories
+    # Inputs:   (src), directories of the segmented samples
+    #           (dest), directories to save the aligned samples
     #           (translateNet), the translation information to be applied per image
     #           (rotateNet), the rotation information to be applied per image
     # Outputs   (), saves an image of the tissue with the necessary padding to ensure all images are the same size and roughly aligned if saving is True
@@ -304,6 +306,9 @@ def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, siz
     maxSx = np.max(ss[:, 1])
     minSy = np.min(ss[:, 0])
     minSx = np.min(ss[:, 1]) 
+
+    # make destinate directory
+    dirMaker(dest)
 
     # get the maximum dimensions of all the tif images
     tsa = dictToArray(tifShapes, int)
@@ -317,10 +322,9 @@ def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, siz
     # ---------- apply the transformations onto the images ----------
 
     # adjust the translations of each image and save the new images with the adjustment
-    for n in dataSegment:
+    for n in src:
 
-        dirn = dataSegment[n]['segments']
-        dirToSave = regionOfPath(dirn) + n + "_" + str(size)
+        dirn = src[n]['segments']
         
         field = cv2.imread(dirn)
 
@@ -344,11 +348,11 @@ def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, siz
         warped = cv2.warpAffine(newField, rot, (yF, xF))
 
         featSpecAdjust = dictToArray(feats[n]) + np.array([maxSy, maxSx])
-        plotPoints(dirToSave + '_alignedAnnotated.jpg', warped, featSpecAdjust)                     # plots features on the image with padding for all image translations 
+        plotPoints(dest + n + '_alignedAnnotated.jpg', warped, featSpecAdjust)                     # plots features on the image with padding for all image translations 
         
         # this takes a while so optional
         if saving:
-            cv2.imwrite(dirToSave + '_aligned.tif', warped)                               # saves the adjusted image at full resolution 
+            cv2.imwrite(dest + n + '.tif', warped)                               # saves the adjusted image at full resolution 
 
         print("done translation of " + n)
 
@@ -447,8 +451,9 @@ def plotPoints(dir, imgO, points, plot = False):
 
     # plot circles on annotated points
     # Inputs:   (dir), either a directory (in which case load the image) or the numpy array of the image
-    #           (img), image directory
+    #           (imgO), image directory
     #           (points), dictionary or array of points which refer to the co-ordinates on the image
+    #           (plot), boolean whether to plot instead of saving, defaults to false
     # Outputs:  (), saves downsampled jpg image with the points annotated
 
     if type(points) is dict:
@@ -474,7 +479,7 @@ def plotPoints(dir, imgO, points, plot = False):
     if plot:
         plt.imshow(imgResize); plt.show()
     else:
-        cv2.imwrite(dir, imgResize,  [cv2.IMWRITE_JPEG_QUALITY, 100])
+        cv2.imwrite(dir, imgResize,  [cv2.IMWRITE_JPEG_QUALITY, 80])
 
 def objectiveCartesian(pos, *args):
 
