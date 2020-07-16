@@ -27,8 +27,8 @@ def align(data, name = '', size = 0, extracting = True):
     #           their identified featues
 
     # get the file of the features information 
-    dataFeat = sorted(glob(data + name + 'featFiles/*.feat'))
-    dataTif = sorted(glob(data + name + 'tifFiles/*' + str(size) + '.tif'))
+    dataFeat = sorted(glob(data + 'featFiles/' + name + '*.feat'))
+    dataTif = sorted(glob(data + 'tifFiles/' + name + '*' + str(size) + '.tif'))
 
     # create the dictionary of the directories
     featDirs = dictOfDirs(feat = dataFeat, tif = dataTif)
@@ -39,27 +39,27 @@ def align(data, name = '', size = 0, extracting = True):
 
     for spec in featDirs.keys():
         # for samples with identified features
-        try:
-            # extract the single segment
-            corners, tifShape = segmentExtract(data, featDirs[spec], size, extracting)
-            
-            for t in tifShape.keys():
-                tifShapes[t] = tifShape[t]
+        # try:
+        # extract the single segment
+        corners, tifShape = segmentExtract(data, featDirs[spec], size, extracting)
+        
+        for t in tifShape.keys():
+            tifShapes[t] = tifShape[t]
 
-            # get the feature specific positions
-            feat = featAdapt(data, featDirs[spec], corners, size)
+        # get the feature specific positions
+        feat = featAdapt(data, featDirs[spec], corners, size)
 
-            for s in feat.keys():
-                feats[s] = feat[s]
+        for s in feat.keys():
+            feats[s] = feat[s]
 
-        except:
-            print("No features for " + spec)
+        # except:
+        #    print("No features for " + spec)
         
     # get affine transformation information of the features for optimal fitting
     translateNet, rotateNet, feats = shiftFeatures(feats)
 
     # apply the transformations to the samples
-    segName = data + name + 'segmentedSamples/*' + str(size) + '.tif'
+    segName = data + 'segmentedSamples/' + name + "*" + str(size) + '.tif'
 
     # get the segmented images
     dataSegment = dictOfDirs(segments = glob(segName))
@@ -310,7 +310,7 @@ def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, siz
     mx, my, mc = np.max(tsa, axis = 0)
 
     # get the dims of the total field size to be created for all the images stored
-    xF, yF, cF = (mx + maxSx, my + maxSy, mc)       # NOTE this will always be slightly larger than necessary because to work it    
+    xF, yF, cF = (mx + maxSx - minSx, my + maxSy - minSy, mc)       # NOTE this will always be slightly larger than necessary because to work it    
                                                                     # out precisely I would have to know what the max displacement + size of the img
                                                                     # is... this is over-estimating the size needed but is much simpler
 
@@ -332,13 +332,13 @@ def transformSamples(dataSegment, tifShapes, translateNet, rotateNet, feats, siz
 
         # translate the image  
         newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
-        yp = -translateNet[n][0] + maxSy
-        xp = -translateNet[n][1] + maxSx
+        yp = -translateNet[n][0] + maxSy 
+        xp = -translateNet[n][1] + maxSx 
         newField[xp:(xp+fx), yp:(yp+fy), :] += field
 
         # apply the rotational transformation to the image
         # centre = findCentre(dictToArray(feats[n]) + np.array([xp, yp]))
-        centre = findCentre(feats[n])
+        centre = findCentre(feats[n]) + np.array([maxSy, maxSx])
 
         rot = cv2.getRotationMatrix2D(tuple(centre), -rotateNet[n], 1)
         warped = cv2.warpAffine(newField, rot, (yF, xF))
@@ -469,12 +469,12 @@ def plotPoints(dir, imgO, points, plot = False):
 
     # resize the image
     x, y, c = img.shape
-    imgResize = cv2.resize(img, (1000, int(1000 * x/y)))
+    imgResize = cv2.resize(img, (2000, int(2000 * x/y)))
 
     if plot:
         plt.imshow(imgResize); plt.show()
     else:
-        cv2.imwrite(dir, imgResize,  [cv2.IMWRITE_JPEG_QUALITY, 80])
+        cv2.imwrite(dir, imgResize,  [cv2.IMWRITE_JPEG_QUALITY, 100])
 
 def objectiveCartesian(pos, *args):
 
@@ -563,7 +563,7 @@ def objectivePolar(w, *args):
         # find the max size a matrix would need to be to allow this vector to perform a 360º rotation
         ext = ceil(np.sqrt(np.sum((featPos)**2)))
         fN = featPos + ext          # place the feature within the bounding area ext x ext
-        tarB = np.zeros([ext*2, ext*2])
+        tarB = np.zeros([ext*2+1, ext*2+1])
         tarB[fN[0], fN[1]] = 1
 
 
