@@ -11,6 +11,7 @@ from. import targetTissue
 from . import ModelTrainer
 from. import ModelEvaluater
 from. import SegmentID
+from. import stackAligned
 
 
 class data(object):
