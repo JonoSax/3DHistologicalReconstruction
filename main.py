@@ -22,13 +22,13 @@ Extent of training (epochs, batch)
 '''
 
 # dataHome is where all the directories created for information are stored 
-dataHome = '/Volumes/Storage/'
+dataHome = '/Volumes/USB/'
 
 # research drive access from HPC
 # dataHome = '/eresearch/uterine/jres129/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/H653A_11.3\ new/'
 
 # research drive access via VPN
-dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
+# dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
 
 # dataTrain is where the ndpi and ndpa files are stored 
 dataTrain = dataHome + 'H653A_11.3new/'
@@ -42,27 +42,31 @@ name = ''
 portion = 0.2
 
 # NOTE: update directories used between dataHome and dataTrain
-
+'''
 # Extract all the manual co-ordinates of the annotated tissue
+print("\n----------- segmentload -----------")
 SegmentLoad.readannotations(dataTrain, name)
 
-
 ## create the masks of the annotationes
+print("\n----------- maskmaker -----------")
 # MaskMaker.maskCreator(dataTrain, name, size)
 
-'''
 ## from the wsi, get the target tif resolution
+print("\n----------- wsiload -----------")
 WSILoad.load(dataTrain, name, size)
 # WSILoad.load(dataAssess, name, size)
 
 # extract the individual specmimens
+print("\n----------- segmentID -----------")
 SegmentID.align(dataTrain, name, size)
-
+'''
 ## Extract the target tissue from the tif files 
+print("\n----------- wsiextract -----------")
 WSIExtract.segmentation(dataTrain, name, size)
 ## create quadrants of the target tissue from the extracted tissue
 # targetTissue.quadrant(dataTrain, name, size, kernel)
 
+'''
 # Creating the training data --> NOTE every time it does this it creates a replaces the previous testing/training data
 DataGenerator.main(dataTrain, portion, 'vessel')
 
