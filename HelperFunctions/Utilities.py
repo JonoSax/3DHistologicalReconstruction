@@ -27,25 +27,13 @@ def trainingDirs(data, target, label, *args):
     # Outputs:  (), the directory is populated with true data labels to be used
 
     # create the target tissue folder 
-    try:
-        os.mkdir(target)
-    except:
-        pass
-
-    # create the label folder
-    try:
-        os.mkdir(target + label)
-    except:
-        pass
+    dir = target + label
+    dirMaker(dir)
 
     # create subdirectories (optional)
-    dir = target + label
     for d in args:
         dirn = dir + "/" + d
-        try:
-            os.mkdir(dir + "/" + d)
-        except OSError:
-            print("\nReplacing existing files\n")
+        dirMaker(dirn)
         dir = dirn
 
 
@@ -74,16 +62,7 @@ def listToTxt(data, dir, **kwargs):
     EndData
     '''
     # ensure that the exact directory being specified exists, if not create it
-    dirSplit = dir.split("/")
-    dirToMake = ""
-    for d in range(dir.count("/")):
-        dirToMake += str(dirSplit[d] + "/")
-        try:
-            os.mkdir(dirToMake)
-        except:
-            pass
-
-
+    dirMaker(dir)
     f = open(dir, 'w')
 
     # declar
@@ -122,6 +101,22 @@ def listToTxt(data, dir, **kwargs):
     f.write("EndData")
 
     f.close()
+
+def dirMaker(dir):
+
+    # creates directories (including sub-directories)
+    # Input:    (dir), path to be made
+    # Output:   (), all sub-directories necessary are created
+
+    # ensure that the exact directory being specified exists, if not create it
+    dirSplit = dir.split("/")
+    dirToMake = ""
+    for d in range(dir.count("/")):
+        dirToMake += str(dirSplit[d] + "/")
+        try:
+            os.mkdir(dirToMake)
+        except:
+            pass
 
 def txtToList(dir):
 
@@ -169,15 +164,7 @@ def dictToTxt(data, dir, **kwargs):
     # Outputs:  (), txt file saved in directory 
     
     # ensure that the exact directory being specified exists, if not create it
-    dirSplit = dir.split("/")
-    dirToMake = ""
-    for d in range(dir.count("/")):
-        dirToMake += str(dirSplit[d] + "/")
-        try:
-            os.mkdir(dirToMake)
-        except:
-            pass
-
+    dirMaker(dir)
 
 
     f = open(dir, 'w')
@@ -189,14 +176,7 @@ def dictToTxt(data, dir, **kwargs):
     argV = list()
 
     # ensure that the exact directory being specified exists, if not create it
-    dirSplit = dir.split("/")
-    dirToMake = ""
-    for d in range(dir.count("/")):
-        dirToMake += str(dirSplit[d] + "/")
-        try:
-            os.mkdir(dirToMake)
-        except:
-            pass
+    dirMaker(dir)
 
     # get optional arguments
     for k in kwargs.keys():
@@ -376,9 +356,10 @@ def dataPrepare0(imgDir):
 
     return(arrayP)
 
-def nameFromPath(paths):
+def nameFromPath(paths, n = 2):
     # this function extracts the name from a path
     # Inputs:   (paths), either a list or string of paths 
+    #           (n), number of 
     # Outputs:  (names), elist of the names from the paths
 
     pathStr = False
@@ -391,10 +372,13 @@ def nameFromPath(paths):
         # choose the last part of the path and the suffix
         name = path.split("/")[-1].split(".")[0]
 
-        # if there is a size parameter, remove the last part of the name 
-        # NOTE this is hard coded where each slide is named as [sampleName]_[sampleNo]
-        if len(name.split("_")) > 2:
-            name = "_".join(name.split("_")[0:2])
+        # each '_' indicates a new piece of information in the name
+        # if there is at least one underscore then seperate the information
+        # defaults to saving only the first piece of underscored information 
+        # (this is often the specific sample within the specimen, the next 
+        # _ will often be the size of the sample used)
+        if len(name.split("_")) > 1:
+            name = "_".join(name.split("_")[0:n])
         
         names.append(name)
 
