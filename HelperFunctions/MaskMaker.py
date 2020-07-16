@@ -28,11 +28,13 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
     # Outputs:  (), txt files which contains all pixel locations for the specified resolution
     #            of the tif file 
 
-    specimenPosDir = glob(dataTrain + "posFiles/" + segmentName + "*.pos")
+    specimenPosDir = sorted(glob(dataTrain + "posFiles/" + segmentName + "*.pos"))
     
     scale = tifLevels[size] / max(tifLevels)
     
     for specimen in specimenPosDir:
+
+        print("\n" + nameFromPath(specimen))
 
         # open the manual annotations file
         annoSpec, argsDict = txtToList(specimen)
@@ -77,7 +79,7 @@ def maskFinder(annoSpec, scale, num = ""):
 
     for n in range(len(annoSpec)):
 
-        print("\nAnnotation " + str(n) + "/" + str(len(annoSpec)))
+        # print("Annotation " + str(n) + "/" + str(len(annoSpec)))
 
         # process per annotation
         annotation = annoSpec[n]
@@ -222,7 +224,7 @@ def roiFinder(denseAnnotations):
     # --- identify the target tissue between paired annotations
     while len(annoID) > 0:
         s = annoID[0]
-        print("\nAnnotation " + str(s) + "/" + str(noAnnos))
+        # print("\nAnnotation " + str(s) + "/" + str(noAnnos))
         annoID = np.delete(annoID, np.where(annoID == s)[0][0])      # as you find matches remove from array search
         
         # annotation to perform search
@@ -249,13 +251,17 @@ def roiFinder(denseAnnotations):
                 # print("inside: " + str(mInsideBool) + " outside: " + str(mOutsideBool))
                 annoID = np.delete(annoID, np.where(annoID == m)[0][0])
                 annotatedROI = coordMatch(search, match)
-                print("anno " + str(s) + " matches " + str(m))
+                found = True
                 break
             
             # if no match is found assumed that there is no annotated centre
             else:
                 annotatedROI = search
+                found = False
                 # print("     anno " + str(s) + " is not matched with anno " + str(m))
+
+        if not found:
+            print("     anno " + str(s) + " not matched")
 
         # view the roi
         # denseMatrixViewer(annotatedROI)
