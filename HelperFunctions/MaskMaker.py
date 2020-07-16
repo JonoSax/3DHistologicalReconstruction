@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from skimage.segmentation import flood_fill
 
 # magnification levels of the tif files available
-tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
+tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
 
 def maskCreator(dataTrain, segmentName = '', size = 0):
@@ -46,7 +46,7 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
         targetTissue = roiFinder(denseAnnotations)
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
-        listToTxt(targetTissue, dataTrain + "maskFiles/" + nameFromPath(specimen) + "_" + str(size) + ".mask")
+        listToTxt(targetTissue, dataTrain + str(size) + "/maskFiles/" + nameFromPath(specimen) + "_" + str(size) + ".mask")
     
 def maskFinder(annoSpec, scale, num = ""):
 
@@ -267,6 +267,8 @@ def roiFinder(denseAnnotations):
         # denseMatrixViewer(annotatedROI)
 
         targetTissue.append(annotatedROI)
+
+    # NOTE, can probably put the maskCover function here....
 
     return(targetTissue)
 
