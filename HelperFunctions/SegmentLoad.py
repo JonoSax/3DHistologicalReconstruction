@@ -47,68 +47,70 @@ def readannotations(dataTrain, specimen = ''):
     #                   annotations, saved in posFiles
     #                   pins, saved in featFiles
 
-    # NOTE: update this script to use dictOfDirs
+    # pos and feat files are raw from the ndpa so don't depend on the chosen size of
+    # the tif file to process. If these files are present then don't perform extraction 
+    if ('posFiles' in os.listdir(dataTrain)) and ('featFiles' in os.listdir(dataTrain)):
+        print("Pos and Feat files already extracted")
 
-    # get the directories of all the specimes of interest
-    ndpaNames = sorted(glob(dataTrain + specimen + "*.ndpa"))
-    ndpiNames = sorted(glob(dataTrain + specimen + "*.ndpi"))      # need this for the properties of the image
+    else:
+        # get the directories of all the specimes of interest
+        ndpaNames = sorted(glob(dataTrain + specimen + "*.ndpa"))
+        ndpiNames = sorted(glob(dataTrain + specimen + "*.ndpi"))      # need this for the properties of the image
 
-    specDict = dictOfDirs(ndpa = ndpaNames, ndpi = ndpiNames)
+        specDict = dictOfDirs(ndpa = ndpaNames, ndpi = ndpiNames)
 
-    # go through each ndpa file of interest and extract the RAW co-ordinates into a list.
-    # this list is indexed as follows:
-    # posAll --> for all the co-ordinates
-    #       posA --> for a single ndpa file
-    #               co-ordinates0 --> for a single annotation
-    #               co-ordinates1
-    #               ....
-    #       ...
-    for spec in specDict.keys():
+        # go through each ndpa file of interest and extract the RAW co-ordinates into a list.
+        # this list is indexed as follows:
+        # posAll --> for all the co-ordinates
+        #       posA --> for a single ndpa file
+        #               co-ordinates0 --> for a single annotation
+        #               co-ordinates1
+        #               ....
+        #       ...
+        for spec in specDict.keys():
 
-        ndpaPath = specDict[spec]['ndpa']
-        ndpiPath = specDict[spec]['ndpi']
+            ndpaPath = specDict[spec]['ndpa']
+            ndpiPath = specDict[spec]['ndpi']
 
-        print("\n" + spec)
+            print("\n" + spec)
 
-        # get the drawn annotations
-        posA = getAnnotations(ndpaPath)
-        info = readlandmarks(ndpaPath)
+            # get the drawn annotations
+            posA = getAnnotations(ndpaPath)
+            info = readlandmarks(ndpaPath)
 
-        # get the ndpi properties of all the specimes of interest
-        xShift, yShift, xRes, yRes, xDim, yDim = normaliseNDPA(ndpiPath)
+            # get the ndpi properties of all the specimes of interest
+            xShift, yShift, xRes, yRes, xDim, yDim = normaliseNDPA(ndpiPath)
 
-        # apply the necessary transformations to extracted co-ordinates to convert to pixel represnetations
-        # with the origin in the top left corner of the image and save them as a txt file for all npda files
+            # apply the necessary transformations to extracted co-ordinates to convert to pixel represnetations
+            # with the origin in the top left corner of the image and save them as a txt file for all npda files
 
-        # create txt file which contains these co-ordinates
-        # f = open(str(ndpaNames[spec]) + ".pos", 'w')
+            # create txt file which contains these co-ordinates
+            # f = open(str(ndpaNames[spec]) + ".pos", 'w')
 
-        stacks = list()
+            stacks = list()
 
-        # npdi properties
-        centreShift = np.hstack([xShift, yShift])
-        topLeftShift = np.hstack([xDim/(2 * xRes), yDim/(2 * yRes)])
-        scale = np.hstack([xRes, yRes])
+            # npdi properties
+            centreShift = np.hstack([xShift, yShift])
+            topLeftShift = np.hstack([xDim/(2 * xRes), yDim/(2 * yRes)])
+            scale = np.hstack([xRes, yRes])
 
-        # f.write("NUMBER_OF_ANNOTATIONS=" + str(len(posSpec)) + "\n")
-        for posSpec in posA:
-            
-            # co-ordinate transformation
-            stack = ((posSpec - centreShift + topLeftShift ) * scale).astype(int)
-            
-            # save into a list
-            stacks.append(stack)
+            # f.write("NUMBER_OF_ANNOTATIONS=" + str(len(posSpec)) + "\n")
+            for posSpec in posA:
+                
+                # co-ordinate transformation
+                stack = ((posSpec - centreShift + topLeftShift ) * scale).astype(int)
+                
+                # save into a list
+                stacks.append(stack)
 
-        for feat in info.keys():
-            info[feat] = ((info[feat] - centreShift + topLeftShift ) * scale).astype(int)
+            for feat in info.keys():
+                info[feat] = ((info[feat] - centreShift + topLeftShift ) * scale).astype(int)
 
-        # save the entire list as a txt file per utilities saving structure
-        if len(stacks) > 0:
-            listToTxt(stacks, dataTrain + 'posFiles/' + spec + ".pos", Entries = str(len(posSpec)), xDim = str(xDim), yDim = str(yDim))
-        if len(info) > 0:
-            dictToTxt(info, dataTrain + 'featFiles/' + spec + ".feat")
-
-    print("Co-ordinates extracted and saved in " + dataTrain)
+            # save the entire list as a txt file per utilities saving structure
+            if len(stacks) > 0:
+                listToTxt(stacks, dataTrain + 'posFiles/' + spec + ".pos", Entries = str(len(posSpec)), xDim = str(xDim), yDim = str(yDim))
+            if len(info) > 0:
+                dictToTxt(info, dataTrain + 'featFiles/' + spec + ".feat")
 
 def readlandmarks(ndpaPath):
     
