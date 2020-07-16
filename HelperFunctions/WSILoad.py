@@ -21,8 +21,6 @@ tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
 
 def load(dataTrain, imageName = '', size = 0):
 
-    print("\nSTARTING WSILOAD/SEGMENTATION")
-
     # This moves the quadrants into training/testing data based on the annotations provided
     # Input:    (dataTrain), directory/ies which contain the txt files of the annotation co-ordinates 
     #               as extracted by SegmentLoad.py
@@ -47,12 +45,11 @@ def load(dataTrain, imageName = '', size = 0):
     
     # convert the ndpi into a tif
     for img in imagesNDPI:
+        print(nameFromPath(img) + " converted @ " + str(tifLevels[size]) + " res")
         ndpiLoad(size, img)
 
 
 def ndpiLoad(sz, src):
-
-    print("\nSTARTING WSILOAD/NDPILOAD")
 
     # This function extracts tif files from the raw ndpi files. This uses the 
     # ndpitool from https://www.imnc.in2p3.fr/pagesperso/deroulers/software/ndpitools/ 
@@ -77,7 +74,6 @@ def ndpiLoad(sz, src):
     os.rename(extractedName, imgDir)
 
     
-    print("ENDING WSILOAD/NDPILOAD\n")
 '''
 data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
 
