@@ -22,16 +22,16 @@ Extent of training (epochs, batch)
 '''
 
 # dataHome is where all the directories created for information are stored 
-dataHome = '/Volumes/USB/'
+dataHome = '/Volumes/USB/H653A_11.3new/'
 
 # research drive access from HPC
-# dataHome = '/eresearch/uterine/jres129/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/H653A_11.3\ new/'
+dataHome = '/eresearch/uterine/jres129/AllmaterialforBoydpaper/ResultsBoydpaper/ArcuatesandRadials/NDPIsegmentations/'
 
 # research drive access via VPN
 # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
 
 # dataTrain is where the ndpi and ndpa files are stored 
-dataTrain = dataHome + 'H653A_11.3new/'
+dataTrain = dataHome + 'H653A_11.3new/' 
 
 # data directory containing the wsi images to be assessed
 dataAssess = dataHome + "samples/"
@@ -42,25 +42,28 @@ name = ''
 portion = 0.2
 
 # NOTE: update directories used between dataHome and dataTrain
-'''
 # Extract all the manual co-ordinates of the annotated tissue
 print("\n----------- segmentload -----------")
 SegmentLoad.readannotations(dataTrain, name)
-
-## create the masks of the annotationes
-print("\n----------- maskmaker -----------")
-# MaskMaker.maskCreator(dataTrain, name, size)
 
 ## from the wsi, get the target tif resolution
 print("\n----------- wsiload -----------")
 WSILoad.load(dataTrain, name, size)
 # WSILoad.load(dataAssess, name, size)
 
+## create the masks of the annotationes
+print("\n----------- maskmaker -----------")
+MaskMaker.maskCreator(dataTrain, name, size)
+
 # extract the individual specmimens
 print("\n----------- segmentID -----------")
 SegmentID.align(dataTrain, name, size)
-'''
+
+# creat a stack from the aligned images
+print("\n----------- stack -----------")
+stackAligned.stack(dataTrain, name, size)
 ## Extract the target tissue from the tif files 
+
 print("\n----------- wsiextract -----------")
 WSIExtract.segmentation(dataTrain, name, size)
 ## create quadrants of the target tissue from the extracted tissue
