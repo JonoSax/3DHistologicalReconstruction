@@ -29,15 +29,21 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
     #            of the tif file 
 
     specimenPosDir = sorted(glob(dataTrain + "posFiles/" + segmentName + "*.pos"))
-    
+    tifDir = sorted(glob(dataTrain + str(size) + "/tifFiles/" + segmentName + "*.tif"))
+
+    maskDir = dataTrain + str(size) + "/maskFiles/" 
+    dirMaker(maskDir)
+
     scale = tifLevels[size] / max(tifLevels)
     
-    for specimen in specimenPosDir:
+    for pos, tif in zip(specimenPosDir, tifDir):
 
-        print("\n" + nameFromPath(specimen))
+        name = nameFromPath(pos)
+
+        print("\n" + nameFromPath(pos))
 
         # open the manual annotations file
-        annoSpec, argsDict = txtToList(specimen)
+        annoSpec, argsDict = txtToList(pos)
         
         # find the encomappsed areas of each annotations
         denseAnnotations = maskFinder(annoSpec, scale)
@@ -45,8 +51,10 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
         # of the identified areas, find the roi between overlapping ares
         targetTissue = roiFinder(denseAnnotations)
 
+        maskCover(tif, maskDir + name + '_masked', denseAnnotations)
+
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
-        listToTxt(targetTissue, dataTrain + str(size) + "/maskFiles/" + nameFromPath(specimen) + "_" + str(size) + ".mask")
+        listToTxt(targetTissue, maskDir + name + "_" + str(size) + ".mask")
     
 def maskFinder(annoSpec, scale, num = ""):
 
