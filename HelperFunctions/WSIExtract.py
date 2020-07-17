@@ -21,15 +21,15 @@ def segmentation(dataTrain, imageName = '', size = 0):
     # Output:   (), saves the tissue which has been annotated into a new directory
 
     # get the mask directories --> already at the right pixel locations
-    maskDirs = sorted(glob(dataTrain + 'maskFiles/' + imageName + "*_" + str(size) + ".mask"))
+    maskDirs = sorted(glob(dataTrain + str(size) + '/maskFiles/' + imageName + "*_" + str(size) + ".mask"))
 
     # get the tif file directories
-    tifDirs = sorted(glob(dataTrain + '/' + str(size) + '/tifFiles/' + imageName + "*_" + str(size) + ".tif"))
+    tifDirs = sorted(glob(dataTrain + str(size) + '/tifFiles/' + imageName + "*_" + str(size) + ".tif"))
 
     sampleNames = nameFromPath(tifDirs)
 
     # specify the root directory where the identified tissue will be stored 
-    targetTissueDir = dataTrain + '/' + str(size) + '/targetTissue/'
+    targetTissueDir = dataTrain + + str(size) + '/targetTissue/'
     dirMaker(targetTissueDir)
 
     # process per specimen
@@ -64,7 +64,6 @@ def segmentation(dataTrain, imageName = '', size = 0):
             cv2.imwrite(targetTissueDir + sampleName + "_" + str(n) + "_vessel.tif", target.astype(np.uint8)) # NOTE ATM this is only for one class, vessels. In the future add arguments for different classes
             
         # create a user viewable image of the WSI and annotated areas
-        maskCover(tifDir, dataTrain + 'maskFiles/' + sampleName + "masked", mask)
         print(sampleName + " masked")
 
 
