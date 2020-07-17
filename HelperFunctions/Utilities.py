@@ -308,7 +308,7 @@ def maskCover(dir, dirTarget, masks):
     # This function adds add the mask outline to the image
     # Inputs:   (dir), the SPECIFIC name of the tif image the mask was made on
     #           (dirTarget), the location to save the image
-    #           (kernel), kernel size
+    #           (masks), list of each array of co-ordinates for all the annotations
     # Outputs:  (), re-saves the image with mask of the vessels drawn over it
 
     imgO = tifi.imread(dir)
