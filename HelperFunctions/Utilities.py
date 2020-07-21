@@ -10,6 +10,7 @@ import os
 import cv2
 import tifffile as tifi
 from glob import glob
+from PIL import Image
 
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
@@ -311,18 +312,18 @@ def maskCover(dir, dirTarget, masks):
     #           (masks), list of each array of co-ordinates for all the annotations
     # Outputs:  (), re-saves the image with mask of the vessels drawn over it
 
-    imgO = tifi.imread(dir)
-    hO, wO, cO = imgO.shape
+    imgR = tifi.imread(dir)
+    hO, wO, cO = imgR.shape
     size = 2000
 
     # if the image is more than 70 megapixels downsample 
     if hO * wO >= 100 * 10 ** 6:
         aspectRatio = hO/wO
-        imgR = cv2.resize(imgO, (size, int(size*aspectRatio)))
-    else:
-        imgR = imgO
+        imgR = Image.fromarray(imgR)
+        imgR = imgR.resize((size, int(size*aspectRatio)))
+        imgR = np.array(imgR)
+        # imgR = cv2.resize(imgO, (size, int(size*aspectRatio)))
 
-    imgR = cv2.cvtColor(imgR, cv2.COLOR_RGB2BGR)
     h, w, c = imgR.shape
 
     # scale the kernel to the downsampled image
@@ -333,8 +334,10 @@ def maskCover(dir, dirTarget, masks):
             # inverse colours of mask areas
             imgR[y, x, :] = 255 - imgR[y, x, :]
 
+    imgR = Image.fromarray(imgR)
     newImg = dirTarget + ".jpeg"
-    cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    imgR.save(dirTarget + ".jpeg", "JPEG")
+    # cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
     # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
 
     return(newImg, scale)
