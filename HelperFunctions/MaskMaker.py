@@ -49,7 +49,7 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
         # of the identified areas, find the roi between overlapping ares
         targetTissue = roiFinder(name, denseAnnotations)
 
-        # maskCover(tif, maskDir + name + '_masked', denseAnnotations)  # NOTE atm this doesn't work during parallel processing
+        maskCover(tif, maskDir + name + '_masked', denseAnnotations)  # NOTE atm this doesn't work during parallel processing
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
         listToTxt(targetTissue, maskDir + name + "_" + str(size) + ".mask")
