@@ -40,23 +40,21 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
 
         name = nameFromPath(pos)
 
-        print("\n" + nameFromPath(pos))
-
         # open the manual annotations file
         annoSpec, argsDict = txtToList(pos)
         
         # find the encomappsed areas of each annotations
-        denseAnnotations = maskFinder(annoSpec, scale)
+        denseAnnotations = maskFinder(name, annoSpec, scale)
         
         # of the identified areas, find the roi between overlapping ares
-        targetTissue = roiFinder(denseAnnotations)
+        targetTissue = roiFinder(name, denseAnnotations)
 
-        maskCover(tif, maskDir + name + '_masked', denseAnnotations)
+        # maskCover(tif, maskDir + name + '_masked', denseAnnotations)  # NOTE atm this doesn't work during parallel processing
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
         listToTxt(targetTissue, maskDir + name + "_" + str(size) + ".mask")
     
-def maskFinder(annoSpec, scale, num = ""):
+def maskFinder(name, annoSpec, scale, num = ""):
 
     # This function takes the manual annotations and turns them into a mask which 
     # encompasses the inner area of the circled vessels
@@ -203,7 +201,7 @@ def maskFinder(annoSpec, scale, num = ""):
             gridN = flood_fill(grid, roi, 1)
         except:
             gridN = grid
-            print("     Flood not performed on annotaiton " + str(n))
+            print("     Flood not performed on annotaiton " + str(n) + " from " + name)
 
         # --- save the mask identified in a dense form and re-position into the SCALED global space
         denseGrid = np.stack(np.where(gridN == 1), axis = 1) + [xmin, ymin]
@@ -214,7 +212,7 @@ def maskFinder(annoSpec, scale, num = ""):
     # return a list which contains all the true pixel positions of the circled areas
     return(denseAnnotations)
 
-def roiFinder(denseAnnotations):
+def roiFinder(name, denseAnnotations):
 
     # This function takes the dense list of mask value positions from maskFinder and 
     # identifies which pair of these masks overlap and then identifies the roi target
@@ -269,7 +267,7 @@ def roiFinder(denseAnnotations):
                 # print("     anno " + str(s) + " is not matched with anno " + str(m))
 
         if not found:
-            print("     anno " + str(s) + " not matched")
+            print("     anno " + str(s) + " not matched from " + name)
 
         # view the roi
         # denseMatrixViewer(annotatedROI)

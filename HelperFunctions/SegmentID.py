@@ -12,7 +12,6 @@ import tifffile as tifi
 import cv2
 from scipy.optimize import minimize
 from math import ceil
-from time import clock
 
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
@@ -525,7 +524,7 @@ def objectivePolar(w, *args):
     # factor in order to reduce the time taken to compute
     # NOTE the more it is scaled the more innacuracies are created, however appears 
     # that it is pretty accurate with a 10 scaling but is also acceptably fast
-    scale = 10
+    scale = 4
 
     # find the centre of the target from the annotated points
     tarA = np.round(dictToArray(tar)/scale).astype(int)

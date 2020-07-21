@@ -36,20 +36,21 @@ unitDict = {
     'centimeter':1*10**1
 }
 
-def readannotations(dataTrain, specimen = ''):
+def readannotations(dataTrain, specimen = '', alwaysProcess = True):
 
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points and converts
     # them into their pixel location equivalents
     # Input:    (dataTrain), Directory for the ndpi files
     #           (specimen), the specimen name/s to specifically investigate (optional, if not
     #                               chosen then will investigate the entire directory)
+    #           (alwaysProcess), boolean whether to write over existing .feat and .pos files
     # Output:   (), Saves a txt file of the recorded positions of the:
     #                   annotations, saved in posFiles
     #                   pins, saved in featFiles
 
     # pos and feat files are raw from the ndpa so don't depend on the chosen size of
     # the tif file to process. If these files are present then don't perform extraction 
-    if ('posFiles' in os.listdir(dataTrain)) and ('featFiles' in os.listdir(dataTrain)):
+    if ('posFiles' in os.listdir(dataTrain)) and ('featFiles' in os.listdir(dataTrain)) and alwaysProcess is False:
         print("Pos and Feat files already extracted")
 
     else:
@@ -72,11 +73,9 @@ def readannotations(dataTrain, specimen = ''):
             ndpaPath = specDict[spec]['ndpa']
             ndpiPath = specDict[spec]['ndpi']
 
-            print("\n" + spec)
-
             # get the drawn annotations
-            posA = getAnnotations(ndpaPath)
-            info = readlandmarks(ndpaPath)
+            posA = getAnnotations(spec, ndpaPath)
+            info = readlandmarks(spec, ndpaPath)
 
             # get the ndpi properties of all the specimes of interest
             xShift, yShift, xRes, yRes, xDim, yDim = normaliseNDPA(ndpiPath)
@@ -112,7 +111,7 @@ def readannotations(dataTrain, specimen = ''):
             if len(info) > 0:
                 dictToTxt(info, dataTrain + 'featFiles/' + spec + ".feat")
 
-def readlandmarks(ndpaPath):
+def readlandmarks(spec, ndpaPath):
     
     # This function reads a NDPA file and extracts the co-ordinate of the landmarks and converts
     # them into their pixel location equivalents
@@ -165,13 +164,13 @@ def readlandmarks(ndpaPath):
     file.close()
 
     try:
-        print(str(len(info)/pins*100)+"% of pins found")
+        print(str(len(info)/pins*100)+"% of pins found from " + spec)
     except:
         print("0 pins found")
 
     return(info)
 
-def getAnnotations(ndpaPath):
+def getAnnotations(spec, ndpaPath):
 
     # This function specifically reads the drawn annotations on the file
     # Input:    (ndpaPath), ndpafile path
@@ -224,7 +223,7 @@ def getAnnotations(ndpaPath):
     
     # check to assess if all points found 
     try:
-        print(str(len(posA)/sections*100)+"% of annotations found")
+        print(str(len(posA)/sections*100)+"% of annotations found from " + spec)
     except:
         print("0 annotations found")
 

@@ -29,7 +29,7 @@ def segmentation(dataTrain, imageName = '', size = 0):
     sampleNames = nameFromPath(tifDirs)
 
     # specify the root directory where the identified tissue will be stored 
-    targetTissueDir = dataTrain + + str(size) + '/targetTissue/'
+    targetTissueDir = dataTrain + str(size) + '/targetTissue/'
     dirMaker(targetTissueDir)
 
     # process per specimen

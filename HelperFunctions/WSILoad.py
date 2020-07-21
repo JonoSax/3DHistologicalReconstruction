@@ -3,12 +3,7 @@ This function extracts a tif file of specified resolution
 '''
 
 import os
-import numpy as np
-import tifffile as tifi
-import cv2
-from PIL import Image
 from glob import glob
-import sys
 from .Utilities import *
 
 # kernel = 150

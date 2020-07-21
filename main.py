@@ -4,9 +4,13 @@ identified from manual segmenetaiton and training a NN on this data for
 segment identification
 
 '''
-
 from HelperFunctions import *
+from HelperFunctions.Utilities import nameFromPath
 from glob import glob
+import multiprocessing
+from multiprocessing import Process
+from time import perf_counter
+
 
 # ---------- THINGS TO DO ----------
 # Make it so that the directories of the slices and the annotated slices are all in a single callable object, rather than seperate variables
@@ -25,48 +29,84 @@ Extent of training (epochs, batch)
 dataHome = '/Volumes/USB/H653A_11.3new/'
 
 # research drive access from HPC
-dataHome = '/eresearch/uterine/jres129/AllmaterialforBoydpaper/ResultsBoydpaper/ArcuatesandRadials/NDPIsegmentations/'
+# dataHome = '/eresearch/uterine/jres129/AllmaterialforBoydpaper/ResultsBoydpaper/ArcuatesandRadials/NDPIsegmentations/'
 
 # research drive access via VPN
 # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
 
 # dataTrain is where the ndpi and ndpa files are stored 
-dataTrain = dataHome + 'H653A_11.3new/' 
+dataTrain = dataHome
+
+# get all the ndpi files that are to be processed
+specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpi")))
 
 # data directory containing the wsi images to be assessed
 dataAssess = dataHome + "samples/"
 
 size = 3
 kernel = 50
-name = ''
+name = 'H653A_09'
 portion = 0.2
 
-# NOTE: update directories used between dataHome and dataTrain
-# Extract all the manual co-ordinates of the annotated tissue
-print("\n----------- segmentload -----------")
+
+
+'''
 SegmentLoad.readannotations(dataTrain, name)
 
-## from the wsi, get the target tif resolution
-print("\n----------- wsiload -----------")
 WSILoad.load(dataTrain, name, size)
-# WSILoad.load(dataAssess, name, size)
 
-## create the masks of the annotationes
-print("\n----------- maskmaker -----------")
 MaskMaker.maskCreator(dataTrain, name, size)
 
-# extract the individual specmimens
+WSIExtract.segmentation(dataTrain, name, size)
+'''
+
+# create the dictionary of the jobs to perform
+jobs = {}
+
+# tasks being parallelised
+tasks = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'targetTissue']
+jobs[tasks[0]] = {}
+jobs[tasks[1]] = {}
+jobs[tasks[2]] = {}
+jobs[tasks[3]] = {}
+# jobs[tasks[4]] = {}
+
+# create the jobs for parallelisation, ENSURING the jobs are done in the correct order
+for s in specimens[0:2]:
+    ## Extract the raw annotation and feature information
+    jobs[tasks[0]][s] = Process(target=SegmentLoad.readannotations, args=(dataTrain, s))
+
+    ## Extract the tif file of the given size 
+    jobs[tasks[1]][s] = Process(target=WSILoad.load, args=(dataTrain, s, size))
+
+    ## Create the masks of the identified vessels for the given size chosen
+    jobs[tasks[2]][s] = Process(target=MaskMaker.maskCreator, args=(dataTrain, s, size))
+
+    ## Extract the identified vessels from the samples
+    jobs[tasks[3]][s] = Process(target=WSIExtract.segmentation, args=(dataTrain, s, size))
+
+    ## create quadrants of the target tissue from the extracted tissue
+    # jobs[tasks[4]][s] = Process(target=targetTissue.quadrant, args=(dataTrain, s, size, kernel))
+
+# Each function in parallel, sequentially
+time = {}
+for t in jobs:
+    print("----------- " + t + " -----------")
+    for s in jobs[t]:
+        jobs[t][s].start()
+    
+    for s in jobs[t]:
+        jobs[t][s].join()
+
+## Align each specimen to reduce the error between slices
 print("\n----------- segmentID -----------")
 SegmentID.align(dataTrain, name, size)
 
 # creat a stack from the aligned images
 print("\n----------- stack -----------")
-stackAligned.stack(dataTrain, name, size)
+# stackAligned.stack(dataTrain, name, size)
 ## Extract the target tissue from the tif files 
 
-print("\n----------- wsiextract -----------")
-WSIExtract.segmentation(dataTrain, name, size)
-## create quadrants of the target tissue from the extracted tissue
 # targetTissue.quadrant(dataTrain, name, size, kernel)
 
 '''

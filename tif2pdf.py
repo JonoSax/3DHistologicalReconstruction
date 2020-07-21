@@ -40,7 +40,7 @@ def nameFromPath(paths):
 
 
 # research drive access via VPN
-dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection ConvertedNDPI/'
+dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/ConvertedNDPI/'
 # dataHome = '/eresearch/uterine/jres129/Boyd collection/ConvertedNDPI/'
 
 samples = glob(dataHome + "*.tif")

@@ -312,16 +312,17 @@ def maskCover(dir, dirTarget, masks):
     # Outputs:  (), re-saves the image with mask of the vessels drawn over it
 
     imgO = tifi.imread(dir)
-    imgO = cv2.cvtColor(imgO, cv2.COLOR_RGB2BGR)
     hO, wO, cO = imgO.shape
+    size = 2000
 
     # if the image is more than 70 megapixels downsample 
     if hO * wO >= 100 * 10 ** 6:
         aspectRatio = hO/wO
-        imgR = cv2.resize(imgO, (10000, int(10000*aspectRatio)))
+        imgR = cv2.resize(imgO, (size, int(size*aspectRatio)))
     else:
         imgR = imgO
 
+    imgR = cv2.cvtColor(imgR, cv2.COLOR_RGB2BGR)
     h, w, c = imgR.shape
 
     # scale the kernel to the downsampled image
