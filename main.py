@@ -10,7 +10,8 @@ from glob import glob
 import multiprocessing
 from multiprocessing import Process
 from time import perf_counter
-
+# from concurrent.futures import ProcessPoolExecutor as executor
+import concurrent.futures
 
 # ---------- THINGS TO DO ----------
 # Make it so that the directories of the slices and the annotated slices are all in a single callable object, rather than seperate variables
@@ -48,18 +49,6 @@ kernel = 50
 name = 'H653A_09'
 portion = 0.2
 
-
-
-'''
-SegmentLoad.readannotations(dataTrain, name)
-
-WSILoad.load(dataTrain, name, size)
-
-MaskMaker.maskCreator(dataTrain, name, size)
-
-WSIExtract.segmentation(dataTrain, name, size)
-'''
-
 # create the dictionary of the jobs to perform
 jobs = {}
 
@@ -70,6 +59,27 @@ jobs[tasks[1]] = {}
 jobs[tasks[2]] = {}
 jobs[tasks[3]] = {}
 # jobs[tasks[4]] = {}
+
+
+'''
+# create the jobs for parallelisation, ENSURING the jobs are done in the correct order
+with concurrent.futures.ProcessPoolExecutor() as executor:
+    ## Extract the raw annotation and feature information
+    [executor.submit(SegmentLoad.readannotations, dataTrain, s) for s in specimens]
+
+    ## Extract the tif file of the given size 
+    [executor.submit(WSILoad.load, dataTrain, s, size) for s in specimens]
+
+    ## Create the masks of the identified vessels for the given size chosen
+    [executor.submit(MaskMaker.maskCreator, dataTrain, s, size) for s in specimens]
+
+    ## Extract the identified vessels from the samples
+    [executor.submit(WSIExtract.segmentation, dataTrain, s, size) for s in specimens]
+
+## create quadrants of the target tissue from the extracted tissue
+# jobs[tasks[4]][s] = Process(target=targetTissue.quadrant, args=(dataTrain, s, size, kernel))
+'''
+
 
 # create the jobs for parallelisation, ENSURING the jobs are done in the correct order
 for s in specimens[0:2]:
@@ -91,7 +101,7 @@ for s in specimens[0:2]:
 # Each function in parallel, sequentially
 time = {}
 for t in jobs:
-    print("----------- " + t + " -----------")
+    print("\n----------- " + t + " -----------")
     for s in jobs[t]:
         jobs[t][s].start()
     
