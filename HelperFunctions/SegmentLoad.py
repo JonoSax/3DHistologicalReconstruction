@@ -43,14 +43,14 @@ def readannotations(dataTrain, specimen = '', alwaysProcess = True):
     # Input:    (dataTrain), Directory for the ndpi files
     #           (specimen), the specimen name/s to specifically investigate (optional, if not
     #                               chosen then will investigate the entire directory)
-    #           (alwaysProcess), boolean whether to write over existing .feat and .pos files
+    #           (alwaysProcess), boolean whether to write over existing .pin and .pos files
     # Output:   (), Saves a txt file of the recorded positions of the:
     #                   annotations, saved in posFiles
-    #                   pins, saved in featFiles
+    #                   pins, saved in pinFiles
 
     # pos and feat files are raw from the ndpa so don't depend on the chosen size of
     # the tif file to process. If these files are present then don't perform extraction 
-    if ('posFiles' in os.listdir(dataTrain)) and ('featFiles' in os.listdir(dataTrain)) and alwaysProcess is False:
+    if ('posFiles' in os.listdir(dataTrain)) and ('pinFiles' in os.listdir(dataTrain)) and alwaysProcess is False:
         print("Pos and Feat files already extracted")
 
     else:
@@ -109,7 +109,7 @@ def readannotations(dataTrain, specimen = '', alwaysProcess = True):
             if len(stacks) > 0:
                 listToTxt(stacks, dataTrain + 'posFiles/' + spec + ".pos", Entries = str(len(posSpec)), xDim = str(xDim), yDim = str(yDim))
             if len(info) > 0:
-                dictToTxt(info, dataTrain + 'featFiles/' + spec + ".feat")
+                dictToTxt(info, dataTrain + 'pinFiles/' + spec + ".pin")
 
 def readlandmarks(spec, ndpaPath):
     
@@ -142,6 +142,19 @@ def readlandmarks(spec, ndpaPath):
             l-=10
             title = (doco[l].replace("<title>", "").replace("</title>\n", "").replace(" ", "")).lower()
 
+            # ensure names are correct
+            if len(title.split("_")) <= 2:
+
+                # ensure that the feat name is split into three portions
+                if title.find("feat") >= 0:
+                    title = 'feat_' + title.split('feat')[-1]
+
+                # add a boundary name to the type
+                elif title.find("top") >= 0 or  title.find("bottom") >= 0 or title.find("right") >= 0 or title.find("left") >= 0:
+                    title = 'bound_' + title
+                    pass
+
+
             # get the unit used
             l+=2
             unitStr = doco[l].replace("<coordformat>", "").replace("</coordformat>\n", "").replace(" ", "")
@@ -166,7 +179,7 @@ def readlandmarks(spec, ndpaPath):
     try:
         print(str(len(info)/pins*100)+"% of pins found from " + spec)
     except:
-        print("0 pins found")
+        print("0 pins found from " + spec)
 
     return(info)
 
@@ -225,7 +238,7 @@ def getAnnotations(spec, ndpaPath):
     try:
         print(str(len(posA)/sections*100)+"% of annotations found from " + spec)
     except:
-        print("0 annotations found")
+        print("0 annotations found from " + spec)
 
     file.close()
 
