@@ -12,6 +12,7 @@ import tifffile as tifi
 import cv2
 from scipy.optimize import minimize
 from math import ceil
+from glob import glob
 
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
@@ -26,7 +27,7 @@ def align(data, name = '', size = 0, extracting = True):
     #           their identified featues
 
     # get the file of the features information 
-    dataFeat = sorted(glob(data + 'featFiles/' + name + '*.feat'))
+    dataFeat = sorted(glob(data + 'pinFiles/' + name + '*.pin'))
     dataTif = sorted(glob(data + '/' + str(size) + '/tifFiles/' + name + '*' + str(size) + '.tif'))
     segSamples = data + str(size) + '/segmentedSamples/'
     alignedSamples = data + str(size) + '/alignedSamples/'
@@ -57,7 +58,7 @@ def align(data, name = '', size = 0, extracting = True):
         #    print("No features for " + spec)
         
     # get affine transformation information of the features for optimal fitting
-    translateNet, rotateNet, feats = shiftFeatures(feats)
+    translateNet, rotateNet, feats = shiftFeatures(feats, segSamples, alignedSamples)
 
     # apply the transformations to the samples
     segName = segSamples + name + "*" + str(size) + '.tif'
@@ -171,11 +172,12 @@ def featAdapt(data, dest, featDir, corners, size):
     #               corresponding name
     #           (specFeatOrder), 
 
-    featInfo = txtToDict(featDir['feat'])[0]
+    pinInfo = txtToDict(featDir['feat'])[0]
     scale = tifLevels[size] / max(tifLevels)
-    featName = list(featInfo.keys())
+    featName = list(pinInfo.keys())
     nameSpec = nameFromPath(featDir['feat'])
 
+    '''
     # remove all the positional arguments
     locations = ["top", "bottom", "right", "left"]
     for n in range(len(featName)):  # NOTE you do need to do this rather than dict.keys() because dictionaries don't like changing size...
@@ -183,42 +185,53 @@ def featAdapt(data, dest, featDir, corners, size):
         for l in locations:
             m = f.find(l)
             if m >= 0:
-                featInfo.pop(f)
-
-    featKey = list()
-    for f in sorted(featInfo.keys()):
-        key = f.split("_")
-        featKey.append(key)
-    
+                pinInfo.pop(f)
+    '''
     # create a dictionary per identified sample 
-    specFeatInfo = {}
     specFeatOrder = {}
-    for v in np.unique(np.array(featKey)[:, 1]):
-        specFeatInfo[v] = {}
 
-    # allocate the scaled and normalised sample to the dictionary PER specimen
-    for f, p in featKey:
-        specFeatInfo[p][f] = (featInfo[f + "_" + p] * scale).astype(int)  - corners[p]
-        
+    # extract only the feat information
+    featKey = extractFeatureInfo(pinInfo, 'feat')
+    boundKey = extractFeatureInfo(pinInfo, 'bound')
+    segSection = extractFeatureInfo(pinInfo, 'segsection')
+
+    for f in featKey:
+        for fK in featKey[f]:
+            featKey[f][fK] = (featKey[f][fK] * scale).astype(int)  - corners[f]
+            
+        for bK in boundKey[f]:
+            boundKey[f][bK] = (boundKey[f][bK] * scale).astype(int)  - corners[f]
+
+        for sK in segSection[f]:
+            segSection[f][sK] = (segSection[f][sK] * scale).astype(int)  - corners[f]
+
     # save the dictionary
-    for p in specFeatInfo.keys():
-        name = nameFromPath(featDir['tif']) + p + "_" + str(size) + ".feat"
-        specFeatOrder[nameSpec+p] = specFeatInfo[p]
-        dictToTxt(specFeatInfo[p], dest + name)
+    for p in featKey.keys():
+        name = nameFromPath(featDir['tif']) + p + "_" + str(size)
+        specFeatOrder[nameSpec+p] = featKey[p]
+        dictToTxt(featKey[p], dest + name  + ".feat")
+        dictToTxt(boundKey[p], dest + name  + ".bound")
+        dictToTxt(segSection[p], dest + name  + ".segSect")
 
     return(specFeatOrder)
 
-def shiftFeatures(feats):
+def shiftFeatures(feats, dir, alignedSamples):
 
     # Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
     # Inputs:   (feats), the identified features for each sample
     # Outputs:  (translateNet), the translation information to be applied per image
     #           (rotateNet), the rotation information to be applied per image
 
+    featDirs = glob(dir + "*.feat")
+    boundDirs = glob(dir + "*.bound")
+    segSectDirs = glob(dir + "*.segSect")
+
+    pinDirs = dictOfDirs(feats = featDirs, bounds = boundDirs, segSect=segSectDirs)
+
     translate = {}
     rotate = {}
 
-    featNames = list(feats.keys())
+    featNames = list(pinDirs.keys())
 
     # store the affine transformations
     translateNet = {}
@@ -228,6 +241,15 @@ def shiftFeatures(feats):
     translateNet[featNames[0]] = np.array([0, 0])
     rotateNet[featNames[0]] = 0
 
+    # extract the pin positions for all data types
+    feats = {}
+    bounds = {}
+    segSect = {}
+    for s in pinDirs:
+        feats[s] = txtToDict(pinDirs[s]['feats'])[0]
+        bounds[s] = txtToDict(pinDirs[s]['bounds'])[0]
+        segSect[s] = txtToDict(pinDirs[s]['segSect'])[0]
+
     # perform transformations on neighbouring slices and build them up as you go
     for i in range(len(featNames)-1):
 
@@ -235,6 +257,9 @@ def shiftFeatures(feats):
         featsO = {}     # feats optimum, at this initialisation they are naive but they will progressively converge 
         for fn in featNames[i:i+2]:
             featsO[fn] = feats[fn]
+
+        bounds = txtToDict(pinDirs[fn]['bounds'])[0]
+        segSect = txtToDict(pinDirs[fn]['segSect'])[0]
 
         print("Transforming " + fn + " features")
 
@@ -285,8 +310,19 @@ def shiftFeatures(feats):
         rotateNet[fn] = rotationAdjustment[fn]
         feats[fn] = featsFinalMod[fn]                      # re-assign the new feature positions to fit for
         
-        # after the fitting, apply the translation to the features
-        # perform a final rotational fitting to get a SINGLE rotational transformation from this optimal position
+        # apply the transformation to all pins as well and save them as aligned
+        dictToTxt(featsFinalMod[fn], alignedSamples + fn + "_aligned.feat")
+
+        for b in bounds:
+            bounds[b] -= translateNet[fn]
+        bounds = objectivePolar(rotationAdjustment[fn], False, bounds)
+        dictToTxt(bounds, alignedSamples + fn + "_aligned.bound")
+
+        for s in segSect:
+            segSect[s] -= translateNet[fn]
+        segSect = objectivePolar(rotationAdjustment[fn], False, segSect)
+        dictToTxt(segSect, alignedSamples + fn + "_aligned.segSect")
+
 
     return(translateNet, rotateNet, feats)
 
@@ -436,8 +472,8 @@ def rotatePoints(feats, tol = 1e-6):
             refP[cf] = ref[cf]
 
         # get the shift needed and store
-        res = minimize(objectivePolar, (5), args=(refP, tarP, True), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
-        refR = objectivePolar(res.x, refP, tar, False)   # get the affine transformation used for the optimal rotation
+        res = minimize(objectivePolar, (5), args=(True, tarP, refP), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
+        refR = objectivePolar(res.x, False, tar, refP)   # get the affine transformation used for the optimal rotation
         rotationStore[i] = float(res.x)
         err = res.fun
 
@@ -507,17 +543,22 @@ def objectivePolar(w, *args):
     # # Inputs:   (w), angular translation to optimise
     #           (args), dictionary of the reference and target co-ordinates to fit for 
     #                   boolean on whether to return the error (for optimisation) or rot (for evaluation)
+    #                   (minimising), if true then performing optimal fitting of target onto 
+    #                   reference. If false then it is just rotating the points given to it as the target
     # Outputs:  (err), the squarred error of vectors given the shift pos
     #           (rot), the affine transform matrix used to (works on images)
     #           (tar), the new features after transforming
 
-    ref = args[0]   # the first argument is ALWAYS the reference
-    tar = args[1]   # the second argument is ALWAYS the target
-    minimising = args[2]
+    minimising = args[0]
+    tar = args[1]   # the second argument is ALWAYS the target, ie the one that is being fitted onto the reference
+    if minimising:
+        ref = args[2]   # the first argument is ALWAYS the reference, ie the one that isn't rotating
+    
     try:
         plotting = args[3]
     except:
         plotting = False
+    
     tarN = {}
 
     # this will shrink the matrices made and all the feature co-ordinates by this 
