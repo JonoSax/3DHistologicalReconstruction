@@ -29,6 +29,8 @@ Extent of training (epochs, batch)
 # dataHome is where all the directories created for information are stored 
 dataHome = '/Volumes/USB/H653A_11.3new/'
 
+dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/HistologicalTraining2/'
+
 # research drive access from HPC
 # dataHome = '/eresearch/uterine/jres129/AllmaterialforBoydpaper/ResultsBoydpaper/ArcuatesandRadials/NDPIsegmentations/'
 
@@ -46,60 +48,49 @@ dataAssess = dataHome + "samples/"
 
 size = 3
 kernel = 50
-name = 'H653A_09'
+name = ''
 portion = 0.2
 
 # create the dictionary of the jobs to perform
 jobs = {}
 
-# tasks being parallelised
-tasks = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'targetTissue']
-jobs[tasks[0]] = {}
-jobs[tasks[1]] = {}
-jobs[tasks[2]] = {}
-jobs[tasks[3]] = {}
-# jobs[tasks[4]] = {}
+# tasks that are being parallelised in this script call
+tasksDone = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract']
 
+# all tasks the can be parallelised
+allTasks = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'targetTissue']
 
-'''
-# create the jobs for parallelisation, ENSURING the jobs are done in the correct order
-with concurrent.futures.ProcessPoolExecutor() as executor:
-    ## Extract the raw annotation and feature information
-    [executor.submit(SegmentLoad.readannotations, dataTrain, s) for s in specimens]
+# create dictionary containg the jobs to be done
+for t in tasksDone:
+    jobs[t] = {}
 
-    ## Extract the tif file of the given size 
-    [executor.submit(WSILoad.load, dataTrain, s, size) for s in specimens]
+# create the jobs for parallelisation
+for s in specimens:
 
-    ## Create the masks of the identified vessels for the given size chosen
-    [executor.submit(MaskMaker.maskCreator, dataTrain, s, size) for s in specimens]
+    # these are all the tasks which can be parallelised ATM. They will ONLY be performed if
+    # loaded into the tasksDone list
+    for t in tasksDone:
+        if t == 'SegmentLoad':
+            ## Extract the raw annotation and feature information
+            jobs[t][s] = Process(target=SegmentLoad.readannotations, args=(dataTrain, s))
 
-    ## Extract the identified vessels from the samples
-    [executor.submit(WSIExtract.segmentation, dataTrain, s, size) for s in specimens]
+        elif t == 'WSILoad':
+            ## Extract the tif file of the given size 
+            jobs[t][s] = Process(target=WSILoad.load, args=(dataTrain, s, size))
 
-## create quadrants of the target tissue from the extracted tissue
-# jobs[tasks[4]][s] = Process(target=targetTissue.quadrant, args=(dataTrain, s, size, kernel))
-'''
+        elif t == 'MaskMaker':
+            ## Create the masks of the identified vessels for the given size chosen
+            jobs[t][s] = Process(target=MaskMaker.maskCreator, args=(dataTrain, s, size))
 
+        elif t == 'WSIExtract':
+            ## Extract the identified vessels from the samples
+            jobs[t][s] = Process(target=WSIExtract.segmentation, args=(dataTrain, s, size))
 
-# create the jobs for parallelisation, ENSURING the jobs are done in the correct order
-for s in specimens[0:2]:
-    ## Extract the raw annotation and feature information
-    jobs[tasks[0]][s] = Process(target=SegmentLoad.readannotations, args=(dataTrain, s))
+        elif t == 'targetTissue':
+            ## create quadrants of the target tissue from the extracted tissue
+            jobs[t][s] = Process(target=targetTissue.quadrant, args=(dataTrain, s, size, kernel))
 
-    ## Extract the tif file of the given size 
-    jobs[tasks[1]][s] = Process(target=WSILoad.load, args=(dataTrain, s, size))
-
-    ## Create the masks of the identified vessels for the given size chosen
-    jobs[tasks[2]][s] = Process(target=MaskMaker.maskCreator, args=(dataTrain, s, size))
-
-    ## Extract the identified vessels from the samples
-    jobs[tasks[3]][s] = Process(target=WSIExtract.segmentation, args=(dataTrain, s, size))
-
-    ## create quadrants of the target tissue from the extracted tissue
-    # jobs[tasks[4]][s] = Process(target=targetTissue.quadrant, args=(dataTrain, s, size, kernel))
-
-# Each function in parallel, sequentially
-time = {}
+# Run the function in parallel, sequentially
 for t in jobs:
     print("\n----------- " + t + " -----------")
     for s in jobs[t]:
@@ -108,9 +99,27 @@ for t in jobs:
     for s in jobs[t]:
         jobs[t][s].join()
 
+'''
+SegmentLoad.readannotations(dataTrain, name)
+
+WSILoad.load(dataTrain, name, size)
+
+MaskMaker.maskCreator(dataTrain, name, size)
+
+WSIExtract.segmentation(dataTrain, name, size)
+'''
 ## Align each specimen to reduce the error between slices
 print("\n----------- segmentID -----------")
-SegmentID.align(dataTrain, name, size)
+SegmentID.align(dataTrain, name, size)      # extracting the individual slices can technically
+                                            # be parallelised, but the fitting must be sequential
+
+
+# NOTE to do
+# create a function which will extract from the orientated tissue, the segSections annoated
+# accordingly: SegSection_tr_# and SegSection_bl_# (where # is a or b)
+# these will be extracted as tif images and put into normalised image sizes to perform a 
+# small scale 3D volume segmentation
+
 
 # creat a stack from the aligned images
 print("\n----------- stack -----------")
