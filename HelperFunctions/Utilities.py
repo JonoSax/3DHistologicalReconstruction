@@ -156,7 +156,7 @@ def txtToList(dir):
 
     return(sampleList, args)
 
-def dictToTxt(data, dir, **kwargs):
+def dictToTxt(data, path, **kwargs):
     # This function saves a dictionary as a txt file
     # Converts a dictinoary into a txt file with the inputted name
     # Inputs:   (data), the single list to be saved
@@ -165,19 +165,16 @@ def dictToTxt(data, dir, **kwargs):
     # Outputs:  (), txt file saved in directory 
     
     # ensure that the exact directory being specified exists, if not create it
-    dirMaker(dir)
+    dirMaker(path)
 
 
-    f = open(dir, 'w')
+    f = open(path, 'w')
 
     # declar
     f.write("ArgNo_" + str(len(kwargs)) + "\n")
 
     argK = list()
     argV = list()
-
-    # ensure that the exact directory being specified exists, if not create it
-    dirMaker(dir)
 
     # get optional arguments
     for k in kwargs.keys():
@@ -199,14 +196,14 @@ def dictToTxt(data, dir, **kwargs):
     
     f.close()
 
-def txtToDict(dir):
+def txtToDict(path):
 
     # Reads in a text file which was saved with the dictToTxt function
     # Inputs:   (dir), the name of a single file
     # Outputs:  (dataMain), a list containing the data
     #           (dataArgs), a dictionary containing the argument data
 
-    f = open(dir, 'r')
+    f = open(path, 'r')
 
     # argument numbers
     argNo = int(f.readline().replace("ArgNo_", ""))
@@ -304,20 +301,21 @@ def quadrantLines(dir, dirTarget, kernel):
 
     return(newImg, scale)
 
-def maskCover(dir, dirTarget, masks):
+def maskCover(dir, dirTarget, masks, small = True):
 
     # This function adds add the mask outline to the image
     # Inputs:   (dir), the SPECIFIC name of the tif image the mask was made on
     #           (dirTarget), the location to save the image
     #           (masks), list of each array of co-ordinates for all the annotations
+    #           (small), boolean whether to add the mask to a smaller file version (ie jpeg) or to a full version (ie tif)
     # Outputs:  (), re-saves the image with mask of the vessels drawn over it
 
     imgR = tifi.imread(dir)
     hO, wO, cO = imgR.shape
-    size = 2000
 
     # if the image is more than 70 megapixels downsample 
-    if hO * wO >= 100 * 10 ** 6:
+    if (hO * wO >= 100 * 10 ** 6) & small:
+        size = 2000
         aspectRatio = hO/wO
         imgR = Image.fromarray(imgR)
         imgR = imgR.resize((size, int(size*aspectRatio)))
@@ -335,12 +333,13 @@ def maskCover(dir, dirTarget, masks):
             imgR[y, x, :] = 255 - imgR[y, x, :]
 
     imgR = Image.fromarray(imgR)
-    newImg = dirTarget + ".jpeg"
-    imgR.save(dirTarget + ".jpeg", "JPEG")
+    if small:
+        imgR.save(dirTarget + ".jpeg")
+    else:
+        imgR.save(dirTarget + ".tif")
+
     # cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
     # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
-
-    return(newImg, scale)
 
 def dataPrepare0(imgDir):
 
@@ -460,3 +459,30 @@ def dictToArray(d, type = float):
     l = np.array(list(d.values())).astype(type)
 
     return(l)
+
+def extractFeatureInfo(featInfo, feat):
+
+    # this function takes a dictionary of information which is categorical and extracts
+    # only the information which is specificed
+    # Inputs:   (featInfo), dictionary containing all the info
+    #           (feat), the specific dictionary reference of interest
+    # Outputs:  (specFeatInfo), a dictionary which contains the specific reference and its 
+    #                           corresponding information
+
+    featKey = list()
+    for f in sorted(featInfo.keys()):
+        key = f.split("_")
+        featKey.append(key)
+    
+    featKey = np.array(featKey)[np.where(np.array(featKey)[:, 0] == feat), :][0]
+
+    specFeatInfo = {}
+    for v in np.unique(np.array(featKey)[:, -1]):
+        specFeatInfo[v] = {}
+
+    # allocate the scaled and normalised sample to the dictionary PER specimen
+    for _, f, p in featKey:
+        specFeatInfo[p][f] = featInfo[feat + "_" + f + "_" + p]
+        
+
+    return(specFeatInfo)
