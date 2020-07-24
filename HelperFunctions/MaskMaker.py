@@ -30,7 +30,8 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
 
     specimenPosDir = sorted(glob(dataTrain + "posFiles/" + segmentName + "*.pos"))
     tifDir = sorted(glob(dataTrain + str(size) + "/tifFiles/" + segmentName + "*.tif"))
-
+    
+    tifSource = dataTrain + str(size) + "/tifFiles/"
     maskDir = dataTrain + str(size) + "/maskFiles/" 
     dirMaker(maskDir)
 
@@ -49,7 +50,10 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
         # of the identified areas, find the roi between overlapping ares
         targetTissue = roiFinder(name, denseAnnotations)
 
-        maskCover(tif, maskDir + name + '_masked', denseAnnotations)  # NOTE atm this doesn't work during parallel processing
+        maskCover(tif, maskDir + name + '_masked', denseAnnotations) 
+
+        # NOTE this makes the identified vessels during the ACTUAL processing inverted colour
+        maskCover(tif, tifSource + name + "_" + str(size), denseAnnotations, small=False) 
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
         listToTxt(targetTissue, maskDir + name + "_" + str(size) + ".mask")
