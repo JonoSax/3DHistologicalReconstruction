@@ -200,34 +200,45 @@ def txtToDict(path):
 
     # Reads in a text file which was saved with the dictToTxt function
     # Inputs:   (dir), the name of a single file
-    # Outputs:  (dataMain), a list containing the data
-    #           (dataArgs), a dictionary containing the argument data
-
-    f = open(path, 'r')
-
-    # argument numbers
-    argNo = int(f.readline().replace("ArgNo_", ""))
-
-    # store the arguments in a dictionary
-    args = {}
-    for i in range(argNo):
-        arg = f.readline().split("_")
-        args[arg[0]] = arg[1].replace("\n", "")
-
-    # use to verify all the information has been collected
-
-    sampleDict = {}
-    dictNo = int(f.readline().replace("Entries:", ""))
-    for n in range(dictNo):
-        info = f.readline().split(":")
-        key = info[0]
-        data = info[1].replace("\n", "")
-
-        # save data as a dictionary
-        sampleDict[key] = np.array(data.split(" ")[0:-1]).astype(int)
+    # Outputs:  (sampleDict), either a list of dictionary of the information: 
+    #           if paths is a list then the output is a dictinary named by the samples of the info
+    #           if the paths is a string then the output is a list 
 
 
-    return(sampleDict, args)
+    def extract(p):
+        pathinfo = {}
+        f = open(p, 'r')
+        # argument numbers
+        argNo = int(f.readline().replace("ArgNo_", ""))
+        # store the arguments in a dictionary
+        args = {}
+        for i in range(argNo):
+            arg = f.readline().split("_")
+            args[arg[0]] = arg[1].replace("\n", "")
+        # use to verify all the information has been collected
+        dictNo = int(f.readline().replace("Entries:", ""))
+        for n in range(dictNo):
+            info = f.readline().split(":")
+            key = info[0]
+            data = info[1].replace("\n", "")
+            # save data as a dictionary
+            pathinfo[key] = np.array(data.split(" ")[0:-1]).astype(int)
+
+        return(pathinfo, args)
+
+    # if a list of paths is provided then create a dictionary containing dictionaries
+    # of all the dictionaries of info
+    if type(path) == list:
+        sampleDict = {}
+        for p in path:
+            name = nameFromPath(p)
+            sampleDict[name] = extract(p)
+            
+    else:
+        sampleDict = extract(path)
+
+
+    return(sampleDict)
 
 def denseMatrixViewer(coords, plot = True):
 
