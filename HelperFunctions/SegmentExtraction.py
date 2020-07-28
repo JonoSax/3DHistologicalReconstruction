@@ -8,11 +8,13 @@ from Utilities import *
 import tifffile as tifi
 from glob import glob
 import cv2
+import multiprocessing
+from multiprocessing import Process
 
 def extract(dataTrain, name, size):
 
     # This function reads in the .segSect files and aligned tif files
-    # and extract the feature
+    # and extracts the feature
 
     # get the file of the features information 
     dirAligned = dataTrain + str(size) + '/alignedSamples/' + name
@@ -24,44 +26,85 @@ def extract(dataTrain, name, size):
     # dimensions of all of them
     # NOTE this is pretty stupid but the origin for these co-ordinates is th
     # left (ie visual origin) instead of the actualy numpy origin (top left)
-    SegSections = sorted(glob(dirAligned + '*.segSect'))
-
-    dirs = dictOfDirs(tif = dataAlignedTif, seg = SegSections)
-
+    segSectionsALL = {}
+    segSectionsALL['seg0'] = (sorted(glob(dirAligned + name + '*.segsection')))
+    segSectionsALL['seg1'] = (sorted(glob(dirAligned + name + '*.segsection1')))
     
-    pos = list()
-    info = txtToDict(SegSections)
-    for n in info:
-        pos.append(abs(info[n][0]['tr'] - info[n][0]['bl']))
 
-    xMax, yMax = np.array(np.max(pos, axis = 0))    
+    # this is really stupid but i'm processing this per sample
+    for s in segSectionsALL:
+        print('Processing ' + s)
+        SegSections = segSectionsALL[s]
+        dirs = dictOfDirs(
+        tif = dataAlignedTif, 
+        SegSections = SegSections)
 
-    for n in dirs:
+        pos = list()
+        info = txtToDict(SegSections)
+
+        for n in info:
+            pos.append(abs(info[n][0]['tr'] - info[n][0]['bl']))
+
+        # get the maximum size of the selected section
+        xMax, yMax = np.array(np.max(pos, axis = 0))    
+
+        # ensure that there is a segSection availabe for all the images
+        for n in dirs:
+            try: 
+                dirs[n]['SegSections']
+                storeN = n      # store the last known instance where thre was a section annotated
+            except:
+                dirs[n]['SegSections'] = dirs[storeN]['SegSections']
         
-        # create field to store all images in uniform shape
-        field = np.zeros([yMax + 1, xMax + 1, 3]).astype(np.uint8)
-
-        img = tifi.imread(dirs[n]['tif'])
-
-        # use the selected image size
-        try:
-            pos = txtToDict(dirs[n]['seg'])[0]
-            y0, x1 = pos['bl']
-            y1, x0 = pos['tr']
+        # parallelise jobs
+        jobs = {}
+        for n in dirs:
+            # segExtract(n, dirs[n], dirSection, yMax, xMax, s)
+            jobs[n] = (Process(target=segExtract, args=(n, dirs[n], dirSection, yMax, xMax, s)))     
+            jobs[n].start()
         
-        # if no image size is available then use the previously found position
-        except:
-            pass
+        for n in dirs:
+            jobs[n].join()
 
-        imgSection = img[x0:x1, y0:y1, :]
+def segExtract(n, dirs, dirSection, yMax, xMax, s):
 
-        # ensure all the saved images are the same size
-        x, y, c = imgSection.shape
-        field[:x, :y, :c] = imgSection
-        tifi.imwrite(dirSection + n + "_segment.tif", field)
+    # this function takes a single specified samples and the segmented feature of interest
+    # and extracts it from the image
+    # Inputs:   (n), specimen of interest
+    #           (dirs), dictionary containing the directories of the specimen, NOTE because 
+    #           the point of this is to propogate a selected feature through the entire sample, 
+    #           if there is no specimen specicifc feature then it will use the last know selected feature
+    #           (dirSection), the destiantion path to save the section
+    #           (yMax, xMax), the max size of the features being drawn to standardise the section size
+    #           (s), segment name
+    # Outputs:  (), extracts from the aligned image the section selected and named after 
+    #           the specimen name (n) and section name (s)           
 
-        print(n + " done")
+        
+    # create field to store all images in uniform shape
+    field = np.zeros([yMax + 1, xMax + 1, 3]).astype(np.uint8)
+
+    img = tifi.imread(dirs['tif'])
+
+    # use the selected image size
+    try:
+        pos = txtToDict(dirs['SegSections'])[0]
+        y0, x1 = pos['bl']
+        y1, x0 = pos['tr']
     
+    # if no image size is available then use the previously found position
+    except:
+        pass
+
+    imgSection = img[x0:x1, y0:y1, :]
+
+    # ensure all the saved images are the same size
+    x, y, c = imgSection.shape
+    field[:x, :y, :c] = imgSection
+    tifi.imwrite(dirSection + n + "_" + s + ".tif", field)
+
+    print("     " + n + " done")
+        
 
 
 dataTrain = '/Volumes/Storage/H653A_11.3new/'
