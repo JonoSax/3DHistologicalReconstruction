@@ -6,13 +6,15 @@ NOTE this must be one ONLY per specimen. It won't work between different organs
 
 '''
 
-from .Utilities import *
+from Utilities import *
 import numpy as np
 import tifffile as tifi
 import cv2
 from scipy.optimize import minimize
 from math import ceil
 from glob import glob
+import multiprocessing
+from multiprocessing import Process, Queue
 
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
@@ -35,28 +37,65 @@ def align(data, name = '', size = 0, extracting = True):
     # create the dictionary of the directories
     featDirs = dictOfDirs(feat = dataFeat, tif = dataTif)
 
+    specimens = list(featDirs.keys())[0:3]
+
+    # parallelise the extraction of the samples and info
+    feat = {}
     feats = {}
+    corner = {}
+    tifShape = {}
     tifShapes = {}
+    jobExtract = {}
+    jobAdapt = {}
+    jobTransform = {}
+    q0 = {}
+    q1 = {}
+
+    # initialise the segmentextract function
+    for spec in specimens:
+        q0[spec] = Queue()
+        jobExtract[spec] = Process(target=segmentExtract, args = (data, segSamples, featDirs[spec], size, extracting, q0[spec]))     
+        jobExtract[spec].start()
+
+    # get the results of segment extract 
+    for spec in specimens:
+        corner[spec], tifShape[spec] = q0[spec].get()
+        jobExtract[spec].join()
+        q1[spec] = Queue()
+        jobAdapt[spec] = Process(target=featAdapt, args = (data, segSamples, featDirs[spec], corner[spec], size, q1[spec]))
+        jobAdapt[spec].start()
+        
+    # get the results of the featadapt function
+    for spec in specimens:
+        feat[spec] = q1[spec].get()
+        jobAdapt[spec].join()
+        
+        for k in feat[spec]:
+            feats[k] = feat[spec][k]
+            tifShapes[k] = tifShape[spec][k]
 
 
-    for spec in featDirs.keys():
+    # linear processing, left for debugging
+    '''
+    for spec in featDirs:
         # for samples with identified features
         # try:
         # extract the single segment
-        corners, tifShape = segmentExtract(data, segSamples, featDirs[spec], size, extracting)
+        corner, tifShape = segmentExtract(data, segSamples, featDirs[spec], size, extracting, None)
         
         for t in tifShape.keys():
             tifShapes[t] = tifShape[t]
 
         # get the feature specific positions
-        feat = featAdapt(data, segSamples, featDirs[spec], corners, size)
+        feat = featAdapt(data, segSamples, featDirs[spec], corner, size)
 
         for s in feat.keys():
             feats[s] = feat[s]
 
         # except:
         #    print("No features for " + spec)
-        
+    '''
+
     # get affine transformation information of the features for optimal fitting
     translateNet, rotateNet, feats = shiftFeatures(feats, segSamples, alignedSamples)
 
@@ -71,11 +110,29 @@ def align(data, name = '', size = 0, extracting = True):
         segsection = glob(segName + "*.segsection"), 
         segsection1 = glob(segName + "*.segsection1"))
 
-    transformSamples(segmentedSamples, alignedSamples, tifShapes, translateNet, rotateNet, size, extracting)
+
+    # update the specimens found 
+    specimens = list(tifShapes.keys())
     
+    # serial transformation
+    for spec in specimens:
+        transformSamples(segmentedSamples[spec], alignedSamples, tifShapes, translateNet, rotateNet, size, extracting)
+    
+    # my attempt at parallelising this part of the process. Unfortunately it doesn't work 
+    # because the cv2.warpAffine function is objectivePolar fails for AN UNKNOWN REASON
+    # when finding the new matrix on the second feature.... unknown specifically but 
+    # issues with opencv and multiprocessing are known. 
+    '''
+    for spec in specimens:
+        jobTransform[spec] = Process(target=transformSamples, args = (segmentedSamples[spec], alignedSamples, tifShapes, translateNet, rotateNet, size, extracting)) 
+        jobTransform[spec].start()
+
+    for spec in specimens:
+        jobTransform[spec].join()
+    '''
     print('Alignment complete')
 
-def segmentExtract(data, segSamples, featDir, size, extracting = True):
+def segmentExtract(data, segSamples, featDir, size, extracting = True, q = None):
 
     # this funciton extracts the individaul sample from the slice
     # Inputs:   (data), home directory for all the info
@@ -159,11 +216,12 @@ def segmentExtract(data, segSamples, featDir, size, extracting = True):
         else:
             print("NOT Extracting, processing " + nameFromPath(featDir['tif']) + p)
 
-    return(areas, tifShape)
+    if q is None:
+        return(areas, tifShape)
+    else:
+        q.put([areas, tifShape])
 
-        # plt.imshow(tifSeg); plt.show()
-
-def featAdapt(data, dest, featDir, corners, size):
+def featAdapt(data, dest, featDir, corners, size, q = None):
 
     # this function take the features of the annotated features and converts
     # them into the local co-ordinates which are used to align the tissues
@@ -223,8 +281,10 @@ def featAdapt(data, dest, featDir, corners, size):
                 segSection[s][f][sK] = (segSection[s][f][sK] * scale).astype(int)  - corners[f]
             dictToTxt(segSection[s][f], dest + nameFromPath(featDir['tif']) + f + "_" + str(size)  + "." + s)
 
-
-    return(specFeatOrder)
+    if q is None:
+        return(specFeatOrder)
+    else:
+        q.put(specFeatOrder)
 
 def shiftFeatures(feats, dir, alignedSamples):
 
@@ -306,7 +366,7 @@ def shiftFeatures(feats, dir, alignedSamples):
 
     return(translateNet, rotateNet, feats)
 
-def transformSamples(src, dest, tifShapes, translateNet, rotateNet, feats, size, saving = True):
+def transformSamples(src, dest, tifShapes, translateNet, rotateNet, size, saving = True):
 
     # this function takes the affine transformation information and applies it to the samples
     # Inputs:   (src), directories of the segmented samples
@@ -337,71 +397,73 @@ def transformSamples(src, dest, tifShapes, translateNet, rotateNet, feats, size,
     # ---------- apply the transformations onto the images ----------
 
     # adjust the translations of each image and save the new images with the adjustment
-    for n in src:
+    # for n in src:
 
-        info = list(src[n].keys())
-        info.remove("segments")
-        info.remove("feat")
+    n = nameFromPath(src['feat'])
 
-        dirSegment = src[n]['segments']
-        feat = txtToDict(src[n]['feat'])[0]
+    info = list(src.keys())
+    info.remove("segments")
+    info.remove("feat")
 
-        # NOTE this is using cv2, probably could convert to using tifi...,.
-        field = cv2.imread(dirSegment)
-        fy, fx, fc = field.shape
+    dirSegment = src['segments']
+    feat = txtToDict(src['feat'])[0]
 
-        # debugging commands
-        # field = (np.ones((fx, fy, fc)) * 255).astype(np.uint8)      # this is used to essentially create a mask of the image for debugging
-        # warp = cv2.warpAffine(field, rotateNet['H653A_48a'], (fy, fx))    # this means there is no rotation applied
+    # NOTE this is using cv2, probably could convert to using tifi...,.
+    field = cv2.imread(dirSegment)
+    fy, fx, fc = field.shape
 
-        # NOTE featues must be done first by definition to orientate all the othe r
-        # information. The formate of the features can vary but it MUST exist in some
-        # formate 
-        for f in feat:
-            feat[f] += np.array([maxSx, maxSy]) - translateNet[n]
-        feat = objectivePolar(rotateNet[n], None, False, feat)
-        dictToTxt(feat, dest + n + ".feat")
+    # debugging commands
+    # field = (np.ones((fx, fy, fc)) * 255).astype(np.uint8)      # this is used to essentially create a mask of the image for debugging
+    # warp = cv2.warpAffine(field, rotateNet['H653A_48a'], (fy, fx))    # this means there is no rotation applied
+
+    # NOTE featues must be done first by definition to orientate all the othe r
+    # information. The formate of the features can vary but it MUST exist in some
+    # formate 
+    for f in feat:
+        feat[f] += np.array([maxSx, maxSy]) - translateNet[n]
+    feat = objectivePolar(rotateNet[n], None, False, feat)
+    dictToTxt(feat, dest + n + ".feat")
+    
+    # find the centre of rotation used to align the samples
+    centre = findCentre(feat)
+
+    # apply the transformations for all the other types of data as well
+    for i in info:
+        infoE = txtToDict(src[i])[0]
+        for f in infoE:
+            infoE[f] += np.array([maxSx, maxSy]) - translateNet[n]
+        infoE = objectivePolar(rotateNet[n], centre, False, infoE)
+        dictToTxt(infoE, dest + n + "." + i)
+
+    # translate the image  
+    newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
+    xp = maxSx - translateNet[n][0] 
+    yp = maxSy - translateNet[n][1] 
+    newField[yp:(yp+fy), xp:(xp+fx), :] += field
+
+    # apply the rotational transformation to the image
+    # centre = findCentre(dictToArray(feats[n]) + np.array([xp, yp]))
+
+    rot = cv2.getRotationMatrix2D(tuple(centre), -rotateNet[n], 1)
+    warped = cv2.warpAffine(newField, rot, (yF, xF))
+
+    try:
+        segSect0 = txtToDict(dest + n + ".segsection")[0]
+    except:
+        segSect0 = {}
         
-        # find the centre of rotation used to align the samples
-        centre = findCentre(feat)
+    try:
+        segSect1 = txtToDict(dest + n + ".segsection1")[0]
+    except:
+        segSect1 = {}
 
-        # apply the transformations for all the other types of data as well
-        for i in info:
-            infoE = txtToDict(src[n][i])[0]
-            for f in infoE:
-                infoE[f] += np.array([maxSx, maxSy]) - translateNet[n]
-            infoE = objectivePolar(rotateNet[n], centre, False, infoE)
-            dictToTxt(infoE, dest + n + "." + i)
+    plotPoints(dest + n + '_alignedAnnotated.jpg', warped, feat, segSect0, segSect1)
 
-        # translate the image  
-        newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
-        xp = maxSx - translateNet[n][0] 
-        yp = maxSy - translateNet[n][1] 
-        newField[yp:(yp+fy), xp:(xp+fx), :] += field
+    # this takes a while so optional
+    if saving:
+        cv2.imwrite(dest + n + '.tif', warped)                               # saves the adjusted image at full resolution 
 
-        # apply the rotational transformation to the image
-        # centre = findCentre(dictToArray(feats[n]) + np.array([xp, yp]))
-
-        rot = cv2.getRotationMatrix2D(tuple(centre), -rotateNet[n], 1)
-        warped = cv2.warpAffine(newField, rot, (yF, xF))
-
-        try:
-            segSect0 = txtToDict(dest + n + ".segsection")[0]
-        except:
-            segSect0 = {}
-            
-        try:
-            segSect1 = txtToDict(dest + n + ".segsection1")[0]
-        except:
-            segSect1 = {}
-
-        plotPoints(dest + n + '_alignedAnnotated.jpg', warped, feat, segSect0, segSect1)
-
-        # this takes a while so optional
-        if saving:
-            cv2.imwrite(dest + n + '.tif', warped)                               # saves the adjusted image at full resolution 
-
-        print("done translation of " + n)
+    print("done translation of " + n)
 
 def translatePoints(feats):
 
@@ -691,16 +753,12 @@ def findCentre(pos):
 
     return(centre)
 
-'''
-# dataHome is where all the directories created for information are stored 
-dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/'
-# dataHome = '/Volumes/Storage/'
 
-# dataTrain is where the ndpi and ndpa files are stored 
-dataTrain = dataHome + 'HistologicalTraining2/'
+# dataHome is where all the directories created for information are stored 
+dataTrain = '/Volumes/Storage/H653A_11.3new/'
+
 # dataTrain = dataHome + 'FeatureID/'
 name = ''
 size = 3
 
-align(dataTrain, name, size, False)
-'''
+align(dataTrain, name, size, True)
