@@ -27,24 +27,18 @@ Extent of training (epochs, batch)
 '''
 
 # dataHome is where all the directories created for information are stored 
-dataHome = '/Volumes/USB/H653A_11.3new/'
+dataTrain = '/Volumes/Storage/H653A_11.3new/'
 
-dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/HistologicalTraining2/'
+# dataTrain = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/HistologicalTraining2/'
 
 # research drive access from HPC
-# dataHome = '/eresearch/uterine/jres129/AllmaterialforBoydpaper/ResultsBoydpaper/ArcuatesandRadials/NDPIsegmentations/'
+# dataTrain = '/eresearch/uterine/jres129/AllmaterialforBoydpaper/ResultsBoydpaper/ArcuatesandRadials/NDPIsegmentations/'
 
 # research drive access via VPN
-# dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
-
-# dataTrain is where the ndpi and ndpa files are stored 
-dataTrain = dataHome
+# dataTrain = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
 
 # get all the ndpi files that are to be processed
 specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpi")))
-
-# data directory containing the wsi images to be assessed
-dataAssess = dataHome + "samples/"
 
 size = 3
 kernel = 50
@@ -55,10 +49,10 @@ portion = 0.2
 jobs = {}
 
 # tasks that are being parallelised in this script call
-tasksDone = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract']
+tasksDone =  [] #['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'SegmentExtraction']
 
 # all tasks the can be parallelised
-allTasks = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'targetTissue']
+allTasks = [] #['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'targetTissue', 'SegmentExtraction']
 
 # create dictionary containg the jobs to be done
 for t in tasksDone:
@@ -90,6 +84,7 @@ for s in specimens:
             ## create quadrants of the target tissue from the extracted tissue
             jobs[t][s] = Process(target=targetTissue.quadrant, args=(dataTrain, s, size, kernel))
 
+
 # Run the function in parallel, sequentially
 for t in jobs:
     print("\n----------- " + t + " -----------")
@@ -108,18 +103,18 @@ MaskMaker.maskCreator(dataTrain, name, size)
 
 WSIExtract.segmentation(dataTrain, name, size)
 '''
-## Align each specimen to reduce the error between slices
+## Align each specimen to reduce the error between slices, 
+# NOTE: either parallelise within this function or create a new function for the extraction of the slices
 print("\n----------- segmentID -----------")
-SegmentID.align(dataTrain, name, size)      # extracting the individual slices can technically
+# SegmentID.align(dataTrain, name, size, False)      # extracting the individual slices can technically
                                             # be parallelised, but the fitting must be sequential
 
 
 # NOTE to do
-# create a function which will extract from the orientated tissue, the segSections annoated
-# accordingly: SegSection_tr_# and SegSection_bl_# (where # is a or b)
-# these will be extracted as tif images and put into normalised image sizes to perform a 
-# small scale 3D volume segmentation
+# create a function which will propogate a single feature from a pre-determined slice
+# across ALL of the other slices 
 
+SegmentExtraction.extract(dataTrain, name, size)
 
 # creat a stack from the aligned images
 print("\n----------- stack -----------")
