@@ -77,8 +77,14 @@ def pdfCreator(sampleCollections, s):
         print("Specimen: " + s + ", Sample " + str(c) + "/" + str(len(order)))
         # load in the tif files and create a scaled down version
         imgt = tifi.imread(specificSample[n])
-        scale = imgt.shape[1]/imgt.shape[0]
-        img = cv2.resize(imgt, (int(1000*scale), 1000))
+        # scale = imgt.shape[1]/imgt.shape[0]
+        scale = 0.05
+        # img = cv2.resize(imgt, (int(1000*scale), 1000))
+        img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
+
+        # for sample H710C, all the c samples are rotated
+        if (n.lower().find("c") >= 0) & (s.lower().find("h710c") >= 0):
+            img = cv2.rotate(img, cv2.ROTATE_180)
 
         # add the sample name to the image (top left corner)
         cv2.putText(img, spec + "_" + str(n), 
@@ -107,15 +113,16 @@ def pdfCreator(sampleCollections, s):
     # dirStore = sorted(glob(dataTemp + spec + "*.jpg"))
 
     # combine all the sample images to create a single pdf 
-    with open(dataPDF + s + ".pdf","wb") as f:
+    with open(dataPDF + s + "NotScaled.pdf","wb") as f:
         f.write(i2p.convert(dirStore))
     print("PDF writing complete for " + s + "!\n")
     # remove the temporary jpg files
     for d in dirStore:
-        os.remove(d)
+        pass
+        # os.remove(d)
 
     # remove the temporary dir
-    os.rmdir(dataTemp)
+    # os.rmdir(dataTemp)
 
     # research drive access via VPN
 
@@ -156,12 +163,12 @@ except:
 samples = list(sampleCollections.keys())
 
 # specific samples
-samples = ['H710C', 'H710A', 'H653A']
+samples = ['H710C']  #, 'H710A', 'H653A']
 
+'''
 for s in samples:
     Process(target=pdfCreator, args=(sampleCollections, s)).start()
-
 '''
+
 for s in samples:
     pdfCreator(sampleCollections, s)
-'''
