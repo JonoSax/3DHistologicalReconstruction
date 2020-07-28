@@ -68,7 +68,8 @@ def align(data, name = '', size = 0, extracting = True):
         segments = glob(segName + "*.tif"), 
         bound = glob(segName + "*.bound"), 
         feat = glob(segName + "*.feat"), 
-        segSect = glob(segName + "*.segSect"))
+        segsection = glob(segName + "*.segsection"), 
+        segsection1 = glob(segName + "*.segsection1"))
 
     transformSamples(segmentedSamples, alignedSamples, tifShapes, translateNet, rotateNet, size, extracting)
     
@@ -199,23 +200,29 @@ def featAdapt(data, dest, featDir, corners, size):
     boundKey = extractFeatureInfo(pinInfo, 'bound')
     segSection = extractFeatureInfo(pinInfo, 'segsection')
 
+    # get all the unique segsections 
+    segTypes = np.unique([s.split("_")[0] for s in list(pinInfo.keys()) if "seg" in s])
+    segSection = {}
+    for s in segTypes:
+        segSection[s] = extractFeatureInfo(pinInfo, s)
+
     for f in featKey:
         for fK in featKey[f]:
             featKey[f][fK] = (featKey[f][fK] * scale).astype(int)  - corners[f]
-            
+        specFeatOrder[nameSpec+f] = featKey[f]
+        dictToTxt(featKey[f], dest + nameFromPath(featDir['tif']) + f + "_" + str(size)  + ".feat")
+
+    for f in boundKey:
         for bK in boundKey[f]:
             boundKey[f][bK] = (boundKey[f][bK] * scale).astype(int)  - corners[f]
+        dictToTxt(boundKey[f], dest + nameFromPath(featDir['tif']) + f + "_" + str(size)  + ".bound")
 
-        for sK in segSection[f]:
-            segSection[f][sK] = (segSection[f][sK] * scale).astype(int)  - corners[f]
+    for s in segSection:
+        for f in segSection[s]:
+            for sK in segSection[s][f]:
+                segSection[s][f][sK] = (segSection[s][f][sK] * scale).astype(int)  - corners[f]
+            dictToTxt(segSection[s][f], dest + nameFromPath(featDir['tif']) + f + "_" + str(size)  + "." + s)
 
-    # save the dictionary
-    for p in featKey.keys():
-        name = nameFromPath(featDir['tif']) + p + "_" + str(size)
-        specFeatOrder[nameSpec+p] = featKey[p]
-        dictToTxt(featKey[p], dest + name  + ".feat")
-        dictToTxt(boundKey[p], dest + name  + ".bound")
-        dictToTxt(segSection[p], dest + name  + ".segSect")
 
     return(specFeatOrder)
 
@@ -332,11 +339,13 @@ def transformSamples(src, dest, tifShapes, translateNet, rotateNet, feats, size,
     # adjust the translations of each image and save the new images with the adjustment
     for n in src:
 
+        info = list(src[n].keys())
+        info.remove("segments")
+        info.remove("feat")
+
         dirSegment = src[n]['segments']
-        bound = txtToDict(src[n]['bound'])[0]
         feat = txtToDict(src[n]['feat'])[0]
-        segSect = txtToDict(src[n]['segSect'])[0]
-        
+
         # NOTE this is using cv2, probably could convert to using tifi...,.
         field = cv2.imread(dirSegment)
         fy, fx, fc = field.shape
@@ -345,24 +354,24 @@ def transformSamples(src, dest, tifShapes, translateNet, rotateNet, feats, size,
         # field = (np.ones((fx, fy, fc)) * 255).astype(np.uint8)      # this is used to essentially create a mask of the image for debugging
         # warp = cv2.warpAffine(field, rotateNet['H653A_48a'], (fy, fx))    # this means there is no rotation applied
 
-        # apply the transformation to all pins as well and save them as aligned
-        # NOTE the feat is being adapted properly but the segSect is not working properly....
+        # NOTE featues must be done first by definition to orientate all the othe r
+        # information. The formate of the features can vary but it MUST exist in some
+        # formate 
         for f in feat:
             feat[f] += np.array([maxSx, maxSy]) - translateNet[n]
         feat = objectivePolar(rotateNet[n], None, False, feat)
         dictToTxt(feat, dest + n + ".feat")
-
+        
+        # find the centre of rotation used to align the samples
         centre = findCentre(feat)
 
-        for b in bound:
-            bound[b] += np.array([maxSx, maxSy]) - translateNet[n]
-        bound = objectivePolar(rotateNet[n], centre, False, bound)
-        dictToTxt(bound, dest + n + ".bound")
-
-        for s in segSect:
-            segSect[s] += np.array([maxSx, maxSy]) - translateNet[n]
-        segSect = objectivePolar(rotateNet[n], centre, False, segSect)
-        dictToTxt(segSect, dest + n + ".segSect")
+        # apply the transformations for all the other types of data as well
+        for i in info:
+            infoE = txtToDict(src[n][i])[0]
+            for f in infoE:
+                infoE[f] += np.array([maxSx, maxSy]) - translateNet[n]
+            infoE = objectivePolar(rotateNet[n], centre, False, infoE)
+            dictToTxt(infoE, dest + n + "." + i)
 
         # translate the image  
         newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
@@ -376,8 +385,17 @@ def transformSamples(src, dest, tifShapes, translateNet, rotateNet, feats, size,
         rot = cv2.getRotationMatrix2D(tuple(centre), -rotateNet[n], 1)
         warped = cv2.warpAffine(newField, rot, (yF, xF))
 
+        try:
+            segSect0 = txtToDict(dest + n + ".segsection")[0]
+        except:
+            segSect0 = {}
+            
+        try:
+            segSect1 = txtToDict(dest + n + ".segsection1")[0]
+        except:
+            segSect1 = {}
 
-        plotPoints(dest + n + '_alignedAnnotated.jpg', warped, feat, segSect, bound)
+        plotPoints(dest + n + '_alignedAnnotated.jpg', warped, feat, segSect0, segSect1)
 
         # this takes a while so optional
         if saving:
@@ -504,7 +522,10 @@ def plotPoints(dir, imgO, *args):
             img = cv2.circle(img, pos, si, (255, 0, 0), si) 
         
         # plot the centre as well
-        img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
+        try:
+            img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
+        except:
+            print("No centre drawn")
 
     # resize the image
     x, y, c = img.shape
