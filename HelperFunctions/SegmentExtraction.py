@@ -19,7 +19,6 @@ def extract(dataTrain, name, size):
     # get the file of the features information 
     dirAligned = dataTrain + str(size) + '/alignedSamples/' + name
     dirSection = dataTrain + str(size) + '/sections/'
-    dirMaker(dirSection)
     dataAlignedTif = sorted(glob(dirAligned + '*.tif'))
 
     # collect all the seg sections and if there is more than one then get the largest
@@ -33,6 +32,10 @@ def extract(dataTrain, name, size):
 
     # this is really stupid but i'm processing this per sample
     for s in segSectionsALL:
+
+        dirSection_s = dirSection + s + "/"
+        dirMaker(dirSection_s)
+
         print('Processing ' + s)
         SegSections = segSectionsALL[s]
         dirs = dictOfDirs(
@@ -60,7 +63,7 @@ def extract(dataTrain, name, size):
         jobs = {}
         for n in dirs:
             # segExtract(n, dirs[n], dirSection, yMax, xMax, s)
-            jobs[n] = (Process(target=segExtract, args=(n, dirs[n], dirSection, yMax, xMax, s)))     
+            jobs[n] = (Process(target=segExtract, args=(n, dirs[n], dirSection_s, yMax, xMax, s)))     
             jobs[n].start()
         
         for n in dirs:
