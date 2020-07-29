@@ -437,11 +437,9 @@ def dictOfDirs(**kwargs):
 
     dictToWrite = {}
 
-    f = kwargs.keys()
-
     # get all the names
     names = list()
-    for k in kwargs.keys():
+    for k in kwargs:
         names += nameFromPath(kwargs[k])
 
     # get all the unique names
@@ -451,12 +449,21 @@ def dictOfDirs(**kwargs):
     for n in names:
         dictToWrite[n] = {}
 
-    for k in kwargs.keys():
+    for k in kwargs:
         path = kwargs[k]
 
-        for p in path:
-            dictToWrite[nameFromPath(p)][k] = p
+        spec, no = np.unique(nameFromPath(path), return_counts = True)
 
+        for s, n in zip(spec, no):
+            if n > 1:
+                dictToWrite[s][k] = list()
+
+        # if there are multiple files under the label for that specimen, append ot a list
+        for p in path:
+            if no[np.where(spec == nameFromPath(p))] > 1:
+                dictToWrite[nameFromPath(p)][k].append(p)
+            else:
+                dictToWrite[nameFromPath(p)][k] = p
 
     return(dictToWrite)
 
