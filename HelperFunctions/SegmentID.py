@@ -6,7 +6,7 @@ NOTE this must be one ONLY per specimen. It won't work between different organs
 
 '''
 
-from Utilities import *
+from .Utilities import *
 import numpy as np
 import tifffile as tifi
 import cv2
@@ -28,12 +28,15 @@ def align(data, name = '', size = 0, extracting = True):
     # Outputs:  (), extracts the tissue sample from the slide and aligns them by 
     #           their identified featues
 
+    # get all the segmented information that is to be transformed
+
     # get the file of the features information 
     dataFeat = sorted(glob(data + 'pinFiles/' + name + '*.pin'))
     dataTif = sorted(glob(data + '/' + str(size) + '/tifFiles/' + name + '*' + str(size) + '.tif'))
     segSamples = data + str(size) + '/segmentedSamples/'
     alignedSamples = data + str(size) + '/alignedSamples/'
-    
+    segName = segSamples + name
+
     # create the dictionary of the directories
     featDirs = dictOfDirs(feat = dataFeat, tif = dataTif)
 
@@ -99,17 +102,12 @@ def align(data, name = '', size = 0, extracting = True):
     # get affine transformation information of the features for optimal fitting
     translateNet, rotateNet, feats = shiftFeatures(feats, segSamples, alignedSamples)
 
-    # apply the transformations to the samples
-    segName = segSamples + name
-
     # get all the segmented information that is to be transformed
     segmentedSamples = dictOfDirs(
         segments = glob(segName + "*.tif"), 
         bound = glob(segName + "*.bound"), 
         feat = glob(segName + "*.feat"), 
-        segsection = glob(segName + "*.segsection"), 
-        segsection1 = glob(segName + "*.segsection1"))
-
+        segsection = glob(segName + "*.segsection*"))
 
     # update the specimens found 
     specimens = list(tifShapes.keys())
@@ -375,12 +373,37 @@ def transformSamples(src, dest, tifShapes, translateNet, rotateNet, size, saving
     #           (rotateNet), the rotation information to be applied per image
     # Outputs   (), saves an image of the tissue with the necessary padding to ensure all images are the same size and roughly aligned if saving is True
 
+    def adjustPos(s, dest, n, maxPos, translateNet, rotateNet, centre = None):
+
+        # this funciton adjusts the position of features in the txt files and resaves them
+        # in the destination location
+        # Inputs:   (s), directory of the specimens features to adjust
+        #           (dest), directory to save new text file
+        #           (n), sample name
+        #           (maxPos), field adjustment size
+        #           (translateNet), translations of the sample
+        #           (rotateNet), rotations of the sample
+        #           (centre), position of the centre, if not given will be calculated from input features
+        # Outputs:  (), saves the positions with the transformation 
+        #           (centre), if the centre is not given then it is to be found from these calculations
+        
+        infoE = txtToDict(s)[0]
+        for f in infoE:
+            infoE[f] += np.array(maxPos) - translateNet[n]
+        infoE = objectivePolar(rotateNet[n], centre, False, infoE)
+        dictToTxt(infoE, dest + n + "." + s.split(".")[-1])     # from the info in the txt file, rename
+
+        if centre is None:
+            return(findCentre(infoE))
+
+
     # get the measure of the amount of shift to create the 'platform' which all the images are saved to
     ss = dictToArray(translateNet, int)
     maxSx = np.max(ss[:, 0])
     maxSy = np.max(ss[:, 1])
     minSx = np.min(ss[:, 0])
     minSy = np.min(ss[:, 1]) 
+    maxPos = (maxSx, maxSy)
 
     # make destinate directory
     dirMaker(dest)
@@ -402,8 +425,9 @@ def transformSamples(src, dest, tifShapes, translateNet, rotateNet, size, saving
     n = nameFromPath(src['feat'])
 
     info = list(src.keys())
-    info.remove("segments")
-    info.remove("feat")
+
+    try: info.remove("segments")
+    except: pass
 
     dirSegment = src['segments']
     feat = txtToDict(src['feat'])[0]
@@ -419,21 +443,26 @@ def transformSamples(src, dest, tifShapes, translateNet, rotateNet, size, saving
     # NOTE featues must be done first by definition to orientate all the othe r
     # information. The formate of the features can vary but it MUST exist in some
     # formate 
+
+    
     for f in feat:
         feat[f] += np.array([maxSx, maxSy]) - translateNet[n]
     feat = objectivePolar(rotateNet[n], None, False, feat)
     dictToTxt(feat, dest + n + ".feat")
     
     # find the centre of rotation used to align the samples
-    centre = findCentre(feat)
+    
+    centre = adjustPos(src['feat'], dest, n, maxPos, translateNet, rotateNet)
+    info.remove('feat')
 
     # apply the transformations for all the other types of data as well
     for i in info:
-        infoE = txtToDict(src[i])[0]
-        for f in infoE:
-            infoE[f] += np.array([maxSx, maxSy]) - translateNet[n]
-        infoE = objectivePolar(rotateNet[n], centre, False, infoE)
-        dictToTxt(infoE, dest + n + "." + i)
+        if type(src[i]) is str:
+            adjustPos(src[i], dest, n, maxPos, translateNet, rotateNet, centre)
+        elif type(src[i]) is list:
+            for s in src[i]:
+                adjustPos(s, dest, n, maxPos, translateNet, rotateNet, centre)
+                
 
     # translate the image  
     newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
@@ -753,7 +782,7 @@ def findCentre(pos):
 
     return(centre)
 
-
+'''
 # dataHome is where all the directories created for information are stored 
 dataTrain = '/Volumes/Storage/H653A_11.3new/'
 
@@ -762,3 +791,4 @@ name = ''
 size = 3
 
 align(dataTrain, name, size, True)
+'''
