@@ -6,7 +6,7 @@ NOTE this must be one ONLY per specimen. It won't work between different organs
 
 '''
 
-from .Utilities import *
+from Utilities import *
 import numpy as np
 import tifffile as tifi
 import cv2
@@ -40,7 +40,7 @@ def align(data, name = '', size = 0, extracting = True):
     # create the dictionary of the directories
     featDirs = dictOfDirs(feat = dataFeat, tif = dataTif)
 
-    specimens = list(featDirs.keys())[0:3]
+    specimens = list(featDirs.keys())
 
     # parallelise the extraction of the samples and info
     feat = {}
@@ -295,7 +295,7 @@ def shiftFeatures(feats, dir, alignedSamples):
 
     translate = {}
     rotate = {}
-    featNames = list(feats.keys())
+    featNames = sorted(list(feats.keys()))
 
     # store the affine transformations
     translateNet = {}
@@ -305,13 +305,27 @@ def shiftFeatures(feats, dir, alignedSamples):
     translateNet[featNames[0]] = np.array([0, 0])
     rotateNet[featNames[0]] = 0
 
-    # perform transformations on neighbouring slices and build them up as you go
-    for i in range(len(featNames)-1):
+    refFeat = featNames[int(len(featNames)/2)]  # using middle sample for aligning
+    refFeat = featNames[0]      # initialise the refFeat as the first sample is sequentially aligning samples
 
+    featNames.remove(refFeat)       # remove whatever feature you are using for aligning
+
+    # perform transformations on neighbouring slices and build them up as you go
+    for fn in featNames:
+        
+        '''
         # select neighbouring features to process
         featsO = {}     # feats optimum, at this initialisation they are naive but they will progressively converge 
         for fn in featNames[i:i+2]:
             featsO[fn] = feats[fn]
+        '''
+
+        # align all the images with respect to a single reference frame
+        featsO = {}     
+        featsO[refFeat]= feats[refFeat]         # MUST USE the first input as reference
+        featsO[fn] = feats[fn]                  # MUST USE the second input as target
+
+        # refFeat = fn        # re-assign the re-Feat if aligning between slices
             
         print("Transforming " + fn + " features")
 
@@ -616,7 +630,7 @@ def plotPoints(dir, imgO, *args):
         try:
             img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
         except:
-            print("No centre drawn")
+            pass
 
     # resize the image
     x, y, c = img.shape
@@ -782,7 +796,7 @@ def findCentre(pos):
 
     return(centre)
 
-'''
+
 # dataHome is where all the directories created for information are stored 
 dataTrain = '/Volumes/Storage/H653A_11.3new/'
 
@@ -790,5 +804,4 @@ dataTrain = '/Volumes/Storage/H653A_11.3new/'
 name = ''
 size = 3
 
-align(dataTrain, name, size, True)
-'''
+align(dataTrain, name, size, False)
