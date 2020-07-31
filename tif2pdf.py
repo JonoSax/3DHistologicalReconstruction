@@ -42,7 +42,7 @@ def nameFromPath(paths):
     return names
 
 # create temporary jpg file of all the tif images
-def pdfCreator(sampleCollections, s):
+def pdfCreator(sampleCollections, s, remove = True):
     # this function takes the directory names and creates a pdf of each sample 
     # Inputs:   (sampleCollections), dictionary containing all the dir names of the imgs
     #           (s), specimen of interest
@@ -51,6 +51,7 @@ def pdfCreator(sampleCollections, s):
 
     # create a temporary folder for the jpeg images per sample
     dataTemp = dataHome + 'temporary' + s + '/'
+    print("Making " + dataTemp)
     try:
         os.mkdir(dataTemp)
     except:
@@ -78,7 +79,7 @@ def pdfCreator(sampleCollections, s):
         # load in the tif files and create a scaled down version
         imgt = tifi.imread(specificSample[n])
         # scale = imgt.shape[1]/imgt.shape[0]
-        scale = 0.05
+        scale = 0.03
         # img = cv2.resize(imgt, (int(1000*scale), 1000))
         img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
 
@@ -117,12 +118,13 @@ def pdfCreator(sampleCollections, s):
         f.write(i2p.convert(dirStore))
     print("PDF writing complete for " + s + "!\n")
     # remove the temporary jpg files
-    for d in dirStore:
-        pass
-        # os.remove(d)
+    if remove:
+        for d in dirStore:
+            os.remove(d)
 
-    # remove the temporary dir
-    # os.rmdir(dataTemp)
+        # remove the temporary dir
+        os.rmdir(dataTemp)
+        print("Removing " + dataTemp)
 
     # research drive access via VPN
 
@@ -163,12 +165,13 @@ except:
 samples = list(sampleCollections.keys())
 
 # specific samples
-samples = ['H710C']  #, 'H710A', 'H653A']
+# samples = ['H710C']  #, 'H710A', 'H653A']
+
+
+for s in sampleCollections:
+    Process(target=pdfCreator, args=(sampleCollections, s, False)).start()
 
 '''
-for s in samples:
-    Process(target=pdfCreator, args=(sampleCollections, s)).start()
-'''
-
 for s in samples:
     pdfCreator(sampleCollections, s)
+'''
