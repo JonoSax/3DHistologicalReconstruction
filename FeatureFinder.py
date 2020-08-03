@@ -9,6 +9,7 @@ import cv2
 import matplotlib.pyplot as plt
 from glob import glob
 import os
+from HelperFunctions.Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker
 
 def hist_match(source, template):
     """
@@ -61,6 +62,7 @@ def hist_match(source, template):
     return interp_t_values[bin_idx].reshape(oldshape)
 
 dataSource = '/Volumes/USB/InvididualImagesMod2/'
+dataDest = '/Volumes/USB/InvididualImagesModInfo/'
 
 specimens = os.listdir(dataSource)
 
@@ -68,7 +70,12 @@ for spec in specimens:
 
     imgs = sorted(glob(dataSource + spec + "/*"))
 
-    for n in range(len(imgs)-1):
+    for n in range(2, len(imgs)-1):
+
+        name_ref = nameFromPath(imgs[n])
+        name_tar = nameFromPath(imgs[n+1])
+
+        print("Matching " + name_tar + " to " + name_ref)
 
         img_ref = cv2.imread(imgs[n])
         img_tar = cv2.imread(imgs[n+1])
@@ -95,16 +102,36 @@ for spec in specimens:
 
         for c in range(1, int(np.ceil(y/p)) - 1):
             for r in range(1, int(np.ceil(x/p)) - 1):
+
+
                 # extract a small grid from both image
                 imgSect_ref = img_ref[c*p:(c+1)*p, r*p:(r+1)*p, :]
-
-                # NOTE would be good to expand the target search
-                imgSect_tar = img_tar[(c-1)*p:(c+2)*p, (r-1)*p:(r+2)*p, :]
+                imgSect_tar = img_tar[(c-1)*p:(c+2)*p, (r-1)*p:(r+2)*p, :]  # NOTE target area search is expaneded
 
                 # if the entire contains very little info (ie less than 1/3 of the image contains
                 # target tissue) don't process
-                if (np.sum((imgSect_ref>0)*1) <= p**2 / 3) or (np.sum((imgSect_tar>0)*1) <= p**2 / 3):
+                if (np.sum((imgSect_ref>0)*1) <= imgSect_ref.size*0.9): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
                     continue
+                '''
+                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+                ax1.imshow(imgSect_ref)
+                ax2.imshow(imgSect_tar)
+
+                # edge detection
+                imgSect_ref = cv2.Canny(imgSect_ref, 100, 200)
+                imgSect_tar = cv2.Canny(imgSect_tar, 100, 200)
+                ax3.imshow(imgSect_ref, cmap = 'gray')
+                ax4.imshow(imgSect_tar, cmap = 'gray')
+                plt.show()
+                '''
+                
+                '''
+                fig, (ax1, ax2) = plt.subplots(1, 2)
+                ax1.imshow(imgSect_ref)
+                ax2.imshow(imgSect_tar)
+                plt.show()
+                '''
+                
 
                 # get the key points and descriptors of each section
                 kp_ref, des_ref = sift.detectAndCompute(imgSect_ref,None)
@@ -159,14 +186,28 @@ for spec in specimens:
 
 
         # add annotations to where the matches have been found
+        n = 0
+        matchRefDict = {}
         for k in matchRef:
             cv2.circle(img_ref, tuple(k.astype(int)), 20, (0, 0, 255), 8)
+            matchRefDict["feat_" + str(n)] = k
+            n += 1
 
+        matchTarDict = {}
         for k in matchTar:
             cv2.circle(img_tar, tuple(k.astype(int)), 20, (0, 0, 255), 8)
+            matchTarDict["feat_" + str(n)] = k
+            n += 1
         
-        fig, (ax1, ax2) = plt.subplots(1, 2)
+        if len(matchRef) > 0:
+            '''
+            fig, (ax1, ax2) = plt.subplots(1, 2)
+            ax1.imshow(img_ref); 
+            ax2.imshow(img_tar); 
+            plt.show()
+            '''
 
-        ax1.imshow(img_ref); 
-        ax2.imshow(img_tar); 
-        plt.show()
+            dictToTxt(matchRefDict, dataDest + name_ref + ".feat")
+            dictToTxt(matchTarDict, dataDest + name_tar + ".feat")
+
+            print("test")
