@@ -48,7 +48,7 @@ def sectionSelecter(spec, dataSource, dataDestination):
         masksStore[name] = mask
         maskShapes.append(mask.shape)
 
-    print("     Masks created")
+    print(spec + " Masks created")
 
     # Standardise the size of the mask
     maskShapes = np.array(maskShapes)
@@ -78,7 +78,7 @@ def sectionSelecter(spec, dataSource, dataDestination):
 
     # apply the mask to all the images and save
     imgStandardiser(dest, src, MasksStandard)
-    print("     Images modified")
+    print(spec + " Images modified")
 
 def maskMaker(imgO, r, plotting = False):     
 
@@ -154,11 +154,14 @@ def maskMaker(imgO, r, plotting = False):
     b = 3
     im_centreFind = cv2.copyMakeBorder(im_binary.copy(), b, b, b, b, cv2.BORDER_CONSTANT, value = 0)
     storeC = 1
-    while (np.sum(im_centreFind)-storeC > 100) and (storeC > 0):
+    while (np.sum(im_centreFind) > 100) and (storeC > 0):
         store0 = np.sum(im_centreFind)
         im_centreFind = cv2.erode(im_centreFind, (b, b))
         storeC = store0 - np.sum(im_centreFind)
+        im_centreFindStore = im_centreFind
         
+    if np.sum(im_centreFind) == 0:
+        im_centreFind = im_centreFindStore
 
     # pick the lowest point found (from observation, there appears to be more noise near the 
     # origin of the image [top left visually] so this is just another step to make a more robust
@@ -267,10 +270,23 @@ if __name__ == "__main__":
 
     # iterate through each specimen and perform feature mapping between each sample
     # NOTE tried to parallelise but once again cv2 is a huge hang up.....
-    for spec in specimens:    
 
-        # sectionSelecter(spec, dataSource, dataDestination)      
-        jobs[spec] = Process(target=sectionSelecter, args = (spec, dataSource, dataDestination))
-    
-    for spec in specimens:
-        jobs[spec].start()
+    for n in range(int(len(specimens)/4)):
+        # multiprocess in batches to avoid destroying my memory!
+        # see if concurrent processing perhaps???
+        print("\nLot: " + str(n))
+
+        specRange = specimens[n*4:(n+1)*4]
+
+        for spec in specRange:    
+            # sectionSelecter(spec, dataSource, dataDestination)      
+            jobs[spec] = Process(target=sectionSelecter, args = (spec, dataSource, dataDestination))
+            print("process " + spec + " allocated")
+            jobs[spec].start()
+            print("process " + spec + " started")
+        
+        for spec in specRange:
+            print("process " + spec + " joined")
+            jobs[spec].join()
+
+        
