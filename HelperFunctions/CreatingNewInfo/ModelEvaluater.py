@@ -9,7 +9,7 @@ import cv2
 import matplotlib.pyplot as plt
 import tifffile as tifi
 from glob import glob
-from .Utilities import *
+from HelperFunctions.Utilities import *
 
 def main(dataHome, dataAssess, savedModel, class2feat):
     

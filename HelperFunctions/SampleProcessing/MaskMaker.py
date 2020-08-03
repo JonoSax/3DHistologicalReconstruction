@@ -1,11 +1,11 @@
 '''
 
 this creates a mask from the annotations which indicates the 
-regions which are the annotate tissue
+regions which are the annotated tissue
 
 '''
 
-from .Utilities import *
+from HelperFunctions.Utilities import *
 import os
 import numpy as np
 from glob import glob

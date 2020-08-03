@@ -4,7 +4,7 @@ this function will extract segSections from the aligned tissue
 
 '''
 
-from Utilities import *
+from HelperFunctions.Utilities import *
 import tifffile as tifi
 from glob import glob
 import cv2
@@ -143,7 +143,7 @@ def segExtract(segment, dirSection, fields):
 
         print(name + " " + sample + " extracted")
     
-
+'''
 dataTrain = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/HistologicalTraining2/'
 dataTrain = '/Volumes/Storage/H653A_11.3new/'
 
@@ -151,3 +151,4 @@ name = ''
 size = 3
 
 extract(dataTrain, name, size)
+'''

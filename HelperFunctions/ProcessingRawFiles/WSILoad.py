@@ -1,10 +1,10 @@
 '''
-This function extracts a tif file of specified resolution 
+This function extracts a tif file of specified resolution from the ndpi file
 '''
 
 import os
 from glob import glob
-from .Utilities import *
+from HelperFunctions.Utilities import *
 
 # kernel = 150
 # dataTrain =  "Data.nosync/testing/"

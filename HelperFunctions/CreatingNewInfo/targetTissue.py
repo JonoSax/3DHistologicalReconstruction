@@ -6,7 +6,7 @@ tissue for training
 import numpy as np
 import cv2
 from glob import glob
-from .Utilities import *
+from HelperFunctions.Utilities import *
 
 def quadrant(dataTrain, name = '', size = 0, kernel = 50):
 

@@ -9,7 +9,7 @@ import cv2
 from glob import glob
 import tifffile as tifi
 from datetime import datetime
-from .Utilities import *
+from HelperFunctions.Utilities import *
 
 from tensorflow.keras.layers import Input, Conv2D, Dense, Flatten, Dropout
 from tensorflow.keras.models import Model

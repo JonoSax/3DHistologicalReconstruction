@@ -3,7 +3,7 @@ This script takes the aligned tif files and arranges them into a n-dimensional
 tif file 
 '''
 
-from .Utilities import nameFromPath, dirMaker
+from HelperFunctions.Utilities import nameFromPath, dirMaker
 import numpy as np
 from glob import glob
 import cv2

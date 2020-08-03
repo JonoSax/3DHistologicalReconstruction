@@ -4,22 +4,22 @@ identified from manual segmenetaiton and training a NN on this data for
 segment identification
 
 '''
-from HelperFunctions import *
 from HelperFunctions.Utilities import nameFromPath
+print(__package__)
+from HelperFunctions.CreatingNewInfo import WSIExtract, targetTissue 
+from HelperFunctions.ProcessingRawFiles import SegmentLoad, WSILoad
+from HelperFunctions.SampleProcessing import MaskMaker, SegmentExtraction, SegmentID
 from glob import glob
 import multiprocessing
 from multiprocessing import Process
 from time import perf_counter
-# from concurrent.futures import ProcessPoolExecutor as executor
-import concurrent.futures
+print(__package__)
+
 
 # ---------- THINGS TO DO ----------
-# Make it so that the directories of the slices and the annotated slices are all in a single callable object, rather than seperate variables
-# Make is so that every function saves something so that once a step is complete, that function can be commented
-    # out but the next function is only calling the saved output of the function --> this means the script
-    # is essentially a full workflow but is also not dependent on every sequential step being run
+# make the parallelisation imbedded in the functions rather than called in main. ENSURE
+# that parallelisation is an option to allow for easier debugging
 
-# User input
 
 '''
 Folder location of slices
@@ -38,7 +38,7 @@ dataTrain = '/Volumes/Storage/H653A_11.3new/'
 # dataTrain = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
 
 # get all the ndpi files that are to be processed
-specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpi")))
+specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpi")))[0:2]
 
 size = 3
 kernel = 50
@@ -49,10 +49,10 @@ portion = 0.2
 jobs = {}
 
 # tasks that are being parallelised in this script call
-tasksDone =  [] #['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'SegmentExtraction']
+tasksDone = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract']
 
 # all tasks the can be parallelised
-allTasks = [] #['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'targetTissue', 'SegmentExtraction']
+allTasks = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'targetTissue', 'SegmentExtraction']
 
 # create dictionary containg the jobs to be done
 for t in tasksDone:
@@ -84,7 +84,6 @@ for s in specimens:
             ## create quadrants of the target tissue from the extracted tissue
             jobs[t][s] = Process(target=targetTissue.quadrant, args=(dataTrain, s, size, kernel))
 
-
 # Run the function in parallel, sequentially
 for t in jobs:
     print("\n----------- " + t + " -----------")
@@ -94,19 +93,21 @@ for t in jobs:
     for s in jobs[t]:
         jobs[t][s].join()
 
-'''
-SegmentLoad.readannotations(dataTrain, name)
 
-WSILoad.load(dataTrain, name, size)
+if len(tasksDone) == 0:
 
-MaskMaker.maskCreator(dataTrain, name, size)
+    SegmentLoad.readannotations(dataTrain, name)
 
-WSIExtract.segmentation(dataTrain, name, size)
-'''
+    WSILoad.load(dataTrain, name, size)
+
+    MaskMaker.maskCreator(dataTrain, name, size)
+
+    WSIExtract.segmentation(dataTrain, name, size)
+
 ## Align each specimen to reduce the error between slices, 
 # NOTE: either parallelise within this function or create a new function for the extraction of the slices
 print("\n----------- segmentID -----------")
-# SegmentID.align(dataTrain, name, size, False)      # extracting the individual slices can technically
+SegmentID.align(dataTrain, name, size, True)      # extracting the individual slices can technically
                                             # be parallelised, but the fitting must be sequential
 
 

@@ -1,10 +1,8 @@
 '''
 This script loads in the NDPA files which have the manually segmented 
-sections and correlates these positions with the pixel position on the WSI 
-that has just been loaded. 
+sections and converts all the positions into their corresponding pixel positions
 
-It then saves these co-ordinates as a .pos file 
-
+This is done for annotations (.pos) and for specific points (.pin)
 '''
 
 import numpy as np
@@ -12,16 +10,8 @@ from glob import glob
 import openslide 
 import matplotlib.pyplot as plt
 from scipy.interpolate import interpolate
-from .Utilities import *
-
-class specDict:
-
-    ndpi = {}
-    ndpa = {}
-
-    def __init__(self, ndpi, ndpa):
-        self.ndpi = ndpi
-        self.ndpa = ndpa
+from HelperFunctions.Utilities import *
+from multiprocessing import process
 
 # simple dictionary used to convert to SI unit between the different scales in the ndpi and ndpa files
 # It is using millimeters as the base unit (ie multiple of 1)
@@ -68,7 +58,7 @@ def readannotations(dataTrain, specimen = '', alwaysProcess = True):
         #               co-ordinates1
         #               ....
         #       ...
-        for spec in specDict.keys():
+        for spec in specDict:
 
             ndpaPath = specDict[spec]['ndpa']
             ndpiPath = specDict[spec]['ndpi']

@@ -42,22 +42,22 @@ def nameFromPath(paths):
     return names
 
 # create temporary jpg file of all the tif images
-def pdfCreator(sampleCollections, s, remove = True):
+def pdfCreator(sampleCollections, spec, remove = True):
     # this function takes the directory names and creates a pdf of each sample 
     # Inputs:   (sampleCollections), dictionary containing all the dir names of the imgs
-    #           (s), specimen of interest
+    #           (spec), specimen of interest
     # Outputs:  (), creates a pdf per sample, also has to create a temporary folder
     #               for jpeg images but that is deleted at the end
 
     # create a temporary folder for the jpeg images per sample
-    dataTemp = dataHome + 'temporary' + s + '/'
+    dataTemp = dataHome + 'temporary' + spec + '/'
     print("Making " + dataTemp)
     try:
         os.mkdir(dataTemp)
     except:
         pass
 
-    specificSample = sampleCollections[s]
+    specificSample = sampleCollections[spec]
 
 
     # order the dictionary values 
@@ -75,7 +75,7 @@ def pdfCreator(sampleCollections, s, remove = True):
     startTime = clock()
     for n in order:
 
-        print("Specimen: " + s + ", Sample " + str(c) + "/" + str(len(order)))
+        print("Specimen: " + spec + ", Sample " + str(c) + "/" + str(len(order)))
         # load in the tif files and create a scaled down version
         imgt = tifi.imread(specificSample[n])
         # scale = imgt.shape[1]/imgt.shape[0]
@@ -84,7 +84,7 @@ def pdfCreator(sampleCollections, s, remove = True):
         img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
 
         # for sample H710C, all the c samples are rotated
-        if (n.lower().find("c") >= 0) & (s.lower().find("h710c") >= 0):
+        if (n.lower().find("c") >= 0) & (spec.lower().find("h710c") >= 0):
             img = cv2.rotate(img, cv2.ROTATE_180)
 
         # add the sample name to the image (top left corner)
@@ -107,16 +107,16 @@ def pdfCreator(sampleCollections, s, remove = True):
         timeLeft = timeOfProcess/c * (len(order) - c)
 
         if c%5 == 0:
-            print("     Sample " + s + " has " + str(timeLeft) +  " secs to go")
+            print("     Sample " + spec + " has " + str(timeLeft) +  " secs to go")
     
     # comment the above loop and uncomment below to process already processed images
     # without having to re-process all images
     # dirStore = sorted(glob(dataTemp + spec + "*.jpg"))
 
     # combine all the sample images to create a single pdf 
-    with open(dataPDF + s + "NotScaled.pdf","wb") as f:
+    with open(dataPDF + spec + "NotScaled.pdf","wb") as f:
         f.write(i2p.convert(dirStore))
-    print("PDF writing complete for " + s + "!\n")
+    print("PDF writing complete for " + spec spec + "!\n")
     # remove the temporary jpg files
     if remove:
         for d in dirStore:
@@ -137,8 +137,8 @@ sampleCollections = {}
 specimens = list()
 
 # create a dictionary containing all the specimens and their corresponding sample
-for s in samples:
-    spec, no = nameFromPath(s).split("_")
+for spec in samples:
+    spec, no = nameFromPath(spec).split("_")
 
     # attempt to get samples
     try:
@@ -150,10 +150,10 @@ for s in samples:
 
     # create the dictionary as you go
     try:
-        sampleCollections[spec][no] = s
+        sampleCollections[spec][no] = spec
     except:
         sampleCollections[spec] = {}
-        sampleCollections[spec][no] = s
+        sampleCollections[spec][no] = spec
         pass
 
 dataPDF = dataHome + "pdfStore/"
@@ -168,10 +168,10 @@ samples = list(sampleCollections.keys())
 # samples = ['H710C']  #, 'H710A', 'H653A']
 
 
-for s in sampleCollections:
-    Process(target=pdfCreator, args=(sampleCollections, s, False)).start()
+for spec in sampleCollections:
+    Process(target=pdfCreator, args=(sampleCollections, spec, False)).start()
 
 '''
-for s in samples:
-    pdfCreator(sampleCollections, s)
+for spec in samples:
+    pdfCreator(sampleCollections, spec)
 '''

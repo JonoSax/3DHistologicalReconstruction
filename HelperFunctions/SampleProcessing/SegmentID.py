@@ -1,12 +1,10 @@
 '''
 
-This script reads from the ndpa file the pins which describe annotatfeatures and 
-
-NOTE this must be one ONLY per specimen. It won't work between different organs
+This script reads from the ndpa file the pins which describe annotated features and 
+aligns the slices
 
 '''
-
-from Utilities import *
+from HelperFunctions.Utilities import *
 import numpy as np
 import tifffile as tifi
 import cv2
@@ -796,12 +794,12 @@ def findCentre(pos):
 
     return(centre)
 
+if __name__ == "__main__":
+    # dataHome is where all the directories created for information are stored 
+    dataTrain = '/Volumes/Storage/H653A_11.3new/'
 
-# dataHome is where all the directories created for information are stored 
-dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    # dataTrain = dataHome + 'FeatureID/'
+    name = ''
+    size = 3
 
-# dataTrain = dataHome + 'FeatureID/'
-name = ''
-size = 3
-
-align(dataTrain, name, size, False)
+    align(dataTrain, name, size, False)

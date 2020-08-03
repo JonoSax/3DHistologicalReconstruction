@@ -8,7 +8,7 @@ import tifffile as tifi
 import cv2
 from PIL import Image
 from glob import glob
-from .Utilities import *
+from HelperFunctions.Utilities import *
 
 def segmentation(dataTrain, imageName = '', size = 0):
 
