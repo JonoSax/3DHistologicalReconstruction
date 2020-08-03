@@ -159,7 +159,7 @@ def txtToList(dir):
 def dictToTxt(data, path, **kwargs):
     # This function saves a dictionary as a txt file
     # Converts a dictinoary into a txt file with the inputted name
-    # Inputs:   (data), the single list to be saved
+    # Inputs:   (data), the single dictionary to be saved
     #           (dir), the exact name and path which this list will be saved as
     #           (*args), inputs that appear at the top of the saved file
     # Outputs:  (), txt file saved in directory 

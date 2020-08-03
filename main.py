@@ -4,16 +4,12 @@ identified from manual segmenetaiton and training a NN on this data for
 segment identification
 
 '''
+from HelperFunctions import *
 from HelperFunctions.Utilities import nameFromPath
-print(__package__)
-from HelperFunctions.CreatingNewInfo import WSIExtract, targetTissue 
-from HelperFunctions.ProcessingRawFiles import SegmentLoad, WSILoad
-from HelperFunctions.SampleProcessing import MaskMaker, SegmentExtraction, SegmentID
 from glob import glob
 import multiprocessing
 from multiprocessing import Process
 from time import perf_counter
-print(__package__)
 
 
 # ---------- THINGS TO DO ----------
@@ -42,17 +38,17 @@ specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpi")))[0:2]
 
 size = 3
 kernel = 50
-name = ''
+name = 'H653A_09'
 portion = 0.2
 
 # create the dictionary of the jobs to perform
 jobs = {}
 
 # tasks that are being parallelised in this script call
-tasksDone = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract']
+tasksDone = [] #['PR_SegmentLoad', 'PR_WSILoad', 'SP_MaskMaker', 'SP_WSIExtract']
 
 # all tasks the can be parallelised
-allTasks = ['SegmentLoad', 'WSILoad', 'MaskMaker', 'WSIExtract', 'targetTissue', 'SegmentExtraction']
+allTasks = ['PR_SegmentLoad', 'PR_WSILoad', 'SP_MaskMaker', 'CI_WSIExtract', 'CI_SegmentExtraction', 'CI_targetTissue']
 
 # create dictionary containg the jobs to be done
 for t in tasksDone:
@@ -64,19 +60,19 @@ for s in specimens:
     # these are all the tasks which can be parallelised ATM. They will ONLY be performed if
     # loaded into the tasksDone list
     for t in tasksDone:
-        if t == 'SegmentLoad':
+        if t == 'PR_SegmentLoad':
             ## Extract the raw annotation and feature information
             jobs[t][s] = Process(target=SegmentLoad.readannotations, args=(dataTrain, s))
 
-        elif t == 'WSILoad':
+        elif t == 'PR_WSILoad':
             ## Extract the tif file of the given size 
             jobs[t][s] = Process(target=WSILoad.load, args=(dataTrain, s, size))
 
-        elif t == 'MaskMaker':
+        elif t == 'SP_MaskMaker':
             ## Create the masks of the identified vessels for the given size chosen
             jobs[t][s] = Process(target=MaskMaker.maskCreator, args=(dataTrain, s, size))
 
-        elif t == 'WSIExtract':
+        elif t == 'SP_WSIExtract':
             ## Extract the identified vessels from the samples
             jobs[t][s] = Process(target=WSIExtract.segmentation, args=(dataTrain, s, size))
 
@@ -93,29 +89,25 @@ for t in jobs:
     for s in jobs[t]:
         jobs[t][s].join()
 
+# serialise for debugging
+if len(tasksDone) == 1:
 
-if len(tasksDone) == 0:
+    PR_SegmentLoad.readannotations(dataTrain, name)
 
-    SegmentLoad.readannotations(dataTrain, name)
+    PR_WSILoad.load(dataTrain, name, size)
 
-    WSILoad.load(dataTrain, name, size)
+    SP_MaskMaker.maskCreator(dataTrain, name, size)
 
-    MaskMaker.maskCreator(dataTrain, name, size)
-
-    WSIExtract.segmentation(dataTrain, name, size)
+    # CI_WSIExtract.segmentation(dataTrain, name, size)
 
 ## Align each specimen to reduce the error between slices, 
 # NOTE: either parallelise within this function or create a new function for the extraction of the slices
 print("\n----------- segmentID -----------")
-SegmentID.align(dataTrain, name, size, True)      # extracting the individual slices can technically
+SP_SegmentID.align(dataTrain, name, size, True)      # extracting the individual slices can technically
                                             # be parallelised, but the fitting must be sequential
 
-
-# NOTE to do
-# create a function which will propogate a single feature from a pre-determined slice
-# across ALL of the other slices 
-
-SegmentExtraction.extract(dataTrain, name, size)
+# propogate a segSection feature selected through an entire stack of aligned samples
+CI_SegmentExtraction.extract(dataTrain, name, size)
 
 # creat a stack from the aligned images
 print("\n----------- stack -----------")

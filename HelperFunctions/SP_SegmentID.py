@@ -4,7 +4,10 @@ This script reads from the ndpa file the pins which describe annotated features 
 aligns the slices
 
 '''
-from HelperFunctions.Utilities import *
+if __name__ == "__main__":
+    from Utilities import *
+else:
+    from HelperFunctions.Utilities import *
 import numpy as np
 import tifffile as tifi
 import cv2
@@ -597,7 +600,6 @@ def rotatePoints(feats, tol = 1e-6):
 
     return(rotationStore, featsMod, err)
 
-# def plotPoints(dir, imgO, points, colour = (255, 0, 0), plot = False):
 def plotPoints(dir, imgO, *args):
 
     # plot circles on annotated points
@@ -740,9 +742,8 @@ def objectivePolar(w, centre, *args):
         tarB = np.zeros([ext*2+1, ext*2+1])
         tarB[fN[0], fN[1]] = 1
 
-
         # create the rotational transformation and apply
-        rot = cv2.getRotationMatrix2D((ext, ext), w, 1)
+        rot = cv2.getRotationMatrix2D((ext, ext), np.float(w), 1)
         warp = cv2.warpAffine(tarB, rot, (ext*2, ext*2))
 
         # get the positions of the rotations

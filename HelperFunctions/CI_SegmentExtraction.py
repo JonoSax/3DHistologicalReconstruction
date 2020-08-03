@@ -1,6 +1,7 @@
 '''
 
-this function will extract segSections from the aligned tissue
+this function will extract segSections from the aligned tissue to create a 
+small 3D stack of a section of the entire tissue
 
 '''
 
