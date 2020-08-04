@@ -64,7 +64,6 @@ def hist_match(source, template):
 
     return interp_t_values[bin_idx].reshape(oldshape)
 
-
 def findFeats(dataSource, spec):
 
     imgs = sorted(glob(dataSource + spec + "/*"))
@@ -101,23 +100,29 @@ def findFeats(dataSource, spec):
         
         y, x, c = img_ref.shape
         p = 100     # pixel grid size
+        sc = 0.5    # the extra 1D length size of the target section
         bf = cv2.BFMatcher()
 
         matchRef = []
         matchTar = []
 
+        # iterate through a pixel grid of p ** 2 x c size
+        # NOTE the target section is (p + 2sc) ** 2 x c in size --> idea is that the
+            # target secition will have some significant shift therefore should look in
+            # a larger area
         for c in range(1, int(np.ceil(y/p)) - 1):
             for r in range(1, int(np.ceil(x/p)) - 1):
 
-
                 # extract a small grid from both image
                 imgSect_ref = img_ref[c*p:(c+1)*p, r*p:(r+1)*p, :]
-                imgSect_tar = img_tar[(c-1)*p:(c+2)*p, (r-1)*p:(r+2)*p, :]  # NOTE target area search is expaneded
+                imgSect_tar = img_tar[int((c-sc)*p):int((c+1+sc)*p), int((r-sc)*p):int((r+1+sc)*p), :]  # NOTE target area search is expaneded
 
                 # if the entire contains very little info (ie less than 1/3 of the image contains
                 # target tissue) don't process
                 if (np.sum((imgSect_ref>0)*1) <= imgSect_ref.size*0.9): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
                     continue
+
+                # NOTE is there room for further IP before being analysed???
                 '''
                 fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
                 ax1.imshow(imgSect_ref)
@@ -137,7 +142,6 @@ def findFeats(dataSource, spec):
                 ax2.imshow(imgSect_tar)
                 plt.show()
                 '''
-                
 
                 # get the key points and descriptors of each section
                 kp_ref, des_ref = sift.detectAndCompute(imgSect_ref,None)
@@ -219,10 +223,10 @@ def findFeats(dataSource, spec):
 
                 noFeat += 1     # continuously iterate through feature numbers
 
-            dictToTxt(matchRefDict, dataDest + name_ref + ".feat")
+            dictToTxt(matchRefDict, dataDest + spec + "/" + name_ref + ".feat")
 
             # print a combined image showing the matches
-            cv2.imwrite(dataDest + name_ref + "&" + name_ref + ".jpg", cv2.cvtColor(np.hstack([img_ref, img_tar]), cv2.COLOR_RGB2BGR))
+            cv2.imwrite(dataDest + spec + "/" + name_ref + "&" + name_ref + ".jpg", cv2.cvtColor(np.hstack([img_ref, img_tar]), cv2.COLOR_RGB2BGR))
         
             # re-assign the target dictionary now as the ref dictioary
             matchRefDict = matchTarDict
@@ -233,7 +237,7 @@ def findFeats(dataSource, spec):
             print("     Unable to match " + name_tar + " to " + name_ref)
 
     # at the very end, print the target features found
-    dictToTxt(matchTarDict, dataDest + spec "/" + name_ref + ".feat")
+    dictToTxt(matchTarDict, dataDest + spec + "/" + name_ref + ".feat")
 
 if __name__ == "__main__":
 
