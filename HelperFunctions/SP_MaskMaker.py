@@ -205,7 +205,7 @@ def maskFinder(name, annoSpec, scale, num = ""):
             gridN = flood_fill(grid, roi, 1)
         except:
             gridN = grid
-            print("     Flood not performed on annotaiton " + str(n) + " from " + name)
+            print("     Flood not performed on annotation " + str(n) + " from " + name)
 
         # --- save the mask identified in a dense form and re-position into the SCALED global space
         denseGrid = np.stack(np.where(gridN == 1), axis = 1) + [xmin, ymin]
