@@ -9,6 +9,7 @@ import cv2
 import matplotlib.pyplot as plt
 from glob import glob
 import os
+from multiprocessing import Process
 if __name__ == "__main__":
     from Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker
 else:
@@ -244,7 +245,16 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/InvididualImagesMod2/'
     dataDest = '/Volumes/USB/InvididualImagesModInfo/'
 
-    specimens = os.listdir(dataSource)
-
+    specimens = os.listdir(dataSource)[0:3]
+    jobs = {}
     for spec in specimens:
         findFeats(dataSource, spec)
+
+        # NOTE some of the sample don't have many therefore shouldn't process
+        # jobs[spec] = Process(target=findFeats, args = (dataSource, spec))
+        # jobs[spec].start()
+
+    '''
+    for spec in specimens:
+        jobs[spec].join()
+    '''
