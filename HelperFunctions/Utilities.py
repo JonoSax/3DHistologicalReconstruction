@@ -196,10 +196,11 @@ def dictToTxt(data, path, **kwargs):
     
     f.close()
 
-def txtToDict(path):
+def txtToDict(path, typeV = int):
 
     # Reads in a text file which was saved with the dictToTxt function
     # Inputs:   (dir), the name of a single file
+    #           (type), type of variable to load into dictionary, defaults int
     # Outputs:  (sampleDict), either a list of dictionary of the information: 
     #           if paths is a list then the output is a dictinary named by the samples of the info
     #           if the paths is a string then the output is a list 
@@ -222,7 +223,7 @@ def txtToDict(path):
             key = info[0]
             data = info[1].replace("\n", "")
             # save data as a dictionary
-            pathinfo[key] = np.array(data.split(" ")[0:-1]).astype(int)
+            pathinfo[key] = np.array(data.split(" ")[0:-1]).astype(typeV)
 
         return(pathinfo, args)
 
@@ -440,7 +441,10 @@ def dictOfDirs(**kwargs):
     # get all the names
     names = list()
     for k in kwargs:
-        names += nameFromPath(kwargs[k])
+        if type(kwargs[k]) == list:
+            names += nameFromPath(kwargs[k])
+        else:
+            names += [nameFromPath(kwargs[k])]
 
     # get all the unique names
     names = np.unique(np.array(names))
@@ -451,6 +455,7 @@ def dictOfDirs(**kwargs):
 
     for k in kwargs:
         path = kwargs[k]
+        if type(path) != list:  path = [path]
 
         spec, no = np.unique(nameFromPath(path), return_counts = True)
 
