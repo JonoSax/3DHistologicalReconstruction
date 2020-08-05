@@ -13,8 +13,8 @@ from time import perf_counter
 
 
 # ---------- THINGS TO DO ----------
-# make the parallelisation imbedded in the functions rather than called in main. ENSURE
-# that parallelisation is an option to allow for easier debugging
+# make the parallelisation imbedded in the functions rather than called in main. 
+    # ENSURE that parallelisation is an option to allow for easier debugging
 
 
 '''
@@ -34,18 +34,18 @@ dataTrain = '/Volumes/Storage/H653A_11.3new/'
 # dataTrain = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
 
 # get all the ndpi files that are to be processed
-specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpi")))[0:2]
+specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpi")))
 
 size = 3
 kernel = 50
-name = 'H653A_09'
+name = ''
 portion = 0.2
 
 # create the dictionary of the jobs to perform
 jobs = {}
 
 # tasks that are being parallelised in this script call
-tasksDone = [] #['PR_SegmentLoad', 'PR_WSILoad', 'SP_MaskMaker', 'SP_WSIExtract']
+tasksDone = ['PR_SegmentLoad', 'PR_WSILoad', 'SP_MaskMaker', 'CI_WSIExtract']
 
 # all tasks the can be parallelised
 allTasks = ['PR_SegmentLoad', 'PR_WSILoad', 'SP_MaskMaker', 'CI_WSIExtract', 'CI_SegmentExtraction', 'CI_targetTissue']
@@ -62,23 +62,23 @@ for s in specimens:
     for t in tasksDone:
         if t == 'PR_SegmentLoad':
             ## Extract the raw annotation and feature information
-            jobs[t][s] = Process(target=SegmentLoad.readannotations, args=(dataTrain, s))
+            jobs[t][s] = Process(target=PR_SegmentLoad.readannotations, args=(dataTrain, s))
 
         elif t == 'PR_WSILoad':
             ## Extract the tif file of the given size 
-            jobs[t][s] = Process(target=WSILoad.load, args=(dataTrain, s, size))
+            jobs[t][s] = Process(target=PR_WSILoad.load, args=(dataTrain, s, size))
 
         elif t == 'SP_MaskMaker':
             ## Create the masks of the identified vessels for the given size chosen
-            jobs[t][s] = Process(target=MaskMaker.maskCreator, args=(dataTrain, s, size))
+            jobs[t][s] = Process(target=SP_MaskMaker.maskCreator, args=(dataTrain, s, size))
 
-        elif t == 'SP_WSIExtract':
+        elif t == 'CI_WSIExtract':
             ## Extract the identified vessels from the samples
-            jobs[t][s] = Process(target=WSIExtract.segmentation, args=(dataTrain, s, size))
+            jobs[t][s] = Process(target=CI_WSIExtract.segmentation, args=(dataTrain, s, size))
 
-        elif t == 'targetTissue':
+        elif t == 'CI_targetTissue':
             ## create quadrants of the target tissue from the extracted tissue
-            jobs[t][s] = Process(target=targetTissue.quadrant, args=(dataTrain, s, size, kernel))
+            jobs[t][s] = Process(target=CI_targetTissue.quadrant, args=(dataTrain, s, size, kernel))
 
 # Run the function in parallel, sequentially
 for t in jobs:
@@ -98,23 +98,24 @@ if len(tasksDone) == 1:
 
     SP_MaskMaker.maskCreator(dataTrain, name, size)
 
-    # CI_WSIExtract.segmentation(dataTrain, name, size)
+    CI_WSIExtract.segmentation(dataTrain, name, size)
+
+
 
 ## Align each specimen to reduce the error between slices, 
 # NOTE: either parallelise within this function or create a new function for the extraction of the slices
-print("\n----------- segmentID -----------")
-SP_SegmentID.align(dataTrain, name, size, True)      # extracting the individual slices can technically
+print("\n----------- SegmentExtract -----------")
+SP_SingleSegmentExtract.extract(dataTrain, name, size, True)      # extracting the individual slices can technically
                                             # be parallelised, but the fitting must be sequential
 
+print("\n----------- AignSegments -----------")
+SP_AlignSamples.align(dataTrain, name, size, True)  
+
+print("\n----------- FeatureExtraction -----------")
 # propogate a segSection feature selected through an entire stack of aligned samples
-CI_SegmentExtraction.extract(dataTrain, name, size)
+CI_FeatureExtraction.extract(dataTrain, name, size)
 
-# creat a stack from the aligned images
-print("\n----------- stack -----------")
-# stackAligned.stack(dataTrain, name, size)
-## Extract the target tissue from the tif files 
 
-# targetTissue.quadrant(dataTrain, name, size, kernel)
 
 '''
 # Creating the training data --> NOTE every time it does this it creates a replaces the previous testing/training data
