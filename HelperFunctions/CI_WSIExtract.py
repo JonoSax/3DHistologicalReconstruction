@@ -8,7 +8,25 @@ import tifffile as tifi
 import cv2
 from PIL import Image
 from glob import glob
-from HelperFunctions.Utilities import *
+from multiprocessing import Process
+if __name__ == "__main__":
+    from Utilities import *
+else:
+    from HelperFunctions.Utilities import *
+
+def WSIExtract(dataTrain, name, size):
+
+    # this is the function called by main. Organises the inputs for findFeats
+    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
+    
+    # parallelise work
+    jobs = {}
+    for spec in specimens:
+        jobs[spec] = Process(target=segmentation, args=(dataTrain, spec, size))
+        jobs[spec].start()
+    
+    for spec in specimens:
+        jobs[spec].join()
 
 def segmentation(dataTrain, imageName = '', size = 0):
 
@@ -60,10 +78,17 @@ def segmentation(dataTrain, imageName = '', size = 0):
                     target[x-xmin, y-ymin, :] = tif[y, x, :]
                 except:
                     pass
-
+                
             cv2.imwrite(targetTissueDir + sampleName + "_" + str(n) + "_vessel.tif", target.astype(np.uint8)) # NOTE ATM this is only for one class, vessels. In the future add arguments for different classes
             
         # create a user viewable image of the WSI and annotated areas
         print(sampleName + " masked")
 
+if __name__ == "__main__":
 
+    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    name = ''
+    size = 3
+
+
+    WSIExtract(dataTrain, name, size)

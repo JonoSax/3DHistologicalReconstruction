@@ -6,7 +6,26 @@ tissue for training
 import numpy as np
 import cv2
 from glob import glob
-from HelperFunctions.Utilities import *
+from multiprocessing import Process
+if __name__ == "__main__":
+    from Utilities import *
+else:
+    from HelperFunctions.Utilities import *
+
+
+def targetTissue(dataTrain, name, size, kernel):
+
+    # this is the function called by main. Organises the inputs for findFeats
+    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
+    
+    # parallelise work
+    jobs = {}
+    for spec in specimens:
+        jobs[spec] = Process(target=quadrant, args=(dataTrain, spec, size, kernel))
+        jobs[spec].start()
+    
+    for spec in specimens:
+        jobs[spec].join()
 
 def quadrant(dataTrain, name = '', size = 0, kernel = 50):
 
@@ -67,3 +86,12 @@ def quadrant(dataTrain, name = '', size = 0, kernel = 50):
                     n+=1
 
         print(str(n) + " training samples created from " + str(name))
+
+if __name__ == "__main__":
+
+    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    name = ''
+    size = 3
+    kernel = 50
+
+    targetTissue(dataTrain, name, size, kernel)

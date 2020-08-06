@@ -1,20 +1,19 @@
 '''
-This function creates a mask around the target specimen and seperates multiple 
+This function automatically creates a mask around the target specimen and seperates multiple 
 samples into seperate images
 '''
 
-if __name__ == "__main__":
-    from Utilities import nameFromPath, dirMaker, dictToTxt
-else:
-    from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 import os 
 from glob import glob
-
-from multiprocessing import Process
 from PIL import Image
+from multiprocessing import Process
+if __name__ == "__main__":
+    from Utilities import nameFromPath, dirMaker, dictToTxt
+else:
+    from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt
 
 def specID(dataHome, name, size):
 

@@ -5,14 +5,17 @@ small 3D stack of a section of the entire tissue
 
 '''
 
-from HelperFunctions.Utilities import *
 import tifffile as tifi
 from glob import glob
 import cv2
 import multiprocessing
 from multiprocessing import Process
-
-def extract(dataTrain, name, size):
+if __name__ == "__main__":
+    from Utilities import *
+else:
+    from HelperFunctions.Utilities import *
+    
+def featExtract(dataTrain, name, size):
 
     # This function propogates any identifies features through all the samples
     # and then extracts them
@@ -144,12 +147,11 @@ def segExtract(segment, dirSection, fields):
 
         print(name + " " + sample + " extracted")
     
-'''
-dataTrain = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/HistologicalTraining2/'
-dataTrain = '/Volumes/Storage/H653A_11.3new/'
 
-name = ''
-size = 3
+if __name__ == "__main__":
 
-extract(dataTrain, name, size)
-'''
+    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    name = ''
+    size = 3
+
+    extract(dataTrain, name, size)

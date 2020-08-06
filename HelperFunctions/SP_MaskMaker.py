@@ -5,16 +5,33 @@ regions which are the annotated tissue
 
 '''
 
-from HelperFunctions.Utilities import *
 import os
 import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 from skimage.segmentation import flood_fill
+from multiprocessing import Process
+if __name__ == "__main__":
+    from Utilities import *
+else:
+    from HelperFunctions.Utilities import *
 
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
+def maskMaker(dataTrain, name, size):
+
+    # this is the function called by main. Organises the inputs for findFeats
+    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
+    
+    # parallelise work
+    jobs = {}
+    for spec in specimens:
+        jobs[spec] = Process(target=maskCreator, args=(dataTrain, spec, size))
+        jobs[spec].start()
+    
+    for spec in specimens:
+        jobs[spec].join()
 
 def maskCreator(dataTrain, segmentName = '', size = 0):
 
@@ -205,7 +222,7 @@ def maskFinder(name, annoSpec, scale, num = ""):
             gridN = flood_fill(grid, roi, 1)
         except:
             gridN = grid
-            print("     Flood not performed on annotation " + str(n) + " from " + name)
+            print("Flood not performed on annotation " + str(n) + " from " + name)
 
         # --- save the mask identified in a dense form and re-position into the SCALED global space
         denseGrid = np.stack(np.where(gridN == 1), axis = 1) + [xmin, ymin]
@@ -271,7 +288,7 @@ def roiFinder(name, denseAnnotations):
                 # print("     anno " + str(s) + " is not matched with anno " + str(m))
 
         if not found:
-            print("     anno " + str(s) + " not matched from " + name)
+            print("anno " + str(s) + " not matched from " + name)
 
         # view the roi
         # denseMatrixViewer(annotatedROI)
@@ -296,15 +313,12 @@ def coordMatch(array1, array2):
     roi = uniq[np.where(count == 1)]
 
     return(roi)
-'''
-# data directory
-data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
-size = 4
-kernel = 100
-name = 'testWSI1'
-# Extract the manual co-ordinates of the annotated tissue
-# SegmentLoad.readndpa(data)
 
-# create the masks of the annotationes
-maskCreator(size, data, name)
-'''
+
+if __name__ == "__main__":
+
+    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    name = ''
+    size = 3
+
+    maskMaker(dataTrain, name, size)

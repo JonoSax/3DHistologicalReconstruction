@@ -19,7 +19,7 @@ from multiprocessing import Process, Queue
 
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
-def extract(data, name = '', size = 0, extracting = True):
+def sampleExtract(data, name = '', size = 0, extracting = True):
 
     # This function will take a whole slide tif file at the set resolution and 
     # extract the target image/s from the slide and create a txt file which contains the 

@@ -10,8 +10,11 @@ from glob import glob
 import openslide 
 import matplotlib.pyplot as plt
 from scipy.interpolate import interpolate
-from HelperFunctions.Utilities import *
-from multiprocessing import process
+from multiprocessing import Process
+if __name__ == "__main__":
+    from Utilities import *
+else:
+    from HelperFunctions.Utilities import *
 
 # simple dictionary used to convert to SI unit between the different scales in the ndpi and ndpa files
 # It is using millimeters as the base unit (ie multiple of 1)
@@ -25,6 +28,22 @@ unitDict = {
     'millimeter':1*10**-0,
     'centimeter':1*10**1
 }
+
+def SegLoad(dataTrain, name = '', alwaysProcess = True):
+
+    # this is the function called by main. Organises the inputs for findFeats
+
+    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
+
+    # parallelise work
+    jobs = {}
+    for spec in specimens:
+        jobs[spec] = Process(target=readannotations, args=(dataTrain, spec))
+        jobs[spec].start()
+
+    for spec in specimens:
+        jobs[spec].join()
+
 
 def readannotations(dataTrain, specimen = '', alwaysProcess = True):
 
@@ -290,3 +309,12 @@ def normaliseNDPA(sliceDir):
     yResolution = yRes
 
     return (xShift, yShift, xResolution, yResolution, xDim, yDim)
+
+if __name__ == "__main__":
+
+    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    name = ''
+    ProcessAll = True
+
+
+    SegLoad(dataTrain, name, ProcessAll)

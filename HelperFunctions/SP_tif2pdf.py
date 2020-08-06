@@ -13,7 +13,7 @@ from multiprocessing import Process
 from time import perf_counter as clock
 from HelperFunctions.Utilities import nameFromPath, dirMaker
 
-def sampleExtractor(dataHome, size, name = ''):
+def smallerTif(dataHome, name, size):
 
     scale = 0.2
 

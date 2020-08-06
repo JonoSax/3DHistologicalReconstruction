@@ -4,6 +4,7 @@ This function extracts a tif file of specified resolution from the ndpi file
 
 import os
 from glob import glob
+from multiprocessing import Process
 if __name__ == "__main__":
     from Utilities import *
 else:
@@ -16,6 +17,20 @@ else:
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
+def WSILoad(dataTrain, name, size):
+
+    # this is the function called by main. Organises the inputs for findFeats
+    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
+
+    # parallelise work
+    jobs = {}
+
+    for spec in specimens:
+        jobs[spec] = Process(target=load, args=(dataTrain, spec, size))
+        jobs[spec].start()
+
+    for spec in specimens:
+        jobs[spec].join()
 
 def load(dataTrain, imageName = '', size = 0):
 
@@ -42,7 +57,6 @@ def load(dataTrain, imageName = '', size = 0):
     for img in imagesNDPI:
         print(nameFromPath(img) + " converted @ " + str(tifLevels[size]) + " res")
         ndpiLoad(size, img, dataTif)
-
 
 def ndpiLoad(sz, src, dest):
 
@@ -72,7 +86,9 @@ def ndpiLoad(sz, src, dest):
     
 if __name__ == "__main__":
 
-    data = '/Volumes/USB/Testing1/'
+    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    name = ''
+    size = 3
 
-    load(data, imageName = '', size = 3)
+    WSILoad(dataTrain, name, size)
     
