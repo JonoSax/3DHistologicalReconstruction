@@ -11,38 +11,19 @@ import os
 import img2pdf as i2p
 from multiprocessing import Process
 from time import perf_counter as clock
+from HelperFunctions.Utilities import nameFromPath, dirMaker
 
+def sampleExtractor(dataHome, size, name = ''):
 
-def nameFromPath(paths):
-    # this function extracts the name from a path
-    # Inputs:   (paths), either a list or string of paths 
-    # Outputs:  (names), elist of the names from the paths
+    scale = 0.2
 
-    pathStr = False
-    if type(paths) is str:
-        paths = [paths]
-        pathStr = True
+    # get a dictionary of all the sample to process
+    allSamples = sampleCollector(dataHome, size)
 
-    names = list()
-    for path in paths:
-        # choose the last part of the path and the suffix
-        name = path.split("/")[-1].split(".")[0]
+    for spec in allSamples:
+        pdfCreator(allSamples, spec, size, scale, False)
 
-        # if there is a size parameter, remove the last part of the name 
-        # NOTE this is hard coded where each slide is named as [sampleName]_[sampleNo]
-        if len(name.split("_")) > 2:
-            name = "_".join(name.split("_")[0:2])
-        
-        names.append(name)
-
-    # if the path input is a string, it will expect an output of a string as well
-    if pathStr:
-        names = names[0]
-
-    return names
-
-# create temporary jpg file of all the tif images
-def pdfCreator(sampleCollections, spec, remove = True):
+def pdfCreator(sampleCollections, spec, size, scale, remove = True):
     # this function takes the directory names and creates a pdf of each sample 
     # Inputs:   (sampleCollections), dictionary containing all the dir names of the imgs
     #           (spec), specimen of interest
@@ -51,11 +32,11 @@ def pdfCreator(sampleCollections, spec, remove = True):
 
     # create a temporary folder for the jpeg images per sample
     dataTemp = dataHome + 'temporary' + spec + '/'
-    print("Making " + dataTemp)
-    try:
-        os.mkdir(dataTemp)
-    except:
-        pass
+    dataTemp = dataHome + str(size) + "/images/" + spec + "/"
+    dataPDF = dataHome + "pdfStore/"
+
+    dirMaker(dataTemp)
+    dirMaker(dataPDF)
 
     specificSample = sampleCollections[spec]
 
@@ -77,9 +58,9 @@ def pdfCreator(sampleCollections, spec, remove = True):
 
         print("Specimen: " + spec + ", Sample " + str(c) + "/" + str(len(order)))
         # load in the tif files and create a scaled down version
+        specificSample[n]
         imgt = tifi.imread(specificSample[n])
         # scale = imgt.shape[1]/imgt.shape[0]
-        scale = 0.03
         # img = cv2.resize(imgt, (int(1000*scale), 1000))
         img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
 
@@ -95,17 +76,15 @@ def pdfCreator(sampleCollections, spec, remove = True):
             (0, 0, 0),
             2)
         # create a temporary jpg image and store the dir
-        tempName = dataTemp + spec + str(n) + '.jpg'
+        tempName = dataTemp + spec + "_" + str(n) + '.jpg'
         cv2.imwrite(tempName, img)
         dirStore.append(tempName)
         c += 1
 
+        # provide some timing information
         endTime = clock()
-
         timeOfProcess = endTime - startTime
-
         timeLeft = timeOfProcess/c * (len(order) - c)
-
         if c%5 == 0:
             print("     Sample " + spec + " has " + str(timeLeft) +  " secs to go")
     
@@ -116,7 +95,7 @@ def pdfCreator(sampleCollections, spec, remove = True):
     # combine all the sample images to create a single pdf 
     with open(dataPDF + spec + "NotScaled.pdf","wb") as f:
         f.write(i2p.convert(dirStore))
-    print("PDF writing complete for " + spec spec + "!\n")
+    print("PDF writing complete for " + spec + "!\n")
     # remove the temporary jpg files
     if remove:
         for d in dirStore:
@@ -128,50 +107,58 @@ def pdfCreator(sampleCollections, spec, remove = True):
 
     # research drive access via VPN
 
-# dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/ConvertedNDPI/'
-dataHome = '/eresearch/uterine/jres129/Boyd collection/ConvertedNDPI/'
+def sampleCollector(dataHome, size):
 
-samples = glob(dataHome + "*.tif")
+    # this function collects all the sample tif images and organises them
+    # in order to process properly. Pretty much it takes care of the fact
+    # that the samples are often named poorly and turns them into a nice 
+    # dictionary
+    # Inputs:   (dataHome), source directory
+    #           (size), specific size image to process
+    # Outputs:  (sampleCollection), a nice dictionary which categorises
+    #           each tif image into its specimen and then orders them based on 
+    #           their position in the stack
 
-sampleCollections = {}
-specimens = list()
+    samples = glob(dataHome + str(size) + "/tifFiles/" + "*.tif")
 
-# create a dictionary containing all the specimens and their corresponding sample
-for spec in samples:
-    spec, no = nameFromPath(spec).split("_")
+    sampleCollections = {}
+    specimens = list()
 
-    # attempt to get samples
-    try:
-        no = (no)
-    except:
-        # NOTE create a txt file of these files
-        print("sample " + spec + no + " is not processed")
-        continue
+    # create a dictionary containing all the specimens and their corresponding sample
+    for spec in samples:
+        specID, no = nameFromPath(spec).split("_")
 
-    # create the dictionary as you go
-    try:
-        sampleCollections[spec][no] = spec
-    except:
-        sampleCollections[spec] = {}
-        sampleCollections[spec][no] = spec
-        pass
+        # attempt to get samples
+        try:
+            # ensure that the value can be quantified. If its in the wrong 
+            # then it will require manual adjustment to process
+            int(no)
+            # ensure that the naming convention allows it to be ordered
+            while (len(no) < 3):
+                no = "0" + no
+        except:
+            # NOTE create a txt file of these files
+            print("sample " + specID + no + " is not processed")
+            continue
 
-dataPDF = dataHome + "pdfStore/"
-try:
-    os.mkdir(dataPDF)
-except:
-    pass
+        # create the dictionary as you go
+        try:
+            sampleCollections[specID][no] = spec
+        except:
+            sampleCollections[specID] = {}
+            sampleCollections[specID][no] = spec
+            pass
 
-samples = list(sampleCollections.keys())
+    return(sampleCollections)
 
-# specific samples
-# samples = ['H710C']  #, 'H710A', 'H653A']
+if __name__ == "__main__":
+    # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/ConvertedNDPI/'
+    dataHome = '/Volumes/USB/Testing1/'
+    size = 3
+    name = ''
 
-
-for spec in sampleCollections:
-    Process(target=pdfCreator, args=(sampleCollections, spec, False)).start()
-
-'''
-for spec in samples:
-    pdfCreator(sampleCollections, spec)
-'''
+    sampleExtractor(dataHome, size, name)
+    
+    
+    
+    
