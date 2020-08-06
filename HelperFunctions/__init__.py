@@ -1,10 +1,10 @@
-from. import PR_SegmentLoad
-from. import PR_WSILoad
-from. import SP_MaskMaker
-from. import SP_SampleFinder
-from. import SP_SingleSegmentExtract
-from. import SP_AlignSamples
-from. import SP_SpecimenID
-from. import CI_FeatureExtraction
-from. import CI_WSIExtract
-from. import Utilities
+from .PR_SegmentLoad import SegLoad
+from .PR_WSILoad import WSILoad
+from .SP_MaskMaker import maskMaker
+# from .SP_SampleFinder import 
+from .SP_SingleSegmentExtract import sampleExtract
+from .SP_AlignSamples import align
+from .SP_tif2pdf import smallerTif
+from .SP_SpecimenID import specID
+from .CI_FeatureExtraction import featExtract
+from .CI_WSIExtract import WSIExtract
