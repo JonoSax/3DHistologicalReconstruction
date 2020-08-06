@@ -4,7 +4,10 @@ This function extracts a tif file of specified resolution from the ndpi file
 
 import os
 from glob import glob
-from HelperFunctions.Utilities import *
+if __name__ == "__main__":
+    from Utilities import *
+else:
+    from HelperFunctions.Utilities import *
 
 # kernel = 150
 # dataTrain =  "Data.nosync/testing/"
@@ -67,8 +70,9 @@ def ndpiLoad(sz, src, dest):
     os.rename(extractedName, imgDir)
 
     
-'''
-data = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/testing/'
+if __name__ == "__main__":
 
-segmentation(200, 4, data, imageName = 'testWSI1')
-'''
+    data = '/Volumes/USB/Testing1/'
+
+    load(data, imageName = '', size = 3)
+    
