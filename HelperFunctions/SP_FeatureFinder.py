@@ -1,6 +1,7 @@
 '''
 
-This script finds features between different layers of tissue
+This script automatically finds features between different layers of tissue,
+works best on images processed by SP_SpecimenID
 
 '''
 
@@ -14,6 +15,40 @@ if __name__ == "__main__":
     from Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker
 else:
     from HelperFunctions.Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker
+
+def featFind(dataHome, name, size):
+    
+    # this is the function called by main. Organises the inputs for findFeats
+
+    # get the size specific source of information
+    datasrc = dataHome + str(size) + "/"
+    datasrc = '/Volumes/USB/'
+
+    # gets the images for processing
+    imgsrc = datasrc + "images/"
+    imgsrc = datasrc + "IndividualImages/"
+
+    # specify where the outputs are saved
+    infodest = datasrc + "info/"
+
+    # get the directories which are masked
+    specimens = []
+    for i in os.listdir(imgsrc):
+        if (i.find("masked")>0): 
+            specimens.append(i) 
+
+    # for parallelisation
+    jobs = {}
+
+    for spec in specimens[1:]:
+        findFeats(imgsrc, infodest, spec)
+        # NOTE some of the sample don't have many therefore shouldn't process
+        # jobs[spec] = Process(target=findFeats, args = (dataSource, spec))
+        # jobs[spec].start()
+    '''
+    for spec in specimens:
+        jobs[spec].join()
+    '''
 
 def hist_match(source, template):
     """
@@ -65,15 +100,30 @@ def hist_match(source, template):
 
     return interp_t_values[bin_idx].reshape(oldshape)
 
-def findFeats(dataSource, spec):
+def findFeats(dataSource, dataDest, spec):
 
-    imgs = sorted(glob(dataSource + spec + "/*"))
+    # This script finds features between two sequential samples (based on their
+    # name) that correspond to biologically the same location. 
+    # NOTE this is done on lower res jpg images to speed up the process as this is 
+    # based on brute force methods. IT REQUIRES ADAPTING THE FEAT AND BOUND POSITIONS
+    # TO THE ORIGINAL SIZE TIF FILES --> info is stored as args in the .feat and .bound files
+    # It is heavily based on the cv2.SIFT function
+    # Inputs:   (dataSource): source of the pre-processed images (from SP_SpecimenID)
+    #           (dataDest): the location to save the txt files and images to show the results
+    #           (spec): the specific specimen to process
+    # Outputs:  (): .feat files for each specimen which correspond to the neighbouring
+    #               two slices (one as the reference and one as the target)
+    #               .bound files which are the top/bottom/left/right positions with the image
+    #               jpg images which show where the features were found bewteen slices
+
+    # get the masked images
+    imgs = sorted(glob(dataSource + spec + "/*.jpg"))
 
     # counting the number of features found
     noFeat = 0
     matchRefDict = {}       # the ref dictionary is re-allocated... a little difference from target
 
-    for n in range(2, len(imgs)-1):
+    for n in range(len(imgs)-1):
 
         # initialise the target dictionary
         matchTarDict = {}
@@ -83,8 +133,40 @@ def findFeats(dataSource, spec):
 
         print("Matching " + name_tar + " to " + name_ref)
 
-        img_ref = cv2.imread(imgs[n])
-        img_tar = cv2.imread(imgs[n+1])
+        # load in the images
+        img_refO = cv2.imread(imgs[n])
+        img_tarO = cv2.imread(imgs[n+1])
+
+        # find the boundary of the selected image (find the top/bottom/left/right 
+        # most points which bound the image)
+        bound = {}
+        pos = np.vstack(np.where(img_refO[:, :, 0] != 0))
+        top, left = np.argmin(pos, axis = 1)
+        bottom, right = np.argmax(pos, axis = 1)
+        bound['top'] = pos[:, top]
+        bound['bottom'] = pos[:, bottom]
+        bound['left'] = pos[:, left]
+        bound['right'] = pos[:, right]
+        # store the boundary of the image based on the mask
+        dictToTxt(bound, dataDest + spec + "/" + name_ref + ".bound", shape = str(img_refO.shape))
+
+        # get the image dimensions
+        xr, yr, cr = img_refO.shape
+        xt, yt, ct = img_tarO.shape
+        xm, ym, cm = np.max(np.array([(xr, yr, cr), (xt, yt, ct)]), axis = 0)
+
+        # these are the origin shifts to adapt each image
+        xrefDif = int((xm-xr)/2)
+        yrefDif = int((ym-yr)/2)
+        xtarDif = int((xm-xt)/2)
+        ytarDif = int((ym-yt)/2)
+            
+        # create a max size field of both images
+        field = np.zeros((xm, ym, cm)).astype(np.uint8)
+
+        # re-assign the images into the middle of this standard field
+        img_ref = field.copy(); img_ref[xrefDif: xrefDif + xr, yrefDif: yrefDif + yr, :] = img_refO
+        img_tar = field.copy(); img_tar[xtarDif: xtarDif + xt, ytarDif: ytarDif + yt, :] = img_tarO
 
         # normalise for all the colour channels
         # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
@@ -99,7 +181,7 @@ def findFeats(dataSource, spec):
         # kp_ref, des_ref = sift.detectAndCompute(img_ref,None)
         # kp_tar, des_tar = sift.detectAndCompute(img_tar,None)
         
-        y, x, c = img_ref.shape
+        x, y, c = img_ref.shape
         p = 100     # pixel grid size
         sc = 0.5    # the extra 1D length size of the target section
         bf = cv2.BFMatcher()
@@ -111,8 +193,8 @@ def findFeats(dataSource, spec):
         # NOTE the target section is (p + 2sc) ** 2 x c in size --> idea is that the
             # target secition will have some significant shift therefore should look in
             # a larger area
-        for c in range(1, int(np.ceil(y/p)) - 1):
-            for r in range(1, int(np.ceil(x/p)) - 1):
+        for c in range(1, int(np.ceil(x/p)) - 1):
+            for r in range(1, int(np.ceil(y/p)) - 1):
 
                 # extract a small grid from both image
                 imgSect_ref = img_ref[c*p:(c+1)*p, r*p:(r+1)*p, :]
@@ -137,16 +219,19 @@ def findFeats(dataSource, spec):
                 plt.show()
                 '''
                 
-                '''
-                fig, (ax1, ax2) = plt.subplots(1, 2)
-                ax1.imshow(imgSect_ref)
-                ax2.imshow(imgSect_tar)
-                plt.show()
-                '''
-
                 # get the key points and descriptors of each section
                 kp_ref, des_ref = sift.detectAndCompute(imgSect_ref,None)
                 kp_tar, des_tar = sift.detectAndCompute(imgSect_tar,None)
+
+                imgSect_refKEYS = cv2.drawKeypoints(imgSect_ref,kp_ref,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                imgSect_tarKEYS = cv2.drawKeypoints(imgSect_tar,kp_tar,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+                '''
+                fig, (ax1, ax2) = plt.subplots(1, 2)
+                ax1.imshow(imgSect_refKEYS)
+                ax2.imshow(imgSect_tarKEYS)
+                plt.show()
+                '''
 
                 # create lists to store section specific match finding info
                 kp_keep_ref = []
@@ -160,7 +245,7 @@ def findFeats(dataSource, spec):
                         # set a minimum size for the feature match
                         if kpi.size > 10:
                             # extract the position of the found feature and adjust
-                            # back to the global size 
+                            # back to the global size of the original image 
                             kp_keep_ref.append(np.array(kpi.pt) + np.array([r*p, c*p]))
 
                             # store the descriptor
@@ -169,7 +254,7 @@ def findFeats(dataSource, spec):
                     for kpi, desi in zip(kp_tar, des_tar):
                         if kpi.size > 10:
                             # NOTE if the range of search for targets is larger then the adjust needs to match as well
-                            kp_keep_tar.append(np.array(kpi.pt) + np.array([(r-1)*p, (c-1)*p])) 
+                            kp_keep_tar.append(np.array(kpi.pt) + np.array([int((r-sc)*p), int((c-sc)*p)])) 
                             des_keep_tar.append(desi)
 
                     # if there are key points found, bf match
@@ -195,11 +280,11 @@ def findFeats(dataSource, spec):
                             matchRef.append(m_info['ref'][bestMatch])
                             matchTar.append(m_info['tar'][bestMatch])
 
-
         # there have to be at least 2 matches for any fitting process to be useful
         if len(matchTar) >= 2:
 
             # add annotations to where the matches have been found
+            newFeats = []
             for kr, kt in zip(matchRef, matchTar):
                 featRef = tuple(kr.astype(int))
 
@@ -211,8 +296,8 @@ def findFeats(dataSource, spec):
                 tuple(featRef + np.array([20, 0])),
                 cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
 
-                # add matched feature
-                matchRefDict["feat_" + str(noFeat)] = kr
+                # add matched feature, adjust for the initial standardisation of the image
+                matchRefDict["feat_" + str(noFeat)] = kr.astype(int) - np.array([yrefDif, xrefDif])
 
                 # do the same thing for the target image
                 featTar = tuple(kt.astype(int))
@@ -220,15 +305,27 @@ def findFeats(dataSource, spec):
                 cv2.putText(img_tar, str(noFeat), 
                 tuple(featTar + np.array([20, 0])),
                 cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
-                matchTarDict["feat_" + str(noFeat)] = kt
+                matchTarDict["feat_" + str(noFeat)] = kt.astype(int) - np.array([ytarDif, xtarDif])
 
+                newFeats.append("feat_" + str(noFeat))
                 noFeat += 1     # continuously iterate through feature numbers
 
-            dictToTxt(matchRefDict, dataDest + spec + "/" + name_ref + ".feat")
+            # store the positions of the identified features for each image as 
+            # BOTH a reference and target image. Include the image size this was 
+            # processed at
+            dictToTxt(matchRefDict, dataDest + spec + "/" + name_ref + ".feat", shape = str(img_ref.shape))
 
             # print a combined image showing the matches
-            cv2.imwrite(dataDest + spec + "/" + name_ref + "&" + name_ref + ".jpg", cv2.cvtColor(np.hstack([img_ref, img_tar]), cv2.COLOR_RGB2BGR))
+            cv2.imwrite(dataDest + spec + "/" + name_ref + " <-- " + name_tar + ".jpg", cv2.cvtColor(np.hstack([img_ref, img_tar]), cv2.COLOR_RGB2BGR))
         
+
+            for p in newFeats:
+                cv2.circle(img_refO, tuple(matchRefDict[p]), 20, (0, 0, 255), 8)
+                cv2.circle(img_tarO, tuple(matchTarDict[p]), 20, (0, 0, 255), 8)
+
+            cv2.imwrite(dataDest + spec + "/" + name_tar + "_tar.jpg", cv2.cvtColor(img_tarO, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(dataDest + spec + "/" + name_ref + "_ref.jpg", cv2.cvtColor(img_refO, cv2.COLOR_RGB2BGR))
+
             # re-assign the target dictionary now as the ref dictioary
             matchRefDict = matchTarDict
 
@@ -237,24 +334,17 @@ def findFeats(dataSource, spec):
         else:
             print("     Unable to match " + name_tar + " to " + name_ref)
 
+            # NOTE this should write to a txt file for later evaluation
+
     # at the very end, print the target features found
     dictToTxt(matchTarDict, dataDest + spec + "/" + name_ref + ".feat")
 
 if __name__ == "__main__":
 
-    dataSource = '/Volumes/USB/InvididualImagesMod2/'
-    dataDest = '/Volumes/USB/InvididualImagesModInfo/'
+    dataSource = '/Volumes/USB/Testing1/'
+    dataSource = '/Volumes/USB/IndividualImages/'
 
-    specimens = os.listdir(dataSource)[0:3]
-    jobs = {}
-    for spec in specimens:
-        findFeats(dataSource, spec)
+    name = ''
+    size = 3
 
-        # NOTE some of the sample don't have many therefore shouldn't process
-        # jobs[spec] = Process(target=findFeats, args = (dataSource, spec))
-        # jobs[spec].start()
-
-    '''
-    for spec in specimens:
-        jobs[spec].join()
-    '''
+    featFind(dataSource, name, size)
