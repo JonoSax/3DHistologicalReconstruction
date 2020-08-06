@@ -260,8 +260,6 @@ def transformSamples(segSamples, dest, spec, alignedSamples, size, saving):
     for i in ['feat', 'bound', 'segsection']:
         centre = adjustPos(src[spec][i], dest, n, maxPos, translateNet, rotateNet, centre)
     
-    print("CENTRE: " + str(centre))
-
     # translate the image  
     newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
     xp = maxSx - translateNet[n][0] 
@@ -271,7 +269,7 @@ def transformSamples(segSamples, dest, spec, alignedSamples, size, saving):
     # apply the rotational transformation to the image
     # centre = findCentre(dictToArray(feats[n]) + np.array([xp, yp]))
 
-    rot = cv2.getRotationMatrix2D(tuple(centre), -rotateNet[n], 1)
+    rot = cv2.getRotationMatrix2D(tuple(centre), -float(rotateNet[n]), 1)
     warped = cv2.warpAffine(newField, rot, (yF, xF))
 
     try:
@@ -585,7 +583,7 @@ if __name__ == "__main__":
     dataTrain = '/Volumes/Storage/H653A_11.3new/'
 
     # dataTrain = dataHome + 'FeatureID/'
-    name = ''
+    name = 'H653A_14'
     size = 3
 
     align(dataTrain, name, size, False)
