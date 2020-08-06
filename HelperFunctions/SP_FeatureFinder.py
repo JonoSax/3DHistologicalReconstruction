@@ -148,7 +148,7 @@ def findFeats(dataSource, dataDest, spec):
         bound['left'] = pos[:, left]
         bound['right'] = pos[:, right]
         # store the boundary of the image based on the mask
-        dictToTxt(bound, dataDest + spec + "/" + name_ref + ".bound", shape = str(img_refO.shape))
+        dictToTxt(bound, dataDest + spec + "/" + name_ref + "small.bound", shape = str(img_refO.shape))
 
         # get the image dimensions
         xr, yr, cr = img_refO.shape
@@ -172,6 +172,33 @@ def findFeats(dataSource, dataDest, spec):
         # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
         for c in range(3):
             img_tar[:, :, c] = hist_match(img_tar[:, :, c], img_ref[:, :, c])
+
+            # the median value EXCLUDING the 0's
+            # medTar = np.median(img_tar[(np.where(img_tar[:, :, c] > 0))[0], (np.where(img_tar[:, :, c] > 0))[1], c])
+            # medRef = np.median(img_ref[(np.where(img_ref[:, :, c] > 0))[0], (np.where(img_ref[:, :, c] > 0))[1], c])
+
+            # make the colour range extreme
+            # img_tar[:, :, c] = np.clip((img_tar[:, :, c] - medTar) / (np.max(img_tar[:, :, c]) - medTar) * 255, 0, 255)
+            # img_ref[:, :, c] = np.clip((img_ref[:, :, c] - medRef) / (np.max(img_ref[:, :, c]) - medRef) * 255, 0, 255)
+
+        # emphasise edges --> NOTE this doesn't work.... investigate how SIFT
+        # works and how to pre-process images to enhance its effectiveness
+        '''
+        edgestar = cv2.Canny(img_tar, 100, 200)
+        edgesref = cv2.Canny(img_tar, 100, 200)
+
+        img_tar = np.clip(img_tar * np.expand_dims(((edgestar/255 - 1) * -1).astype(np.uint8), -1), 0, 255)
+        img_ref = np.clip(img_ref * np.expand_dims(((edgesref/255 - 1) * -1).astype(np.uint8), -1), 0, 255)
+        '''
+
+        '''
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+        ax1.set_title("target")
+        ax1.imshow(img_tar)
+        ax2.set_title("reference")
+        ax2.imshow(img_ref)
+        plt.show()
+        '''
 
         # Initiate SIFT detector
         # NOTE this required the contrib module --> research use only
@@ -238,6 +265,8 @@ def findFeats(dataSource, dataDest, spec):
                 des_keep_ref = []
                 kp_keep_tar = []
                 des_keep_tar = []
+
+                # only further process if there are matches found in both samples
                 if (des_ref is not None) and (des_tar is not None):
                     # identify strongly identifiable features in both the target and 
                     # reference tissues
@@ -313,7 +342,7 @@ def findFeats(dataSource, dataDest, spec):
             # store the positions of the identified features for each image as 
             # BOTH a reference and target image. Include the image size this was 
             # processed at
-            dictToTxt(matchRefDict, dataDest + spec + "/" + name_ref + ".feat", shape = str(img_ref.shape))
+            dictToTxt(matchRefDict, dataDest + spec + "/" + name_ref + "small.feat", shape = str(img_ref.shape))
 
             # print a combined image showing the matches
             cv2.imwrite(dataDest + spec + "/" + name_ref + " <-- " + name_tar + ".jpg", cv2.cvtColor(np.hstack([img_ref, img_tar]), cv2.COLOR_RGB2BGR))
@@ -337,7 +366,7 @@ def findFeats(dataSource, dataDest, spec):
             # NOTE this should write to a txt file for later evaluation
 
     # at the very end, print the target features found
-    dictToTxt(matchTarDict, dataDest + spec + "/" + name_ref + ".feat")
+    dictToTxt(matchTarDict, dataDest + spec + "/" + name_ref + "small.feat")
 
 if __name__ == "__main__":
 
