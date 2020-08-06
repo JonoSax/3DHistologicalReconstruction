@@ -1,23 +1,79 @@
 '''
-This function creates a mask around the target specimen
+This function creates a mask around the target specimen and seperates multiple 
+samples into seperate images
 '''
 
+if __name__ == "__main__":
+    from Utilities import nameFromPath, dirMaker, dictToTxt
+else:
+    from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 import os 
 from glob import glob
-from HelperFunctions.Utilities import nameFromPath, dirMaker
+
 from multiprocessing import Process
 from PIL import Image
 
-def sectionSelecter(spec, dataSource, dataDestination):
+def specID(dataHome, name, size):
 
-    # gets the 
 
-    imgs = glob(dataSource + spec + "/*.jpg")
-    dest = dataDestination + spec + "/"
-    src = dataSource + spec + "/"
+    # get the size specific source of information
+    datasrc = dataHome + str(size) + "/"
+
+    # gets the images for processing
+    imgsrc = datasrc + "images/"
+    imgsrc = '/Volumes/USB/IndividualImages/'
+
+    # get the directories which are NOT masked
+    specimens = []
+    for i in os.listdir(imgsrc):
+        if (i.find("masked")<0): 
+            specimens.append(i) 
+    
+    # iterate through each specimen and perform feature mapping between each sample
+    # NOTE tried to parallelise but once again cv2 is a huge hang up.....
+    for spec in specimens[2:3]:
+        sectionSelecter(spec, imgsrc)
+        
+    # this always dies on my mac.... only use on HPC
+    '''
+    jobs = {}
+    for n in range(int(len(specimens)/4)):
+        # multiprocess in batches to avoid destroying my memory!
+        # see if concurrent processing perhaps???
+        print("\nLot: " + str(n))
+
+        specRange = specimens[n*4:(n+1)*4]
+
+        for spec in specRange:    
+            # sectionSelecter(spec, dataSource, dataDestination)      
+            jobs[spec] = Process(target=sectionSelecter, args = (spec, dataSource, dataDestination))
+            print("process " + spec + " allocated")
+            jobs[spec].start()
+            print("process " + spec + " started")
+        
+        for spec in specRange:
+            print("process " + spec + " joined")
+            jobs[spec].join()
+    '''
+
+def sectionSelecter(spec, datasrc):
+
+    # this function creates a mask which is trying to selectively surround
+    # ONLY the target tissue
+    # Inputs:   (spec), the specific sample being processed
+    #           (datasrc), the location of the jpeg images (as extracted 
+    #               by tif2pdf)
+
+    imgsrc = datasrc + spec
+
+    # create the directory where the masked files will be created
+    imgMasked = imgsrc + "masked/"
+    dirMaker(imgMasked)
+
+    imgs = sorted(glob(imgsrc + "/*.jpg"))
 
     masksStore = {}
     imgsStore = {}
@@ -40,7 +96,12 @@ def sectionSelecter(spec, dataSource, dataDestination):
         # img = cv2.resize(imgO, (int(x*scale), int(y*scale)))
 
         # create the mask for the individual image
-        mask = maskMaker(img, 15)
+        try:
+            mask = maskMaker(img, 15)
+        # if a mask can't be made, just return the whole image
+        except:
+            mask = np.ones([img.shape[0], img.shape[1]]).astype(np.uint8)
+            print(name + " has no mask")
 
         # plt.imshow(cv2.cvtColor(imgMasked, cv2.COLOR_BGR2RGB)); plt.show()
 
@@ -77,7 +138,7 @@ def sectionSelecter(spec, dataSource, dataDestination):
         MasksStandard[m] *= masterMask
 
     # apply the mask to all the images and save
-    imgStandardiser(dest, src, MasksStandard)
+    imgStandardiser(imgs, imgMasked, MasksStandard)
     print(spec + " Images modified")
 
 def maskMaker(imgO, r, plotting = False):     
@@ -126,8 +187,8 @@ def maskMaker(imgO, r, plotting = False):
                                         # NOTE this method is just based on observation, no 
                                         # actual theory... seems to work. Key is that it is 
                                         # sample specific
-    im_accentuate = im_accentuate / np.max(im_accentuate) * 255
     im_accentuate = (a * np.tanh((im_accentuate - a + b) * 3 / a) + a).astype(np.uint8)
+    im_accentuate = (im_accentuate - np.min(im_accentuate)) / (np.max(im_accentuate) - np.min(im_accentuate)) * 255
 
     # ----------- smoothing -----------
 
@@ -201,22 +262,20 @@ def maskMaker(imgO, r, plotting = False):
     '''
     return(im_id)
         
-def imgStandardiser(dest, src, mask = None):
+def imgStandardiser(imgDirs, imgMasked, mask = None):
 
-    # this gets all the images in a directory and standardises their size and applies a mask
-    # by placing the original image in the middle of a field which encompasses 
+    # this gets all the images in a directory and applies a mask to isolate 
+    # only the target tissue
     # an area of the largest possible dimension of all the images
     # Inputs:   (dest), destination directory for all the info
+    #           (imgsrc), directory containg the images
     #           (src), source destination for all the info
     #           (mask), masks to apply to the image. 
     #               If NOT inputted then the image saved is just resized
     #               If inputted then it should be a dictionary and mask is applied
     # Outputs:  (), saves image at destination with standard size and mask if inputted
 
-    dirMaker(dest)
-
-    imgDirs = glob(src + "/*.jpg")
-
+    # place all the images into a standard size to process
     img = []
     for i in imgDirs:
         img.append(cv2.imread(i))
@@ -231,6 +290,9 @@ def imgStandardiser(dest, src, mask = None):
 
     fieldO = np.zeros([yM, xM, zM]).astype(np.uint8)
 
+    bound = {}
+
+    # apply the mask to all the images then save as its original size
     for i, idir in zip(img, imgDirs):
 
         name = nameFromPath(idir)
@@ -245,48 +307,27 @@ def imgStandardiser(dest, src, mask = None):
         # place the image in the centre of the field
         field[ym0:(ym0 + y), xm0:(xm0 + x), :z] = i
 
-        if mask:
+        # process if there is a mask
+        if (type(mask) != None) & (np.sum(mask[name]) > 1):
             # rescale the mask to the image size (using PIL for multiprocessing)
             maskS = np.array(Image.fromarray(mask[name]).resize((int(xM), int(yM))))
-
+            
             # expand the dims so that it can multiply the original image
             maskS = np.expand_dims(maskS, -1)
             field *= maskS
 
-        cv2.imwrite(dest + name + ".jpg", field)
+        imageSection = field[ym0:(ym0 + y), xm0:(xm0 + x), :z]
+
+        cv2.imwrite(imgMasked + name + ".jpg", imageSection)
 
 
 if __name__ == "__main__":
+
+    dataSource = '/Volumes/USB/Testing1/'
+    dataSource = '/Volumes/USB/IndividualImages/'
+    name = ''
+    size = 3
         
-    dataSource = '/Volumes/USB/InvididualImages/'
-    dataDestination = '/Volumes/USB/InvididualImagesMod2/'
-
-    specimens = os.listdir(dataSource)
-    # specimens = ['temporaryH653']
-
-    # specimens = ['temporaryH653']
-
-    jobs = {}
-
+    specID(dataSource, name, size)
     # iterate through each specimen and perform feature mapping between each sample
     # NOTE tried to parallelise but once again cv2 is a huge hang up.....
-
-    for n in range(int(len(specimens)/4)):
-        # multiprocess in batches to avoid destroying my memory!
-        # see if concurrent processing perhaps???
-        print("\nLot: " + str(n))
-
-        specRange = specimens[n*4:(n+1)*4]
-
-        for spec in specRange:    
-            # sectionSelecter(spec, dataSource, dataDestination)      
-            jobs[spec] = Process(target=sectionSelecter, args = (spec, dataSource, dataDestination))
-            print("process " + spec + " allocated")
-            jobs[spec].start()
-            print("process " + spec + " started")
-        
-        for spec in specRange:
-            print("process " + spec + " joined")
-            jobs[spec].join()
-
-        
