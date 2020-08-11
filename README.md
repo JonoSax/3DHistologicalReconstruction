@@ -16,12 +16,19 @@ each functions purpose in the workflow is:
             
     - SP_[], Sample Processing to get the raw information into a usable form
 
+        - AlignSamples, MOSTLY FUNCTIONAL/UNDER CONSTRUCTION
+            Takes .feat files and aligns the tissue samples in macro space
+
         - MaskMaker, MOSTLY FUNCTIONAL
             Blood vessels are annotated on the ndpi image via ndpa files. From these
             annotations, identify every pixel on the specified resolution image which
             is an annotated blood vessel
 
-        - SampleFinder, PARTIALLY FUNCTIONAL/UNDER CONSTRUCTION
+        - FeatureFinder, PARTIALLY FUNCITONAL/UNDER CONSTRUCTION
+            Automatically find features on sequential slices on jpeg images to create
+            .feat files which can be used by the align script
+
+        - SampleFinder, NON-FUNCTIONAL/UNDER CONSTRUCTION
             Allows a user to select a ROI on a single slide which will create the 
             the necessary positional information to be fed into SegmentExtraction 
             to propogate a feature through an entire stack of tissue
@@ -29,9 +36,17 @@ each functions purpose in the workflow is:
         - SegmentID, CONTINUOUS IMPROVEMENT
             From annotations on the image, align the samples
 
+        - SingleSegmentExtract, PARTIALLY FUNCTIONAL/UNDER CONSTRUCTION
+            Extracts from the n size tif file the tissue sample as defined by a 
+            .bound file
+
         - SpecimenID, UNDER CONSTRUCTION
             Extracts the sample exactly from the whole slice and automatically 
             identifies features which can be used by SegmentID to align the samples
+
+        - tif2pdf, MOSTLY FUNCTIONAL
+            Downsamples the tif files producting jpeg files and collating them into a 
+            pdf
 
     - CI_[], Creating Information which is value add to the tissue
 
