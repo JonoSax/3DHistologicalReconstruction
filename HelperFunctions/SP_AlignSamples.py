@@ -12,6 +12,7 @@ import numpy as np
 import tifffile as tifi
 import cv2
 from scipy.optimize import minimize
+from random import randint
 from math import ceil
 from glob import glob
 import multiprocessing
@@ -19,7 +20,18 @@ from multiprocessing import Process, Queue
 
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
-def align(data, name = '', size = 0, extracting = True):
+# NOTE this should include a function where if there are args in the .feat and .bound 
+# files (ie the size of the original image it came from) then re-shape to the new size
+
+'''
+
+TODO
+    - make it work as part of the automatic workflow script taking the .feat files
+    outputted from FeatFinder 
+
+'''
+
+def align(data, name = '', size = 0, saving = True):
 
     # This function will take the extracted sample tif file at the set resolution and 
     # translate and rotate them to minimise the error between slices
@@ -30,21 +42,23 @@ def align(data, name = '', size = 0, extracting = True):
     #           their identified featues
 
     # get the file of the features information 
-    segSamples = data + str(size) + '/segmentedSamples/'
+    dataSegmented = data + str(size) + '/tifFiles/'     
     alignedSamples = data + str(size) + '/alignedSamples/'
-    dataTif = sorted(glob(data + str(size) + '/tifFiles/' + name + '*' + str(size) + '.tif'))
-    dataFeat = sorted(glob(segSamples + name + '*.feat'))
+    segInfo = data + str(size) + '/info/'
 
-    specimens = sorted(nameFromPath(dataFeat))
+    # get the sample slices of the specimen to be processed
+    specimens = sorted(nameFromPath(glob(segInfo + "*.feat")))
 
     # get affine transformation information of the features for optimal fitting
-    shiftFeatures(specimens.copy(), segSamples)
+    # shiftFeatures(specimens.copy(), segInfo)
     
-    
+    # transformSamples(dataSegmented, dataTif, '', size, saving)
+
     # serial transformation
     for spec in specimens:
-        # transformSamples(segmentedSamples[spec], alignedSamples, tifShapes, translateNet, rotateNet, size, extracting)
-        transformSamples(segSamples, alignedSamples, spec, alignedSamples, size, extracting)
+
+        # transformSamples(dataSegmented, alignedSamples, spec, alignedSamples, size, extracting)
+        transformSamples(dataSegmented, segInfo, alignedSamples, spec, size, saving)
     
     # my attempt at parallelising this part of the process. Unfortunately it doesn't work 
     # because the cv2.warpAffine function is objectivePolar fails for AN UNKNOWN REASON
@@ -83,7 +97,7 @@ def shiftFeatures(featNames, src):
 
     # initialise the first sample with no transformation
     translateNet[featNames[0]] = np.array([0, 0])
-    rotateNet[featNames[0]] = [0]
+    rotateNet[featNames[0]] = [0, 0, 0]
 
     refFeat = featNames[int(len(featNames)/2)]  # using middle sample for aligning
     refFeat = featNames[0]      # initialise the refFeat as the first sample is sequentially aligning samples
@@ -138,7 +152,7 @@ def shiftFeatures(featNames, src):
             translateNet[fn] += translation[fn]
 
             # find the optimum rotational adjustment
-            rotationAdjustment, featsMod, err1 = rotatePoints(featsT)
+            _, featsMod, err1, _ = rotatePoints(featsT)
 
             # change in error between iterations
             errorC = err0 - err1
@@ -152,23 +166,23 @@ def shiftFeatures(featNames, src):
             featsO[fn][f] -= translateNet[fn]
 
         # perform a final rotation on the fully translated features to create a SINGLE rotational transformation
-        rotationAdjustment, featsFinalMod, errN = rotatePoints(featsO, tol = 1e-8)
-        rotateNet[fn] = [rotationAdjustment[fn]]
+        rotationAdjustment, featsFinalMod, errN, centre = rotatePoints(featsO, tol = 1e-8)
+        rotateNet[fn] = [rotationAdjustment[fn], centre[fn][0], centre[fn][1]]  # pass the rotational degree and the centre of rotations
         feats[fn] = featsFinalMod[fn]                      # re-assign the new feature positions to fit for
 
     # save the tif shapes, translation and rotation information
     dictToTxt(translateNet, src + "all.translated")
     dictToTxt(rotateNet, src + "all.rotated")
 
-def transformSamples(segSamples, dest, spec, alignedSamples, size, saving):
+def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     # this function takes the affine transformation information and applies it to the samples
     # Inputs:   (src), directories of the segmented samples
     #           (dest), directories to save the aligned samples
-    #           (translateNet), the translation information to be applied per image
-    #           (rotateNet), the rotation information to be applied per image
+    #           (spec), sample being processed
+    #           (saving), boolean whether to save new info
     # Outputs   (), saves an image of the tissue with the necessary padding to ensure all images are the same size and roughly aligned if saving is True
 
-    def adjustPos(src, dest, n, maxPos, translateNet, rotateNet, centre = None):
+    def adjustPos(infoE, dest, n, maxPos, translateNet, w, shapeR, centre = None):
 
         # this funciton adjusts the position of features in the txt files and resaves them
         # in the destination location
@@ -181,32 +195,41 @@ def transformSamples(segSamples, dest, spec, alignedSamples, size, saving):
         #           (centre), position of the centre, if not given will be calculated from input features
         # Outputs:  (), saves the positions with the transformation 
         #           (centre), if the centre is not given then it is to be found from these calculations
-        
-        # ensure input is a list
-        if type(src) != list: src = [src]
 
-        # per inputted file, translate and rotate
-        for s in src:
-            infoE = txtToDict(s)[0]
-            for f in infoE:
-                infoE[f] += np.array(maxPos) - translateNet[n]
-            infoE = objectivePolar(rotateNet[n][0], centre, False, infoE)
-            dictToTxt(infoE, dest + n + "." + s.split(".")[-1])     # from the info in the txt file, rename
+
+        # get the feat positional information
+        for f in infoE:
+            infoE[f] = (infoE[f] - translateNet) * shapeR + np.array(maxPos)
+        infoE, _ = objectivePolar(w, centre, False, infoE)
+        dictToTxt(infoE, dest + n + "." + s.split(".")[-1])     # from the info in the txt file, rename
 
         if centre is None:
             return(findCentre(infoE))
         else:
             return(centre)
+        
+        '''
+        # get the feat positional information
+        for f in infoE:
+            infoE[f] += np.array(maxPos) - translateNet
+        infoE = objectivePolar(rotateNet[0], centre, False, infoE)
+        dictToTxt(infoE, dest + n + "." + s.split(".")[-1])     # from the info in the txt file, rename
+
+        if centre is None:
+            return(findCentre(infoE))
+        else:
+            return(centre)
+        '''
 
     # get all the segmented information that is to be transformed
     src = dictOfDirs(
         segments = glob(segSamples + spec + "*.tif"), 
-        bound = glob(segSamples + spec + "*.bound"), 
-        feat = glob(segSamples +  spec + "*.feat"), 
-        segsection = glob(segSamples + spec + "*.segsection*"), 
-        tifShapes = segSamples + "all.shape", 
-        translateNet = segSamples + "all.translated", 
-        rotateNet = segSamples + "all.rotated")
+        bound = glob(segInfo + spec + "*.bound"), 
+        feat = glob(segInfo +  spec + "*.feat"), 
+        segsection = glob(segInfo + spec + "*.segsection*"), 
+        tifShapes = segInfo + "all.shape", 
+        translateNet = segInfo + "all.translated", 
+        rotateNet = segInfo + "all.rotated")
 
     # load the whole specimen info
     translateNet = txtToDict(src['all']['translateNet'])[0]
@@ -254,11 +277,36 @@ def transformSamples(segSamples, dest, spec, alignedSamples, size, saving):
     # information. The formate of the features can vary but it MUST exist in some
     # formate 
     
-    # find the centre of rotation used to align the samples
-    
-    centre = None
+    # get the anlge and centre of rotation used to align the samples
+    w = rotateNet[n][0]
+    centre = rotateNet[n][1:] 
+
+    # process for feats, bound and segsections. NOTE segsections not always present so 
+    # error handling incorporated
     for i in ['feat', 'bound', 'segsection']:
-        centre = adjustPos(src[spec][i], dest, n, maxPos, translateNet, rotateNet, centre)
+        
+        try:
+            # ensure input is a list
+            if type(src[n][i]) != list: src[n][i] = [src[n][i]]
+
+            # per inputted file, translate and rotate
+            for s in src[n][i]:
+
+                # get the feat positional information
+                info = txtToDict(s)
+                infoP = info[0] 
+
+                # get the shapes of the jpeg image and original tif and find the ratio fo their sizes
+                shapeS = np.array(info[1]['shape'].replace("(", "").replace(")", "").replace(",", "").split()).astype(int)
+                shapeO = tifShapes[n]
+
+                # get the ratio of the re-sized jpeg to original tif
+                shapeR = np.flip((shapeO / shapeS)[:2])
+
+                # adjust all the points
+                adjustPos(infoP, dest, n, maxPos, translateNet[n], w, shapeR, centre)
+        except:
+            print(n + " has no " + i)
     
     # translate the image  
     newField = np.zeros([xF, yF, cF]).astype(np.uint8)      # empty matrix for ALL the images
@@ -267,9 +315,9 @@ def transformSamples(segSamples, dest, spec, alignedSamples, size, saving):
     newField[yp:(yp+fy), xp:(xp+fx), :] += field
 
     # apply the rotational transformation to the image
-    # centre = findCentre(dictToArray(feats[n]) + np.array([xp, yp]))
+    centre = findCentre(dictToArray(txtToDict(src[spec]['feat'][0])[0]) + np.array([xp, yp]))
 
-    rot = cv2.getRotationMatrix2D(tuple(centre), -float(rotateNet[n]), 1)
+    rot = cv2.getRotationMatrix2D(tuple(centre), -float(w), 1)
     warped = cv2.warpAffine(newField, rot, (yF, xF))
 
     try:
@@ -347,12 +395,18 @@ def rotatePoints(feats, tol = 1e-6):
     #                       quite work propertly for some reason...
     #           (featsmod), features after rotation
 
-    rotationStore = {}
     segments = list(feats.keys())
-    # rotationStore[segments[0]] = cv2.getRotationMatrix2D((0, 0), 0, 1)  # first segment has no rotational transform
-    rotationStore[segments[0]] = 0
-    
+
+    rotationStore = {}
+    centreStore = {}
     featsMod = feats.copy()
+
+    # store the angle of rotation
+    rotationStore[segments[0]] = 0
+
+    # store the centre of rotations
+    centreStore[segments[0]] = np.array([0, 0])
+    
     ref = feats[segments[0]]
 
     for i in segments[1:]:
@@ -374,14 +428,16 @@ def rotatePoints(feats, tol = 1e-6):
 
         # get the shift needed and store
         res = minimize(objectivePolar, (5), args=(None, True, tarP, refP), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
-        refR = objectivePolar(res.x, None, False, tar, refP)   # get the affine transformation used for the optimal rotation
+        refR, centre = objectivePolar(res.x, None, False, tar, refP)   # get the affine transformation used for the optimal rotation
         rotationStore[i] = float(res.x)
+
         err = res.fun
 
         # reassign this as the new feature
         featsMod[i] = refR
+        centreStore[i] = centre
 
-    return(rotationStore, featsMod, err)
+    return(rotationStore, featsMod, err, centreStore)
 
 def plotPoints(dir, imgO, *args):
 
@@ -402,16 +458,20 @@ def plotPoints(dir, imgO, *args):
     # for each set of points add to the image
     for points in args:
 
+        colour = tuple([randint(0, 1)*255, randint(0, 1) * 255, 0])
+
         if type(points) is dict:
             points = dictToArray(points)
 
         for p in points:       # use the target keys in case there are features not common to the previous original 
             pos = tuple(np.round(p).astype(int))
-            img = cv2.circle(img, pos, si, (255, 0, 0), si) 
+            img = cv2.circle(img, pos, si, colour, int(si/2)) 
         
         # plot the centre as well
         try:
-            img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
+            c = findCentre(points)
+            # img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
+            img = cv2.rectangle(img, tuple(c-20), tuple(c+20), colour, si) 
         except:
             pass
 
@@ -526,8 +586,8 @@ def objectivePolar(w, centre, *args):
         tarB[fN[0], fN[1]] = 1
 
         # create the rotational transformation and apply
-        rot = cv2.getRotationMatrix2D((ext, ext), np.float(w), 1)
-        warp = cv2.warpAffine(tarB, rot, (ext*2, ext*2))
+        rot = cv2.getRotationMatrix2D((ext+1, ext+1), np.float(w), 1)
+        warp = cv2.warpAffine(tarB, rot, (ext*2+1, ext*2+1))
 
         # get the positions of the rotations
         tarPosWarp = np.array(np.where(warp > 0))                          
@@ -563,7 +623,7 @@ def objectivePolar(w, centre, *args):
         return(err)  
 
     else:
-        return(tarN)
+        return(tarN, findCentre(dictToArray(tar)))
 
 def findCentre(pos):
 
@@ -579,11 +639,14 @@ def findCentre(pos):
     return(centre)
 
 if __name__ == "__main__":
+
     # dataHome is where all the directories created for information are stored 
-    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/Testing1/'
+    dataSource = '/Volumes/USB/H653/'
 
     # dataTrain = dataHome + 'FeatureID/'
-    name = 'H653A_14'
+    name = ''
     size = 3
 
-    align(dataTrain, name, size, False)
+    align(dataSource, name, size, False)
