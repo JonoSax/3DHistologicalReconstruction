@@ -14,20 +14,21 @@ import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 
-def featSelect(nameref, nametar, matchRef, matchTar, feats = 5):
+def featSelect(imgref, imgtar, matchRef, matchTar, feats = 5):
 
     # this fuction brings up a gui which allows for a user to manually select
     # features on the images
-    # Inputs:   (nameref), path of the reference image
-    #           (nametar), path of the target image
+    # Inputs:   (nameref), either the path or the numpy array of the reference image
+    #           (nametar), either the path or the numpy array of the target image
     #           (matchRef), any already identified features on the reference image
     #           (matchTar), any already identified features on the target image
     #           (feats), defaults to finding 5 features
     # Outputs:  (matchRef, matchTar), updated ref and target features with new points added
 
     # get the images with insufficient features
-    imgref = cv2.imread(nameref)
-    imgtar = cv2.imread(nametar)
+    if type(imgref) == str or type(imgtar) == str:
+        imgref = cv2.imread(imgref)
+        imgtar = cv2.imread(imgtar)
 
     # combine the images
     # get the image dimensions
@@ -43,12 +44,18 @@ def featSelect(nameref, nametar, matchRef, matchTar, feats = 5):
     img_tarC = field.copy(); img_tarC[:xt, :yt, :] = imgtar
 
     # combine images
-    imgCombine = np.hstack([img_refC, img_refC])
+    imgCombine = np.hstack([img_refC, img_tarC])
     xc, yc, c = imgCombine.shape
 
     rois = list()   # store all points
     n = 0           # iterator counter
+
+    # draw on the already found points
     for i, (r, t) in enumerate(zip(matchRef, matchTar)):
+
+        # enusre that the co-ordinate is in the right format and position 
+        if type(r) is np.ndarray: r = tuple(r.astype(int))
+        if type(t) is np.ndarray: t = tuple(t.astype(int) + np.array([ym, 0]))
         
         # get the ref and target points and adjust for the hstack
         # r = tuple(r.astype(int))
@@ -106,9 +113,13 @@ def featSelect(nameref, nametar, matchRef, matchTar, feats = 5):
         if i%2 == 0:
             obj = "ref"
             matchRef.append(np.array((xme, yme)))
+            print("Feat: " + str(matchRef[-1]))
         else:
             obj = "tar"
             matchTar.append(np.array((xme, yme)) - np.array([ym, 0]))
+            print("Feat: " + str(matchTar[-1]))
+
+        
 
         print(str(i) + " + " + obj)
 
@@ -140,3 +151,4 @@ if __name__ == "__main__":
     matchRef = [(1928, 2865), (2040, 3536), (1949, 927)]
 
     featSelect(nameref, nametar, matchRef, matchTar)
+
