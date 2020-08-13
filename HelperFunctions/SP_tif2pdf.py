@@ -11,19 +11,33 @@ import os
 import img2pdf as i2p
 from multiprocessing import Process
 from time import perf_counter as clock
-from HelperFunctions.Utilities import nameFromPath, dirMaker
+if __name__ == "__main__":
+    from Utilities import nameFromPath, dirMaker, dictToTxt, dictOfDirs
+else:
+    from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt, dictOfDirs
 
 def smallerTif(dataHome, name, size):
 
-    scale = 0.2
+    files = sorted(glob(dataHome + str(size) + "/tifFiles/*.tif"))
+    allSamples = {}
+    allSamples[nameFromPath(files[0], 1)] = {}
+
+    path = dataHome + str(size) + "/"
+
+    # this is creating a dictionary of all the sample paths per specimen
+    for n in files:
+        allSamples[nameFromPath(files[0], 1)][nameFromPath(n).split("_")[-1]] = n
+
+    scale = 0.3
 
     # get a dictionary of all the sample to process
-    allSamples = sampleCollector(dataHome, size)
+    # allSamples = sampleCollector(dataHome, size)
+
 
     for spec in allSamples:
-        pdfCreator(allSamples, spec, size, scale, False)
+        pdfCreator(allSamples[spec], spec, path, scale, False)
 
-def pdfCreator(sampleCollections, spec, size, scale, remove = True):
+def pdfCreator(specificSample, spec, path, scale, remove = True):
     # this function takes the directory names and creates a pdf of each sample 
     # Inputs:   (sampleCollections), dictionary containing all the dir names of the imgs
     #           (spec), specimen of interest
@@ -31,39 +45,43 @@ def pdfCreator(sampleCollections, spec, size, scale, remove = True):
     #               for jpeg images but that is deleted at the end
 
     # create a temporary folder for the jpeg images per sample
-    dataTemp = dataHome + 'temporary' + spec + '/'
-    dataTemp = dataHome + str(size) + "/images/" + spec + "/"
-    dataPDF = dataHome + "pdfStore/"
+    dataTemp = path + 'temporary' + spec + '/'
+    dataTemp = path + "images/"
+    dataPDF = path + "pdfStore/"
 
     dirMaker(dataTemp)
     dirMaker(dataPDF)
 
-    specificSample = sampleCollections[spec]
-
 
     # order the dictionary values 
     order = list(specificSample.keys())
-    orderS = [o.split()[0] for o in order]
+    orderS = [o.split()[0].split("_")[-1] for o in order]      # seperates by spaces
     orderN = np.array([''.join(i for i in o if i.isdigit()) for o in orderS]).astype(int)
     orderI = np.argsort(orderN)
-
     order = np.array(order)[orderI]
+
     dirStore = list()
 
     # create an ordered list of the sample directories
     c = 0   # count for user to observe progress
 
+    allShape = {}
     startTime = clock()
     for n in order:
 
         print("Specimen: " + spec + ", Sample " + str(c) + "/" + str(len(order)))
         # load in the tif files and create a scaled down version
-        specificSample[n]
         imgt = tifi.imread(specificSample[n])
+
+        # save the shape of the original tif image
+        allShape[nameFromPath(specificSample[n])] = imgt.shape
+
         # scale = imgt.shape[1]/imgt.shape[0]
         # img = cv2.resize(imgt, (int(1000*scale), 1000))
         img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
 
+        # NOTE right here could be a SINGLE function which takes the info and 
+        # determines if there are any hard coded rules to apply
         # for sample H710C, all the c samples are rotated
         if (n.lower().find("c") >= 0) & (spec.lower().find("h710c") >= 0):
             img = cv2.rotate(img, cv2.ROTATE_180)
@@ -77,7 +95,7 @@ def pdfCreator(sampleCollections, spec, size, scale, remove = True):
             2)
         # create a temporary jpg image and store the dir
         tempName = dataTemp + spec + "_" + str(n) + '.jpg'
-        cv2.imwrite(tempName, img)
+        cv2.imwrite(tempName, cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         dirStore.append(tempName)
         c += 1
 
@@ -88,6 +106,9 @@ def pdfCreator(sampleCollections, spec, size, scale, remove = True):
         if c%5 == 0:
             print("     Sample " + spec + " has " + str(timeLeft) +  " secs to go")
     
+    # create the all.shape information file
+    dictToTxt(allShape, path + "info/all.shape")
+
     # comment the above loop and uncomment below to process already processed images
     # without having to re-process all images
     # dirStore = sorted(glob(dataTemp + spec + "*.jpg"))
@@ -152,12 +173,18 @@ def sampleCollector(dataHome, size):
     return(sampleCollections)
 
 if __name__ == "__main__":
+
+    # NOTE I wonder if this works better with higher resolution images as a rule 
+    # or just as an observation?
+
     # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/ConvertedNDPI/'
     dataHome = '/Volumes/USB/Testing1/'
+    dataHome = '/Volumes/USB/H653/'
+
     size = 3
     name = ''
 
-    sampleExtractor(dataHome, size, name)
+    smallerTif(dataHome, size, name)
     
     
     
