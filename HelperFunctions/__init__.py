@@ -6,5 +6,6 @@ from .SP_SingleSegmentExtract import sampleExtract
 from .SP_AlignSamples import align
 from .SP_tif2pdf import smallerTif
 from .SP_SpecimenID import specID
+from .SP_FeatureFinder import featFind
 from .CI_FeatureExtraction import featExtract
 from .CI_WSIExtract import WSIExtract
