@@ -1,7 +1,7 @@
 '''
 
 This script takes seperates a tif image which contains multiple samples and seperates
-them, and all their informaion 
+them based on a .bound file
 
 '''
 if __name__ == "__main__":
@@ -19,6 +19,15 @@ from multiprocessing import Process, Queue
 
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
+'''
+
+TODO
+    - make this save tif files?
+
+    - 
+
+'''
+
 def sampleExtract(data, name = '', size = 0, extracting = True):
 
     # This function will take a whole slide tif file at the set resolution and 
@@ -32,12 +41,13 @@ def sampleExtract(data, name = '', size = 0, extracting = True):
     # get all the segmented information that is to be transformed
 
     # get the file of the features information 
-    dataPin = sorted(glob(data + 'pinFiles/' + name + '*.pin'))
+    dataFeat = sorted(glob(data + 'pinFiles/' + name + '*.pin'))     # use .pin if this is based on manual segmentation
+    if len(dataFeat) == 0: dataFeat = sorted(glob(data + 'info' + name + '/*.feat'))    # use .feat if this is based on automatic segmentation
     dataTif = sorted(glob(data + str(size) + '/tifFiles/' + name + '*' + str(size) + '.tif'))
     segSamples = data + str(size) + '/segmentedSamples/'
 
     # create the dictionary of the directories
-    featDirs = dictOfDirs(feat = dataPin, tif = dataTif)
+    featDirs = dictOfDirs(feat = dataFeat, tif = dataTif)
 
     specimens = nameFromPath(dataTif)
 
@@ -53,7 +63,8 @@ def sampleExtract(data, name = '', size = 0, extracting = True):
     q0 = {}
     q1 = {}
 
-    # initialise the segmentextract function
+    # parallelise processing
+    '''
     for spec in specimens:
         q0[spec] = Queue()
         jobExtract[spec] = Process(target=segmentExtract, args = (data, segSamples, featDirs[spec], size, extracting, q0[spec]))     
@@ -76,9 +87,9 @@ def sampleExtract(data, name = '', size = 0, extracting = True):
             tifShapes[k] = tifShape[spec][k]
 
     dictToTxt(tifShapes, segSamples + "all.shape")
-
-    # linear processing, left for debugging
     '''
+    # linear processing, left for debugging
+    
     for spec in featDirs:
         # for samples with identified features
         # try:
@@ -96,7 +107,7 @@ def sampleExtract(data, name = '', size = 0, extracting = True):
 
         # except:
         #    print("No features for " + spec)
-    '''
+    
 
     '''
     # get affine transformation information of the features for optimal fitting
@@ -291,10 +302,11 @@ def featAdapt(data, dest, featDir, corners, size, q = None):
 
 if __name__ == "__main__":
     # dataHome is where all the directories created for information are stored 
-    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/Testing1/'
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
     size = 3
 
-    extract(dataTrain, name, size, True)
+    sampleExtract(dataSource, name, size, True)
