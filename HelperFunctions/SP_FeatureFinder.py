@@ -152,7 +152,7 @@ def findFeats(dataSource, dataDest, imgdest, spec):
     dirMaker(imgdest)
 
     # get the masked images
-    imgs = sorted(glob(dataSource + spec + "/*.jpg"))
+    imgs = sorted(glob(dataSource + spec + "/*.jpg"))[0:2]
 
     # counting the number of features found
     noFeat = 0
@@ -211,7 +211,7 @@ def findFeats(dataSource, dataDest, imgdest, spec):
         field = np.zeros((xm, ym, cm)).astype(np.uint8)
                 
         # these are the origin shifts to adapt each image
-        
+        '''
         xrefDif = int((xm-xr)/2)
         yrefDif = int((ym-yr)/2)
         xtarDif = int((xm-xt)/2)
@@ -222,6 +222,17 @@ def findFeats(dataSource, dataDest, imgdest, spec):
         img_tar = field.copy(); img_tar[xtarDif: xtarDif + xt, ytarDif: ytarDif + yt, :] = img_tarO
         '''
         
+        xrefDif = 0
+        yrefDif = 0
+        xtarDif = 0
+        ytarDif = 0
+
+        # re-assign the images to the left of the image (NOTE this is for H563A which has
+        # been segmented and the samples are very commonly best aligned on the left side)
+        img_ref = field.copy(); img_ref[:xr, :yr] = img_refO
+        img_tar = field.copy(); img_tar[:xt, :yt, :] = img_tarO
+        
+        '''
         xrefDif = xm-xr
         yrefDif = ym-yr
         xtarDif = xm-xt
@@ -328,10 +339,10 @@ def findFeats(dataSource, dataDest, imgdest, spec):
                 kp_ref, des_ref = sift.detectAndCompute(imgSect_ref,None)
                 kp_tar, des_tar = sift.detectAndCompute(imgSect_tar,None)
 
+                '''
                 imgSect_refKEYS = cv2.drawKeypoints(imgSect_ref,kp_ref,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
                 imgSect_tarKEYS = cv2.drawKeypoints(imgSect_tar,kp_tar,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-                '''
                 fig, (ax1, ax2) = plt.subplots(1, 2)
                 ax1.imshow(imgSect_refKEYS)
                 ax2.imshow(imgSect_tarKEYS)
@@ -393,18 +404,18 @@ def findFeats(dataSource, dataDest, imgdest, spec):
                             matchTar.append(m_info['tar'][bestMatch])
 
         # if there are more than 5 matches, only select the 5 best
-        if len(matchInfo) > 7:
+        if len(matchInfo) > 20:
             # get the ordered list
             ordered = np.argsort(matchInfo)
 
             # select only the five best matches
-            matchRef = np.array(matchRef)[ordered[:5]]
-            matchTar = np.array(matchTar)[ordered[:5]]
+            matchRef = np.array(matchRef)[ordered[:20]]
+            matchTar = np.array(matchTar)[ordered[:20]]
 
         # if there are less than two matches, perform a manual feature identification process
-        if len(matchTar) <= 2:
-            matchRef, matchTar = featSelect(imgs[n], imgs[n+1], matchRef, matchTar)
-
+        # NOTE would be ideal if this process was saved until the end....
+        if len(matchTar) <= 5:
+            matchRef, matchTar = featSelect(img_ref, img_tar, matchRef, matchTar)
 
         # add annotations to where the matches have been found
         newFeats = []
@@ -416,6 +427,9 @@ def findFeats(dataSource, dataDest, imgdest, spec):
             cv2.circle(img_ref, featRef, 20, (255, 0, 0), 8)
 
             # add the feature number onto the image
+            cv2.putText(img_ref, str(noFeat), 
+            tuple(featRef + np.array([20, 0])),
+            cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 6)
             cv2.putText(img_ref, str(noFeat), 
             tuple(featRef + np.array([20, 0])),
             cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
@@ -430,6 +444,9 @@ def findFeats(dataSource, dataDest, imgdest, spec):
 
             cv2.putText(img_tar, str(noFeat), 
             tuple(featTar + np.array([20, 0])),
+            cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 6)
+            cv2.putText(img_tar, str(noFeat), 
+            tuple(featTar + np.array([20, 0])),
             cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
             matchTarDict["feat_" + str(noFeat)] = kt.astype(int) - np.array([ytarDif, xtarDif])
 
@@ -439,7 +456,7 @@ def findFeats(dataSource, dataDest, imgdest, spec):
         # store the positions of the identified features for each image as 
         # BOTH a reference and target image. Include the image size this was 
         # processed at
-        dictToTxt(matchRefDict, dataDest + spec + "/" + name_ref + ".feat", shape = str(img_ref.shape))
+        dictToTxt(matchRefDict, dataDest + spec + "/" + name_ref + ".feat", shape = str(img_refO.shape))
 
         # print a combined image showing the matches
         cv2.imwrite(imgdest + spec + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_ref, img_tar]))
@@ -469,15 +486,8 @@ def findFeats(dataSource, dataDest, imgdest, spec):
         # re-assign the target dictionary now as the ref dictioary
         matchRefDict = matchTarDict
 
-        # if less than two features found per sample it will require manual feature 
-        # finding
-
-
-
-            # NOTE this should write to a txt file for later evaluation
-
     # at the very end, print the target features found
-    dictToTxt(matchTarDict, dataDest + spec + "/" + name_tar + ".feat", shape = str(img_tar.shape))
+    dictToTxt(matchTarDict, dataDest + spec + "/" + name_tar + ".feat", shape = str(img_tarO.shape))
 
     boundTar = {}
     pos = np.vstack(np.where(img_tarO[:, :, 0] != 0))
@@ -488,8 +498,7 @@ def findFeats(dataSource, dataDest, imgdest, spec):
     boundTar['left'] = pos[:, left]
     boundTar['right'] = pos[:, right]
     # store the boundary of the image based on the mask
-    dictToTxt(boundTar, dataDest + spec + "/" + name_ref + ".bound", shape = str(img_tarO.shape))
-
+    dictToTxt(boundTar, dataDest + spec + "/" + name_tar + ".bound", shape = str(img_tarO.shape))
 
 if __name__ == "__main__":
 
