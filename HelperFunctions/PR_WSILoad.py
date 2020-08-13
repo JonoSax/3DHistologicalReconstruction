@@ -20,17 +20,21 @@ tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 def WSILoad(dataTrain, name, size):
 
     # this is the function called by main. Organises the inputs for findFeats
-    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
+    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpi")))
+
+    # load(dataTrain, '', size)
 
     # parallelise work
     jobs = {}
 
+    
     for spec in specimens:
         jobs[spec] = Process(target=load, args=(dataTrain, spec, size))
         jobs[spec].start()
 
     for spec in specimens:
         jobs[spec].join()
+    
 
 def load(dataTrain, imageName = '', size = 0):
 
@@ -55,8 +59,8 @@ def load(dataTrain, imageName = '', size = 0):
     
     # convert the ndpi into a tif
     for img in imagesNDPI:
-        print(nameFromPath(img) + " converted @ " + str(tifLevels[size]) + " res")
         ndpiLoad(size, img, dataTif)
+        print(nameFromPath(img) + " converted @ " + str(tifLevels[size]) + " res")
 
 def ndpiLoad(sz, src, dest):
 
@@ -71,12 +75,19 @@ def ndpiLoad(sz, src, dest):
 
     mag = tifLevels[sz]
 
+    # nameSRC = src.split("/")[-1].split(".")[0]                    # photo name
+    nameSRC = nameFromPath(src)
+    # dirSRC = src.split(nameSRC + ".ndpi")[0]                      # folder of photo
+    dirSRC = regionOfPath(src)
+
+    # ensure correct path name
+    src = src.replace(" ", "\ ")
+
     os.system("ndpisplit -x" + str(mag) + " " + str(src))
 
-    nameSRC = src.split("/")[-1].split(".")[0]                    # photo name
-    dirSRC = src.split(nameSRC + ".ndpi")[0]                      # folder of photo
+    name = nameFromPath(src)
 
-    extractedName = glob(src.split(".ndpi")[0] + "*z0.tif")[0]    # NOTE, use of z0 is to prevent 
+    extractedName = glob(dirSRC + name + "*.tif")[0]    # NOTE, use of z0 is to prevent 
                                                                 # duplication of the same file, however 
                                                                 # if there is z shift then this will fail
 
@@ -86,7 +97,7 @@ def ndpiLoad(sz, src, dest):
     
 if __name__ == "__main__":
 
-    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    dataTrain = '/Volumes/USB/H653/'
     name = ''
     size = 3
 
