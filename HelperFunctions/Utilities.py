@@ -235,8 +235,11 @@ def txtToDict(path, typeV = int):
             name = nameFromPath(p)
             sampleDict[name] = extract(p)
             
-    else:
+    elif type(path) == str:
         sampleDict = extract(path)
+
+    else:
+        sampleDict = []
 
 
     return(sampleDict)
@@ -394,7 +397,7 @@ def nameFromPath(paths, n = 2):
         # _ will often be the size of the sample used)
         if len(name.split("_")) > 1:
             name = "_".join(name.split("_")[0:n])
-        
+            name = name.replace(" ", "")
         names.append(name)
 
     # if the path input is a string, it will expect an output of a string as well
@@ -462,6 +465,9 @@ def dictOfDirs(**kwargs):
         for s, n in zip(spec, no):
             if n > 1:
                 dictToWrite[s][k] = list()
+
+        if len(spec) == 0:
+            dictToWrite[s][k] = {}  # if there is nothing there just leave empty
 
         # if there are multiple files under the label for that specimen, append ot a list
         for p in path:
