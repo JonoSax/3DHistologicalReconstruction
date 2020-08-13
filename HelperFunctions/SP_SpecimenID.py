@@ -1,6 +1,6 @@
 '''
 This function automatically creates a mask around the target specimen and seperates multiple 
-samples into seperate images
+samples into seperate images.
 '''
 
 import numpy as np
@@ -15,48 +15,33 @@ if __name__ == "__main__":
 else:
     from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt
 
-def specID(dataHome, name, size):
+'''
 
+TO DO:
+
+    - have this file create create multiple .bound files if there are multiple specimens
+
+    - NOTE this fails to be useful for:
+        images with multiple samples in them
+        if the samples are not the correct orientation (masterMask prevent outlier images
+        form being processed)
+
+    - make this work if a single sample within a specimen is selected (ie the spec in 
+    selectionSelection works for a string input as well as a list)
+
+'''
+
+def specID(dataHome, name, size):
 
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
 
     # gets the images for processing
-    imgsrc = datasrc + "images/"
-    imgsrc = '/Volumes/USB/IndividualImages/'
-
-    # get the directories which are NOT masked
-    specimens = []
-    for i in os.listdir(imgsrc):
-        if (i.find("masked")<0): 
-            specimens.append(i) 
     
-    # iterate through each specimen and perform feature mapping between each sample
-    # NOTE tried to parallelise but once again cv2 is a huge hang up.....
-    for spec in specimens[2:3]:
-        sectionSelecter(spec, imgsrc)
-        
-    # this always dies on my mac.... only use on HPC
-    '''
-    jobs = {}
-    for n in range(int(len(specimens)/4)):
-        # multiprocess in batches to avoid destroying my memory!
-        # see if concurrent processing perhaps???
-        print("\nLot: " + str(n))
+    # imgsrc = '/Volumes/USB/IndividualImages/'
 
-        specRange = specimens[n*4:(n+1)*4]
+    sectionSelecter(name, datasrc)
 
-        for spec in specRange:    
-            # sectionSelecter(spec, dataSource, dataDestination)      
-            jobs[spec] = Process(target=sectionSelecter, args = (spec, dataSource, dataDestination))
-            print("process " + spec + " allocated")
-            jobs[spec].start()
-            print("process " + spec + " started")
-        
-        for spec in specRange:
-            print("process " + spec + " joined")
-            jobs[spec].join()
-    '''
 
 def sectionSelecter(spec, datasrc):
 
@@ -66,13 +51,13 @@ def sectionSelecter(spec, datasrc):
     #           (datasrc), the location of the jpeg images (as extracted 
     #               by tif2pdf)
 
-    imgsrc = datasrc + spec
+    imgsrc = datasrc + "images/"
 
     # create the directory where the masked files will be created
-    imgMasked = imgsrc + "masked/"
+    imgMasked = datasrc + "masked/"
     dirMaker(imgMasked)
 
-    imgs = sorted(glob(imgsrc + "/*.jpg"))
+    imgs = sorted(glob(imgsrc + "/" + spec + "*.jpg"))
 
     masksStore = {}
     imgsStore = {}
@@ -100,7 +85,7 @@ def sectionSelecter(spec, datasrc):
         # if a mask can't be made, just return the whole image
         except:
             mask = np.ones([img.shape[0], img.shape[1]]).astype(np.uint8)
-            print(name + " has no mask")
+            print(name + "   has no mask")
 
         # plt.imshow(cv2.cvtColor(imgMasked, cv2.COLOR_BGR2RGB)); plt.show()
 
@@ -108,7 +93,7 @@ def sectionSelecter(spec, datasrc):
         masksStore[name] = mask
         maskShapes.append(mask.shape)
 
-    print(spec + " Masks created")
+    print(spec + "   Masks created")
 
     # Standardise the size of the mask
     maskShapes = np.array(maskShapes)
@@ -138,7 +123,7 @@ def sectionSelecter(spec, datasrc):
 
     # apply the mask to all the images and save
     imgStandardiser(imgs, imgMasked, MasksStandard)
-    print(spec + " Images modified")
+    print(spec + "   Images modified")
 
 def maskMaker(imgO, r, plotting = False):     
 
@@ -323,7 +308,8 @@ def imgStandardiser(imgDirs, imgMasked, mask = None):
 if __name__ == "__main__":
 
     dataSource = '/Volumes/USB/Testing1/'
-    dataSource = '/Volumes/USB/IndividualImages/'
+    # dataSource = '/Volumes/USB/IndividualImages/'
+    dataSource = '/Volumes/USB/H653/'
     name = ''
     size = 3
         
