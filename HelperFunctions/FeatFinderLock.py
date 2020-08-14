@@ -16,10 +16,10 @@ import os
 from multiprocessing import Process
 if __name__ == "__main__":
     from Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray
-    from SP_SampleFinder import featSelect
+    from SP_SampleFinder import featSelectPoint
 else:
     from HelperFunctions.Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray
-    from HelperFunctions.SP_SampleFinder import featSelect
+    from HelperFunctions.SP_SampleFinder import featSelectPoint
 
 
 '''
@@ -386,7 +386,7 @@ def findFeats(dataSource, dataDest, imgdest, spec):
         # NOTE would be ideal if this process was saved until the end....
         n = 5
         if len(matchTar) < n:
-            matchRef, matchTar = featSelect(img_ref, img_tar, matchRef, matchTar, n)
+            matchRef, matchTar = featSelectPoint(img_ref, img_tar, matchRef, matchTar, n)
 
         # if there are more than 5 matches then pick the 5 most appropriate matches
         else:
@@ -512,8 +512,6 @@ def findFeats(dataSource, dataDest, imgdest, spec):
             cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
         
         cv2.imwrite(imgdest + spec + "/" + name_ref + "_ref.jpg", img_refF)
-
-
 
 def matchMaker(matchTar, matchDistance, n = 5):
 
