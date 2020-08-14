@@ -81,7 +81,7 @@ def sectionSelecter(spec, datasrc):
 
         # create the mask for the individual image
         try:
-            mask = maskMaker(img, 15)
+            mask = maskMaker(name, img, 15, False)
         # if a mask can't be made, just return the whole image
         except:
             mask = np.ones([img.shape[0], img.shape[1]]).astype(np.uint8)
@@ -125,10 +125,11 @@ def sectionSelecter(spec, datasrc):
     imgStandardiser(imgs, imgMasked, MasksStandard)
     print(spec + "   Images modified")
 
-def maskMaker(imgO, r, plotting = False):     
+def maskMaker(name, imgO, r, plotting = False):     
 
     # this function loads the desired image and processes it as follows:
-    #   1 - GrayScale image
+    #   0 - GrayScale image
+    #   1 - TODO, hard coded specimen specific transforms
     #   2 - Low pass filter (to remove noise)
     #   3 - Passes through a tanh filter to accentuate the darks and light, adaptative
     #   4 - Smoothing function
@@ -143,6 +144,19 @@ def maskMaker(imgO, r, plotting = False):
 
     # make image grayScale
     img = cv2.cvtColor(imgO, cv2.COLOR_BGR2GRAY)
+
+    # ----------- specimen specific modification -----------
+    
+    # H653 specimen specific mod
+    if name.find("H653") >= 0:
+        '''
+        H653 has bands from the plate which the specimen is stored on which causes a lot of 
+        disruption to the img and compared to the amount of tissue in these bands, is more of an
+        issue 
+        '''
+        img[:8, :] = 255
+        img[-5:, :] = 255
+
     
     # ----------- low pass filter -----------
 
@@ -167,6 +181,7 @@ def maskMaker(imgO, r, plotting = False):
     im_accentuate = img_lowPassFilter.copy()
     a = np.mean(im_accentuate)
     a = 127.5           # this sets the tanh to plateau at 0 and 255 (pixel intensity range)
+    # a = 150
     b = a - np.median(im_accentuate) # sample specific adjustments, 
                                         # NOTE this method is just based on observation, no 
                                         # actual theory... seems to work. Key is that it is 
@@ -217,6 +232,11 @@ def maskMaker(imgO, r, plotting = False):
     # only use the mask for the target sample 
     im_id = (cv2.floodFill(im_binary.copy(), None, point, 255)[1]/255).astype(np.uint8)
     im_id = cv2.dilate(im_id, (5, 5), iterations=3)      # build edges back up
+
+    # perform an errosion on a flipped version of the image
+    # what happens is that all the erosion/dilation operations work from the top down
+    # so it causes an accumulation of "fat" at the bottom of the image. this removes it
+    im_id = cv2.rotate(cv2.erode(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 3), cv2.ROTATE_180)
     
     # plot the key steps of processing
     if plotting:
@@ -224,18 +244,18 @@ def maskMaker(imgO, r, plotting = False):
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
 
         cv2.circle(imgO, tuple(point), 3, (255, 0, 0), 2)
-        imgMod = imgO * im_id
+        imgMod = imgO * np.expand_dims(im_id, -1)
 
         ax1.imshow(im_accentuate, cmap = 'gray')
         ax1.set_title('accentuated colour')
 
-        ax2.imshow(im_centreFind, cmap = 'gray')
+        ax2.imshow(im_binary, cmap = 'gray')
         ax2.set_title("centreFind Mask")
 
-        ax3.imshow(im_id[:, :, 0], cmap = 'gray')
+        ax3.imshow(im_id, cmap = 'gray')
         ax3.set_title("identified sample ")
 
-        ax4.imshow(imgMod, cmap = 'gray') 
+        ax4.imshow(imgMod) 
         ax4.set_title("masked image")
         plt.show()
     
