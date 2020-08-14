@@ -16,10 +16,10 @@ import os
 from multiprocessing import Process
 if __name__ == "__main__":
     from Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray
-    from SP_SampleFinder import featSelect
+    from SP_SampleFinder import featSelectPoint
 else:
     from HelperFunctions.Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray
-    from HelperFunctions.SP_SampleFinder import featSelect
+    from HelperFunctions.SP_SampleFinder import featSelectPoint
 
 
 '''
@@ -152,7 +152,7 @@ def findFeats(dataSource, dataDest, imgdest, spec):
     dirMaker(imgdest)
 
     # get the masked images
-    imgs = sorted(glob(dataSource + spec + "/*.jpg"))[0:2]
+    imgs = sorted(glob(dataSource + spec + "/*.jpg"))
 
     # counting the number of features found
     noFeat = 0
@@ -289,7 +289,7 @@ def findFeats(dataSource, dataDest, imgdest, spec):
         p = 100     # pixel grid size
         sc = 0.5    # the extra 1D length size of the target section
 
-        matchInfo = []
+        matchDistance = []
         matchRef = []
         matchTar = []
 
@@ -399,14 +399,28 @@ def findFeats(dataSource, dataDest, imgdest, spec):
                         # lower scores mean the matches are better (which results in fewer
                         # matches found). 
                         if m_info['distance'][bestMatch] < 250:
-                            matchInfo.append(m_info['distance'][bestMatch])
+                            matchDistance.append(m_info['distance'][bestMatch])
                             matchRef.append(m_info['ref'][bestMatch])
                             matchTar.append(m_info['tar'][bestMatch])
 
+        n = 5
+        if len(matchTar) < n:
+            matchRef, matchTar = featSelectPoint(img_ref, img_tar, matchRef, matchTar, n)
+
+        # if there are more than 5 matches then pick the 5 most appropriate matches
+        else:
+            bestMatches = matchMaker(matchTar, matchDistance, n)
+            
+            # select only the five best matches
+            matchRef = np.array(matchRef)[bestMatches]
+            matchTar = np.array(matchTar)[bestMatches]
+            matchDistance = np.array(matchDistance)[bestMatches]
+            # matchSize = np.array(matchSize)[bestMatches]
+        '''
         # if there are more than 5 matches, only select the 5 best
-        if len(matchInfo) > 20:
+        if len(matchDistance) > 20:
             # get the ordered list
-            ordered = np.argsort(matchInfo)
+            ordered = np.argsort(matchDistance)
 
             # select only the five best matches
             matchRef = np.array(matchRef)[ordered[:20]]
@@ -416,7 +430,7 @@ def findFeats(dataSource, dataDest, imgdest, spec):
         # NOTE would be ideal if this process was saved until the end....
         if len(matchTar) <= 5:
             matchRef, matchTar = featSelect(img_ref, img_tar, matchRef, matchTar)
-
+        '''
         # add annotations to where the matches have been found
         newFeats = []
         for kr, kt in zip(matchRef, matchTar):
@@ -499,6 +513,82 @@ def findFeats(dataSource, dataDest, imgdest, spec):
     boundTar['right'] = pos[:, right]
     # store the boundary of the image based on the mask
     dictToTxt(boundTar, dataDest + spec + "/" + name_tar + ".bound", shape = str(img_tarO.shape))
+
+def matchMaker(matchTar, matchDistance, n = 5):
+
+    # this function takes all the matches which meet the criteria and chooses only the 
+    # best matches for the fitting procedures of AlignSamples
+    # Inputs:   (matchTar), the list of positions on the target image which have been matched
+    #           (matchDistance), the error of the descriptors for each match
+    #           (n), number of samples to be selected as the best samples to choose from, defulats as 5
+    # Outputs:  (bestMatches), returns the positions of the best matches in all the lists
+
+    # create a copy so that I don't much up the original array
+    matchTarSort = matchTar.copy()
+
+    # there features should be found (best match, 2 centres) and if more features are to be
+    # found then it is on top of this
+    extra = n - 3
+
+    # create a list of the best match positions
+    bestMatches = list()
+
+    # get the ordered list
+    ordered = np.argsort(matchDistance)
+
+    # pick the feature which is the best match
+    bestMatches.append(ordered[0])
+
+    # pick the features (2) which are in the middle vertically and horizontally
+    # ensure that there is an odd number length of the array so that the median can be found
+    if len(matchTar) % 2 == 0:
+        matchTarM = np.vstack([matchTarSort, np.array([0, 0])])
+    else: 
+        matchTarM = matchTarSort
+
+    for i in range(2):
+        # get the position of the median on either the x and y axis
+        p = np.where(np.array(matchTarM)[:, i] == np.median(matchTarM, axis = 0)[i])[0][0]
+
+        # if the match is the same as the previously added one, don't add it again but 
+        # note that an extra match will need to be found
+        if len(np.where(bestMatches == p)[0]) == 0: bestMatches.append(p)
+
+
+    middle = []
+    for p in bestMatches:
+        # get the positions of the points found so far
+        middle.append(np.array(matchTarM)[p, :])
+   
+    # from all the points so far, find the middle
+    middle = np.mean(middle, axis = 0)
+
+    # re-assign the best matched position to be a middle position. this is done instead of 
+    # deleting so that the positional arguments are not mucked around
+    # matchTarSort[ordered[0]] = middle
+
+    # pick the points furtherest away from the middle
+    err = []
+    for i in matchTarSort:
+        # get the error between points
+        err.append(np.sum((i - middle)**2))
+
+    # get the positions which have the largest error and therefore are the furthest away 
+    # from the middle
+    errSort = np.argsort(err)
+    i = 0
+    while len(bestMatches) < n:
+        # get the point which is of interest
+        p = int(errSort[-(i + 1)])
+
+        # if point has not been used then add it to the bestmatches
+        if len(np.where(np.array(bestMatches) == p)[0]) == 0:
+            bestMatches.append(int(errSort[-(i + 1)]))
+
+        i += 1
+
+    return(bestMatches)
+
 
 if __name__ == "__main__":
 
