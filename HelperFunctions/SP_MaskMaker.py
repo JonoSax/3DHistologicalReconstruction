@@ -16,6 +16,14 @@ if __name__ == "__main__":
 else:
     from HelperFunctions.Utilities import *
 
+'''
+
+TODO 
+    - Seperate into two functions the mask building and target tissue identification
+
+'''
+
+
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
@@ -34,8 +42,6 @@ def maskMaker(dataTrain, name, size):
         jobs[spec].join()
 
 def maskCreator(dataTrain, segmentName = '', size = 0):
-
-    # TODO: Seperate into two functions the mask building and target tissue identification
 
     # This function takes the manual annotations and turns them into a dense matrix which 
     # has identified all the pixel which the annotations encompass at the user chosen scale
