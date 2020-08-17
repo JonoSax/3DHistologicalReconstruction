@@ -50,7 +50,7 @@ def align(data, name = '', size = 0, saving = True):
     specimens = sorted(nameFromPath(glob(segInfo + "*.feat")))
 
     # get affine transformation information of the features for optimal fitting
-    # shiftFeatures(specimens.copy(), segInfo)
+    shiftFeatures(specimens.copy(), segInfo)
     
     # serial transformation
     for spec in specimens:
@@ -136,8 +136,7 @@ def shiftFeatures(featNames, src):
         err1 = 100000
         errorC = 100000
         # for i in range(3):  # This could be a while loop for the error of the rotation
-        while errorC > 0:        # once the change in error decreases finish
-            print("     Fit " + str(n))
+        while errorC != 0:        # once the change in error decreases finish
             
             # use the previous error for the next calculation
             err0 = err1
@@ -148,11 +147,12 @@ def shiftFeatures(featNames, src):
             # store the accumulative translation vectors 
             translateNet[fn] += translation[fn]
 
-            # find the optimum rotational adjustment
+            # find the optimum rotational adjustment and produce modified feats
             _, featsMod, err1, _ = rotatePoints(featsT)
 
             # change in error between iterations
             errorC = err0 - err1
+            print("     Fit " + str(n) + ", ErrorC = " + str(errorC))
 
             # iterator for printing purposes
             n += 1
@@ -241,10 +241,13 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     
     # get the ratio of the re-sized jpeg to original tif
     shapeR = np.flip((shapeO / jpegSize)[:2])
-    # shapeR = 1/0.3
+
+    # NOTE because of rounding errors there can be issues with what the actual result 
+    # is so some rounding operations are done for exact results
+    shapeR = 1/np.round(1/shapeR, 3)
 
     # get the measure of the amount of shift to create the 'platform' which all the images are saved to
-    ss = (dictToArray(translateNet, int) * shapeR).astype(int)     # scale up for the 40% reduction in tif2pdf
+    ss = (np.ceil(dictToArray(translateNet, int) * shapeR)).astype(int)     # scale up for the 40% reduction in tif2pdf
     maxSx = np.max(ss[:, 0])
     maxSy = np.max(ss[:, 1])
     minSx = np.min(ss[:, 0])
@@ -331,7 +334,6 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     # this takes a while so optional
     if saving:
         cv2.imwrite(dest + spec + '.tif', warped)                               # saves the adjusted image at full resolution 
-
 
 def translatePoints(feats):
 
@@ -422,7 +424,7 @@ def rotatePoints(feats, tol = 1e-6):
         centre = findCentre(tarP)
         
         # get the shift needed and store
-        res = minimize(objectivePolar, (5), args=(None, True, tarP, refP), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
+        res = minimize(objectivePolar, (-5.0), args=(None, True, tarP, refP), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
         refR = objectivePolar(res.x, centre, False, tar, refP)   # get the affine transformation used for the optimal rotation
         rotationStore[i] = float(res.x)
 
@@ -529,7 +531,7 @@ def objectivePolar(w, centre, *args):
     # factor in order to reduce the time taken to compute
     # NOTE the more it is scaled the more innacuracies are created, however appears 
     # that it is pretty accurate with a 10 scaling but is also acceptably fast
-    scale = 10
+    scale = 4
 
     tarA = dictToArray(tar)
     
