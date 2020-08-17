@@ -14,23 +14,23 @@ import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 import tifffile as tifi
-if __name__ == "__main__":
+from multiprocessing import Process
+if __name__.find("HelperFunctions") == -1:
     from Utilities import nameFromPath, dirMaker
 else:
     from HelperFunctions.Utilities import nameFromPath, dirMaker
 
-def featSelectArea(datahome, sample, feats = 5):
+def featSelectArea(datahome, size, sample, feats = 1):
 
     # this function brings up a gui which allows user to manually selection a 
     # roi on the image. This extracts samples from the aligned tissues and saves them
 
-
-    segSections = datahome + "segSections/"
+    segSections = datahome + str(size) + "/segSections/"
 
     for f in range(feats):
         dirMaker(segSections + "seg" + str(f) + "/")
 
-    alignedSamples = datahome + "alignedSamples/"
+    alignedSamples = datahome + str(size) + "/alignedSamples/"
 
     img = glob(alignedSamples + sample + "*.tif")[0]
 
@@ -47,17 +47,36 @@ def featSelectArea(datahome, sample, feats = 5):
         cv2.rectangle(img, (x[f][0], y[f][0]), (x[f][1], y[f][1]), (255, 255, 255), 40)
         cv2.rectangle(img, (x[f][0], y[f][0]), (x[f][1], y[f][1]), (0, 0, 0), 20)
 
+    for s in samples:
+        sectionExtract(segSections, feats, s, x, y)
+
+    # NOTE only parallelise on the HPC
+    '''
     # extract from all the samples the features
+    jobs = {}
     for s in samples:
         name = nameFromPath(s)
-        img = tifi.imread(s)
-        for f in range(feats):
-            segdir = segSections + "seg" + str(f) + "/"
-            section = img[y[f][0]:y[f][1], x[f][0]:x[f][1] :]
-            tifi.imwrite(segdir + name + ".tif", section)
+    
+        jobs[name] = Process(target = sectionExtract, args = (segSections, feats, s, x, y))
+        jobs[name].start()
+
+    for n in jobs:
+        jobs[n].join()
+    '''
 
 
-def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5):
+def sectionExtract(segSections, feats, s, x, y):
+
+    img = tifi.imread(s)
+    name = nameFromPath(s)
+
+    for f in range(feats):
+        print(name + " section " + str(f))
+        segdir = segSections + "seg" + str(f) + "/"
+        section = img[y[f][0]:y[f][1], x[f][0]:x[f][1] :]
+        tifi.imwrite(segdir + name + ".tif", section)
+
+def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5, ts = 4):
 
     # this fuction brings up a gui which allows for a user to manually select
     # features on the images. This contributes to making a .feat file
@@ -72,6 +91,8 @@ def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5):
     if type(imgref) == str or type(imgtar) == str:
         imgref = cv2.imread(imgref)
         imgtar = cv2.imread(imgtar)
+
+    ts = imgref.shape[0]/1000
 
     # combine the images
     # get the image dimensions
@@ -105,25 +126,26 @@ def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5):
         # t = tuple(t.astype(int) + np.array([ym, 0]))
 
         # add the found points as marks
-        cv2.circle(imgCombine, r, 30, (255, 0, 0), 10)
+        cv2.circle(imgCombine, r, int(ts*10), (255, 0, 0), int(ts*5))
+
+        # add point info to the image 
+        cv2.putText(imgCombine, "ref feat " + str(i), 
+                tuple(r + np.array([20, 0])),
+                cv2.FONT_HERSHEY_SIMPLEX, ts, (255, 255, 255), int(ts*5))
 
         cv2.putText(imgCombine, "ref feat " + str(i), 
                 tuple(r + np.array([20, 0])),
-                cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 255, 255), 20)
+                cv2.FONT_HERSHEY_SIMPLEX, ts, (0, 0, 0), int(ts*2.5))
 
-        cv2.putText(imgCombine, "ref feat " + str(i), 
-                tuple(r + np.array([20, 0])),
-                cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 0, 0), 10)
-
-        cv2.circle(imgCombine, t, 30, (255, 0, 0), 10)
+        cv2.circle(imgCombine, t, int(ts*10), (255, 0, 0), int(ts*5))
 
         cv2.putText(imgCombine, "tar feat " + str(i), 
             tuple(t + np.array([20, 0])),
-            cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 255, 255), 20)
+            cv2.FONT_HERSHEY_SIMPLEX, ts, (255, 255, 255), int(ts*5))
 
         cv2.putText(imgCombine, "tar feat " + str(i), 
             tuple(t + np.array([20, 0])),
-            cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 0, 0), 10)
+            cv2.FONT_HERSHEY_SIMPLEX, ts, (0, 0, 0), int(ts*2.5))
 
         n+=2    
 
@@ -139,7 +161,7 @@ def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5):
         yme = int(np.mean(y))
 
         # add the found points as marks
-        imgCombine = cv2.circle(imgCombine, (xme, yme), 30, (255, 0, 0), 10)
+        imgCombine = cv2.circle(imgCombine, (xme, yme), int(ts*10), (255, 0, 0), int(ts*5))
 
         # append reference and target information to the original list
         if i%2 == 0:
@@ -153,15 +175,16 @@ def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5):
 
         print(str(i) + " + " + obj)
 
+        # add info to image
         feat = obj + " feat " + str(int(np.floor(i/2)))
 
         cv2.putText(imgCombine, feat, 
                 tuple([xme, yme] + np.array([20, 0])),
-                cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 255, 255), 20)
+                cv2.FONT_HERSHEY_SIMPLEX, ts, (255, 255, 255), int(ts*5))
 
         cv2.putText(imgCombine, feat, 
                 tuple([xme, yme] + np.array([20, 0])),
-                cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 0, 0), 10)
+                cv2.FONT_HERSHEY_SIMPLEX, ts, (0, 0, 0), int(ts*2.5))
 
     cv2.destroyAllWindows()
 
@@ -205,8 +228,9 @@ if __name__ == "__main__":
 
     # featSelectPoint(nameref, nametar, matchRef, matchTar)
 
-    alignedimghome = '/Volumes/USB/H653/3/'
+    alignedimghome = '/Volumes/USB/H653/'
     sample = 'H653_01A'
+    size = 3
 
-    featSelectArea(alignedimghome, sample)
+    featSelectArea(alignedimghome, size, sample, 5)
 
