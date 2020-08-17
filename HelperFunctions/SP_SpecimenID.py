@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 import os 
 from glob import glob
 from PIL import Image
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 if __name__ == "__main__":
     from Utilities import nameFromPath, dirMaker, dictToTxt
 else:
@@ -57,41 +57,51 @@ def sectionSelecter(spec, datasrc):
     imgMasked = datasrc + "masked/"
     dirMaker(imgMasked)
 
-    imgs = sorted(glob(imgsrc + "/" + spec + "*.jpg"))
+    imgs = sorted(glob(imgsrc + spec + "*"))
 
     masksStore = {}
     imgsStore = {}
     maskShapes = []
+    q = {}
+    jobs = {}
 
-    scale = 0.05
+    scale = 0.5
 
     print("Processing " + spec)
 
+    # NOTE this can probably be parallelised 
     for i in imgs:
         name = nameFromPath(i)
+        q[name] = Queue()
 
         # read in the image and downsample
         imgO = cv2.imread(i)
         imgsStore[name] = imgO
         y, x, c = imgO.shape
 
+        # downsample the image for masking
         # NOTE uses PIL object instead of cv2 so multiprocessing can work
-        img = np.array(Image.fromarray(imgO).resize((int(x*scale), int(y*scale))))
+        # img = np.array(Image.fromarray(imgO).resize((int(x*scale), int(y*scale))))
         # img = cv2.resize(imgO, (int(x*scale), int(y*scale)))
 
+        img = imgO  # NOTE it looks like the mask making is REALLY good at full res
+        
         # create the mask for the individual image
-        try:
-            mask = maskMaker(name, img, 15, False)
-        # if a mask can't be made, just return the whole image
-        except:
-            mask = np.ones([img.shape[0], img.shape[1]]).astype(np.uint8)
-            print(name + "   has no mask")
-
+        mask = maskMaker(name, img, 15, False)
+        
         # plt.imshow(cv2.cvtColor(imgMasked, cv2.COLOR_BGR2RGB)); plt.show()
 
         # store mask info to standardise mask size
         masksStore[name] = mask
         maskShapes.append(mask.shape)
+    '''
+    for name in nameFromPath(imgs):
+        mask = q[name].get()
+        print(name + " got")
+        jobs[name].join()
+        masksStore[name] = mask
+        maskShapes.append(mask.shape)
+    '''
 
     print(spec + "   Masks created")
 
@@ -125,7 +135,7 @@ def sectionSelecter(spec, datasrc):
     imgStandardiser(imgs, imgMasked, MasksStandard)
     print(spec + "   Images modified")
 
-def maskMaker(name, imgO, r, plotting = False):     
+def maskMaker(name, imgO, r, plotting = False, q = None):     
 
     # this function loads the desired image and processes it as follows:
     #   0 - GrayScale image
@@ -142,8 +152,11 @@ def maskMaker(name, imgO, r, plotting = False):
 
     # ----------- grayscale -----------
 
+    print(name + " masking")
+
     # make image grayScale
     img = cv2.cvtColor(imgO, cv2.COLOR_BGR2GRAY)
+    rows, cols = img.shape
 
     # ----------- specimen specific modification -----------
     
@@ -154,8 +167,9 @@ def maskMaker(name, imgO, r, plotting = False):
         disruption to the img and compared to the amount of tissue in these bands, is more of an
         issue 
         '''
-        img[:8, :] = 255
-        img[-5:, :] = 255
+
+        img[:int(cols * 0.08), :] = 255
+        img[-int(cols * 0.05):, :] = 255
 
     
     # ----------- low pass filter -----------
@@ -164,7 +178,6 @@ def maskMaker(name, imgO, r, plotting = False):
     f = np.fft.fft2(img.copy())
     fshift = np.fft.fftshift(f)
     # magnitude_spectrum = 20*np.log(np.abs(fshift))
-    rows, cols = img.shape
     crow, ccol = int(rows/2), int(cols/2)
     fshiftL = fshift
     filterL = np.zeros([rows, cols])
@@ -181,7 +194,7 @@ def maskMaker(name, imgO, r, plotting = False):
     im_accentuate = img_lowPassFilter.copy()
     a = np.mean(im_accentuate)
     a = 127.5           # this sets the tanh to plateau at 0 and 255 (pixel intensity range)
-    # a = 150
+    a = 150
     b = a - np.median(im_accentuate) # sample specific adjustments, 
                                         # NOTE this method is just based on observation, no 
                                         # actual theory... seems to work. Key is that it is 
@@ -204,52 +217,47 @@ def maskMaker(name, imgO, r, plotting = False):
     # threshold to form a binary mask
     v = int((np.median(img_smooth) + np.mean(img_smooth))/2)
     im_binary = (((img_smooth<v) * 255).astype(np.uint8)/255).astype(np.uint8) #; im = ((im<=200) * 0).astype(np.uint8)  
+    im_binary = cv2.dilate(im_binary, (5, 5), iterations=10)      # build edges back up
 
     # ----------- single feature ID -----------
+    
+    # create three points to use depending on what works for the flood fill. One 
+    # in the centre and then two in the upper and lower quater along the vertical line
+    points = {}
+    for n in np.arange(0.25, 1, 0.25):
+        binPos = np.where(im_binary==1)
+        pointV = binPos[0][np.argsort(binPos[0])[int(len(binPos[0])*n)]]
+        vPos = np.where(binPos[0] == pointV)
+        pointH = binPos[1][vPos[0]][np.argsort(binPos[1][vPos[0]])[int(len(vPos[0])*0.5)]]
+        points[n] = tuple([int(pointH), int(pointV)])   # centre point
 
-    # find a point which is in the sample of interest. This assumes that the sample will 
-    # be the most prominent feature of the mask therefore eroding until a critical value will
-    # only leave pixels which belong to the target
-    # NOTE add padding so that the erode can work for all positions
-    b = 3
-    im_centreFind = cv2.copyMakeBorder(im_binary.copy(), b, b, b, b, cv2.BORDER_CONSTANT, value = 0)
-    storeC = 1
-    while (np.sum(im_centreFind) > 100) and (storeC > 0):
-        store0 = np.sum(im_centreFind)
-        im_centreFind = cv2.erode(im_centreFind, (b, b))
-        storeC = store0 - np.sum(im_centreFind)
-        im_centreFindStore = im_centreFind
-        
-    if np.sum(im_centreFind) == 0:
-        im_centreFind = im_centreFindStore
-
-    # pick the lowest point found (from observation, there appears to be more noise near the 
-    # origin of the image [top left visually] so this is just another step to make a more robust
-    # spec finder)
-    points = np.where(im_centreFind > 0) 
-    point = (points[1][-1] - b, points[0][-1] - b)
-
-    # only use the mask for the target sample 
-    im_id = (cv2.floodFill(im_binary.copy(), None, point, 255)[1]/255).astype(np.uint8)
-    im_id = cv2.dilate(im_id, (5, 5), iterations=3)      # build edges back up
+    # if the flood fill didn't work (ie the image, assuemd to be dominant in the frame) 
+    # is not highlighted then try using a different point
+    for p in points:
+        im_id = (cv2.floodFill(im_binary.copy(), None, points[p], 255)[1]/255).astype(np.uint8)
+        if np.sum(im_id) > im_id.size * 0.1:
+            break
 
     # perform an errosion on a flipped version of the image
     # what happens is that all the erosion/dilation operations work from the top down
     # so it causes an accumulation of "fat" at the bottom of the image. this removes it
-    im_id = cv2.rotate(cv2.erode(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 3), cv2.ROTATE_180)
+    im_id = cv2.rotate(cv2.dilate(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 5), cv2.ROTATE_180)
     
     # plot the key steps of processing
     if plotting:
         # create sub plotting capabilities
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
 
-        cv2.circle(imgO, tuple(point), 3, (255, 0, 0), 2)
         imgMod = imgO * np.expand_dims(im_id, -1)
 
         ax1.imshow(im_accentuate, cmap = 'gray')
         ax1.set_title('accentuated colour')
 
-        ax2.imshow(im_binary, cmap = 'gray')
+        # turn the mask into an RGB image (so that the circle point is clearer)
+        im_binary3d = (np.ones([im_binary.shape[0], im_binary.shape[1], 3]) * np.expand_dims(im_binary * 255, -1)).astype(np.uint8)
+        cv2.circle(im_binary3d, tuple(point), 100, (255, 0, 0), 20)
+
+        ax2.imshow(im_binary3d)
         ax2.set_title("centreFind Mask")
 
         ax3.imshow(im_id, cmap = 'gray')
@@ -258,13 +266,19 @@ def maskMaker(name, imgO, r, plotting = False):
         ax4.imshow(imgMod) 
         ax4.set_title("masked image")
         plt.show()
+
+        plt.imshow(imgMod); plt.show()
     
     '''
     # convert mask into 3D array and rescale for the original image
     im = cv2.resize(im, (int(x), int(y)))
     im = np.expand_dims(im, -1)
     '''
-    return(im_id)
+
+    if q is None:
+        return(im_id)
+    else:
+        q.put(im_id)
         
 def imgStandardiser(imgDirs, imgMasked, mask = None):
 
@@ -320,6 +334,7 @@ def imgStandardiser(imgDirs, imgMasked, mask = None):
             maskS = np.expand_dims(maskS, -1)
             field *= maskS
 
+        # extract the image from the centre of the field back into its original position
         imageSection = field[ym0:(ym0 + y), xm0:(xm0 + x), :z]
 
         cv2.imwrite(imgMasked + name + ".jpg", imageSection)
