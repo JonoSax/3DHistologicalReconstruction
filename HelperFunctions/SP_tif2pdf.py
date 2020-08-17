@@ -16,7 +16,10 @@ if __name__ == "__main__":
 else:
     from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt, dictOfDirs
 
-def smallerTif(dataHome, name, size):
+def smallerTif(dataHome, name, size, scale = 0.3):
+
+    # from ndpi files, extract lower resolution images storing them and then 
+    # create a pdf file from all of them
 
     files = sorted(glob(dataHome + str(size) + "/tifFiles/*.tif"))
     allSamples = {}
@@ -27,8 +30,6 @@ def smallerTif(dataHome, name, size):
     # this is creating a dictionary of all the sample paths per specimen
     for n in files:
         allSamples[nameFromPath(files[0], 1)][nameFromPath(n).split("_")[-1]] = n
-
-    scale = 0.3
 
     # get a dictionary of all the sample to process
     # allSamples = sampleCollector(dataHome, size)
@@ -94,8 +95,9 @@ def pdfCreator(specificSample, spec, path, scale, remove = True):
             (0, 0, 0),
             2)
         # create a temporary jpg image and store the dir
-        tempName = dataTemp + spec + "_" + str(n) + '.jpg'
+        tempName = dataTemp + spec + "_" + str(n) + '.png'
         cv2.imwrite(tempName, cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        # tifi.imwrite(tempName, img)
         dirStore.append(tempName)
         c += 1
 
@@ -184,7 +186,7 @@ if __name__ == "__main__":
     size = 3
     name = ''
 
-    smallerTif(dataHome, size, name)
+    smallerTif(dataHome, name, size)
     
     
     
