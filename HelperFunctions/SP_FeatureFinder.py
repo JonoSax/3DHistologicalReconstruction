@@ -78,7 +78,7 @@ def featFind(dataHome, name, size):
     infodest = datasrc + "info/"
     imgdest = datasrc + "matched/"
 
-    findFeats(imgsrc, infodest, imgdest, dist = 180, sz = 2, no = 10, featNo = 5)
+    findFeats(imgsrc, infodest, imgdest, dist = 250, sz = 10, no = 20, featNo = 5)
 
     '''
     # for parallelisation
@@ -210,6 +210,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 10, no = 10, featN
         boundTar['left'] = np.flip(pos[:, left])
         boundTar['right'] = np.flip(pos[:, right])
 
+        
         # get the image dimensions
         xr, yr, cr = img_refO.shape
         xt, yt, ct = img_tarO.shape
@@ -217,17 +218,65 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 10, no = 10, featN
             
         # create a max size field of both images
         field = np.zeros((xm, ym, cm)).astype(np.uint8)
-                
+        
+        # specific H653 positioning
+        if nameFromPath(name_tar, 1) == 'H653':
+            # put the images in the top right
+            # these are the origin shifts to adapt each image
+            xrefDif = 0
+            yrefDif = 0
+            xtarDif = 0
+            ytarDif = 0
+
+            # re-assign the images to the left of the image (NOTE this is for H563A which has
+            # been segmented and the samples are very commonly best aligned on the left side)
+            img_ref = field.copy(); img_ref[:xr, :yr] = img_refO
+            img_tar = field.copy(); img_tar[:xt, :yt, :] = img_tarO
+        
+        # specific H1029A positioning
+        if nameFromPath(name_tar, 1) == 'H1029A':
+            # get the further right, lowest point for the target and reference images
+            pos = np.where(img_tarO != 0)
+            xmaxt = np.max(pos[1])
+            ymaxt = pos[0][np.where(pos[1] == xmaxt)[0]][-1]
+
+            pos = np.where(img_refO != 0)
+            xmaxr = np.max(pos[1])
+            ymaxr = pos[0][np.where(pos[1] == xmaxr)[0]][-1]
+
+            img_tarp = img_tarO[:ymaxt, :xmaxt]
+            img_refp = img_refO[:ymaxr, :xmaxr]
+
+            xrp, yrp, c = img_refp.shape
+            xtp, ytp, c = img_tarp.shape
+
+            xm, ym, cm = np.max(np.array([(xrp, yrp, c), (xtp, ytp, c)]), axis = 0)
+            fieldp = np.zeros((xm, ym, cm)).astype(np.uint8)
+
+            # these are the origin shifts to adapt each image
+            xrefDif = xm-xrp
+            yrefDif = ym-yrp
+            xtarDif = xm-xtp
+            ytarDif = ym-ytp
+
+            # re-assign the images to the left of the image (NOTE this is for H563A which has
+            # been segmented and the samples are very commonly best aligned on the left side)
+            img_ref = fieldp.copy(); img_ref[-xrp:, -yrp:] = img_refp
+            img_tar = fieldp.copy(); img_tar[-xtp:, -ytp:, :] = img_tarp
+            
+        '''
+        # put the images to the bottom left
         # these are the origin shifts to adapt each image
-        xrefDif = 0
-        yrefDif = 0
-        xtarDif = 0
-        ytarDif = 0
+        xrefDif = xm-xr
+        yrefDif = ym-yr
+        xtarDif = xm-xt
+        ytarDif = ym-yt
 
         # re-assign the images to the left of the image (NOTE this is for H563A which has
         # been segmented and the samples are very commonly best aligned on the left side)
-        img_ref = field.copy(); img_ref[:xr, :yr] = img_refO
-        img_tar = field.copy(); img_tar[:xt, :yt, :] = img_tarO
+        img_ref = field.copy(); img_ref[-xr:, -yr:] = img_refO
+        img_tar = field.copy(); img_tar[-xt:, -yt:, :] = img_tarO
+        '''
 
         # normalise for all the colour channels
         # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
@@ -382,23 +431,23 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 10, no = 10, featN
             newref = matchRefDict[n]
             tar = matchTarDict[n]
 
-            cv2.circle(img_ref, tuple(newref), 20, (255, 0, 0), 8)
-            cv2.circle(img_tar, tuple(tar), 20, (255, 0, 0), 8)
+            cv2.circle(img_refO, tuple(newref), 20, (255, 0, 0), 8)
+            cv2.circle(img_tarO, tuple(tar), 20, (255, 0, 0), 8)
 
             # add the feature number onto the image
-            cv2.putText(img_ref, str(n), 
+            cv2.putText(img_refO, str(n), 
             tuple(newref + np.array([-50, 50])),
             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 15)
-            cv2.putText(img_ref, str(n), 
+            cv2.putText(img_refO, str(n), 
             tuple(newref + np.array([-50, 50])),
             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 5)
             
             text = str(n + ", d: " + str(int(md)) + ", s: " + str(np.round(ms, 2)))
 
-            cv2.putText(img_tar, text,
+            cv2.putText(img_tarO, text,
             tuple(tar + np.array([-200, 50])),
             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 15)
-            cv2.putText(img_tar, text, 
+            cv2.putText(img_tarO, text, 
             tuple(tar + np.array([-200, 50])),
             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 5)
 
@@ -410,16 +459,18 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 10, no = 10, featN
         # draw the grid lines on the ref image
         for r in range(0, y, p):
             # horizontal line
-            cv2.line(img_ref, (r, 0), (r, x), (255, 255, 255), 4, 1)
-            cv2.line(img_ref, (r, 0), (r, x), (0, 0, 0), 2, 1)
+            cv2.line(img_refO, (r, 0), (r, x), (255, 255, 255), 4, 1)
+            cv2.line(img_refO, (r, 0), (r, x), (0, 0, 0), 2, 1)
         
         for c in range(0, x, p):
             # vertical line
-            cv2.line(img_ref, (0, c), (y, c), (255, 255, 255), 4, 1)
-            cv2.line(img_ref, (0, c), (y, c), (0, 0, 0), 2, 1)
+            cv2.line(img_refO, (0, c), (y, c), (255, 255, 255), 4, 1)
+            cv2.line(img_refO, (0, c), (y, c), (0, 0, 0), 2, 1)
 
         # print a combined image showing the matches
-        cv2.imwrite(imgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_ref, img_tar]))
+        img_refF = field.copy(); img_refF[:xr, :yr] = img_refO
+        img_tarF = field.copy(); img_tarF[:xt, :yt] = img_tarO
+        cv2.imwrite(imgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_refF, img_tarF]))
     
         # ---------------- write the individual reference and target images ----------
 
@@ -448,7 +499,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 10, no = 10, featN
         # re-assign the target dictionary now as the ref dictioary
         matchRefDict = matchTarDict
 
-    # at the very end, print the target features found
+    # at the very end, print the targ4et features found
     dictToTxt(matchTarDict, dataDest + "/" + name_tar + ".feat", shape = str(img_tarO.shape))
 
     boundTar = {}
@@ -543,6 +594,7 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     # dataSource = '/Volumes/USB/IndividualImages/'
     dataSource = '/Volumes/USB/H653/'
+    dataSource = '/Volumes/USB/H1029a/'
     
 
     name = ''
