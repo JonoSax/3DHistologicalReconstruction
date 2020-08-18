@@ -375,15 +375,23 @@ def dataPrepare0(imgDir):
     return(arrayP)
 
 def nameFromPath(paths, n = 2):
-    # this function extracts the name from a path
+    # this function extracts the names from a path/s
     # Inputs:   (paths), either a list or string of paths 
     #           (n), number of 
     # Outputs:  (names), elist of the names from the paths
 
+    # if it is a string input, output a list
     pathStr = False
     if type(paths) is str:
         paths = [paths]
         pathStr = True
+
+    # if it is a dictionary input, convert to a list  
+    if type(paths) is dict:
+        pathsDict = paths
+        paths = []
+        for p in list(pathsDict.values()):
+            paths.append(p)
 
     names = list()
     for path in paths:
