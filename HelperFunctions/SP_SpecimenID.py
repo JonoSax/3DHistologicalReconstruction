@@ -52,12 +52,14 @@ def sectionSelecter(spec, datasrc):
     #               by tif2pdf)
 
     imgsrc = datasrc + "images/"
+    imgsrc = '/Volumes/USB/IndividualImages/temporaryH710B/'
+    datasrc = '/Volumes/USB/IndividualImages/temporaryH710B/'
 
     # create the directory where the masked files will be created
     imgMasked = datasrc + "masked/"
     dirMaker(imgMasked)
 
-    imgs = sorted(glob(imgsrc + spec + "*"))
+    imgs = sorted(glob(imgsrc + spec + "*.*"))
 
     masksStore = {}
     imgsStore = {}
@@ -69,6 +71,7 @@ def sectionSelecter(spec, datasrc):
 
     print("Processing " + spec)
 
+    imgShapes = []
     # NOTE this can probably be parallelised 
     for i in imgs:
         name = nameFromPath(i)
@@ -78,6 +81,7 @@ def sectionSelecter(spec, datasrc):
         imgO = cv2.imread(i)
         imgsStore[name] = imgO
         y, x, c = imgO.shape
+        imgShapes.append(imgO.shape)
 
         # downsample the image for masking
         # NOTE uses PIL object instead of cv2 so multiprocessing can work
@@ -87,7 +91,7 @@ def sectionSelecter(spec, datasrc):
         img = imgO  # NOTE it looks like the mask making is REALLY good at full res
         
         # create the mask for the individual image
-        mask = maskMaker(name, img, 15, False)
+        mask = maskMaker(name, img, 15, True)
         
         # plt.imshow(cv2.cvtColor(imgMasked, cv2.COLOR_BGR2RGB)); plt.show()
 
@@ -105,35 +109,43 @@ def sectionSelecter(spec, datasrc):
 
     print(spec + "   Masks created")
 
-    # Standardise the size of the mask
-    maskShapes = np.array(maskShapes)
-    yM, xM = np.max(maskShapes, axis = 0)
-    fieldO = np.zeros([yM, xM]).astype(np.uint8)
-    maskAll = fieldO.copy()
-    MasksStandard = {}
-    for m in masksStore:
-        field = fieldO.copy()
-        mask = masksStore[m]
-        y, x = mask.shape
-        ym0 = int((yM - y) / 2)
-        xm0 = int((xM - x) / 2)
+    # for specific specimens, a master mask (combining all the masks together)
+    # is useful to reduce outlier mask outlines
+    if name.find("H653") >=0 or name.find("1029a") >= 0:
+        # Standardise the size of the mask to create a mastermask
+        maskShapes = np.array(maskShapes)
+        yM, xM = np.max(maskShapes, axis = 0)
+        fieldO = np.zeros([yM, xM]).astype(np.uint8)
+        maskAll = fieldO.copy()
+        for m in masksStore:
+            field = fieldO.copy()
+            mask = masksStore[m]
+            y, x = mask.shape
+            ym0 = int((yM - y) / 2)
+            xm0 = int((xM - x) / 2)
 
-        # replace the mask with a centred and standardised sized version
-        field[ym0:(ym0 + y), xm0:(xm0 + x)] += mask
-        MasksStandard[m] = field
-        maskAll += field 
+            # replace the mask with a centred and standardised sized version
+            field[ym0:(ym0 + y), xm0:(xm0 + x)] += mask
+            masksStore[m] = field
+            maskAll += field 
 
-    # create a master mask which is made of only the masks which appear in at least
-    # 1/3 of all the other masks --> this is to reduce the appearance of random masks
-    masterMask = maskAll > len(masksStore) / 3
+        # create a master mask which is made of only the masks which appear in at least
+        # 1/3 of all the other masks --> this is to reduce the appearance of random masks
+        masterMask = maskAll > len(masksStore) / 3
+    else:
+        imgShapes = None        # if not doing a master mask don't need the shapes
+        masterMask = 1
 
     # apply the master mask to all the specimen masks 
     for m in masksStore:
-        MasksStandard[m] *= masterMask
+        masksStore[m] *= masterMask
 
+    # NOTE this should be optional.....
     # apply the mask to all the images and save
-    imgStandardiser(imgs, imgMasked, MasksStandard)
-    print(spec + "   Images modified")
+    for i in imgs:
+        name = nameFromPath(i)
+        imgStandardiser(i, imgMasked, masksStore[name], imgShapes)
+        print(name + " modified")
 
 def maskMaker(name, imgO, r, plotting = False, q = None):     
 
@@ -223,20 +235,25 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
     
     # create three points to use depending on what works for the flood fill. One 
     # in the centre and then two in the upper and lower quater along the vertical line
-    points = {}
-    for n in np.arange(0.25, 1, 0.25):
-        binPos = np.where(im_binary==1)
-        pointV = binPos[0][np.argsort(binPos[0])[int(len(binPos[0])*n)]]
-        vPos = np.where(binPos[0] == pointV)
-        pointH = binPos[1][vPos[0]][np.argsort(binPos[1][vPos[0]])[int(len(vPos[0])*0.5)]]
-        points[n] = tuple([int(pointH), int(pointV)])   # centre point
+    points = []
+    for x in np.arange(0.25, 1, 0.25):
+        for y in np.arange(0.25, 1, 0.25):
+            binPos = np.where(im_binary==1)
+            pointV = binPos[0][np.argsort(binPos[0])[int(len(binPos[0])*y)]]
+            vPos = np.where(binPos[0] == pointV)
+            pointH = binPos[1][vPos[0]][np.argsort(binPos[1][vPos[0]])[int(len(vPos[0])*x)]]
+            points.append(tuple([int(pointH), int(pointV)]))   # centre point
 
-    # if the flood fill didn't work (ie the image, assuemd to be dominant in the frame) 
-    # is not highlighted then try using a different point
-    for p in points:
-        im_id = (cv2.floodFill(im_binary.copy(), None, points[p], 255)[1]/255).astype(np.uint8)
-        if np.sum(im_id) > im_id.size * 0.1:
-            break
+    # flood fill all the points found and if it is significant (ie more than a 
+    # threshold % of the image is filled) keep if
+    im_id = im_binary * 0
+    for point in points:
+        im_search = (cv2.floodFill(im_binary.copy(), None, point, 255)[1]/255).astype(np.uint8)
+        if np.sum(im_search) > im_search.size * 0.05:
+            im_id += im_search
+
+    # ensure that im_id is only a mask of 0 and 1
+    im_id = ((im_id>0)*1).astype(np.uint8)
 
     # perform an errosion on a flipped version of the image
     # what happens is that all the erosion/dilation operations work from the top down
@@ -255,7 +272,8 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
 
         # turn the mask into an RGB image (so that the circle point is clearer)
         im_binary3d = (np.ones([im_binary.shape[0], im_binary.shape[1], 3]) * np.expand_dims(im_binary * 255, -1)).astype(np.uint8)
-        cv2.circle(im_binary3d, tuple(point), 100, (255, 0, 0), 20)
+        for point in points:
+            cv2.circle(im_binary3d, tuple(point), 100, (255, 0, 0), 20)
 
         ax2.imshow(im_binary3d)
         ax2.set_title("centreFind Mask")
@@ -266,8 +284,6 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
         ax4.imshow(imgMod) 
         ax4.set_title("masked image")
         plt.show()
-
-        plt.imshow(imgMod); plt.show()
     
     '''
     # convert mask into 3D array and rescale for the original image
@@ -280,7 +296,7 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
     else:
         q.put(im_id)
         
-def imgStandardiser(imgDirs, imgMasked, mask = None):
+def imgStandardiser(imgDir, imgMasked, maskS = None, imgShapes = None):
 
     # this gets all the images in a directory and applies a mask to isolate 
     # only the target tissue
@@ -293,51 +309,49 @@ def imgStandardiser(imgDirs, imgMasked, mask = None):
     #               If inputted then it should be a dictionary and mask is applied
     # Outputs:  (), saves image at destination with standard size and mask if inputted
 
-    # place all the images into a standard size to process
-    img = []
-    for i in imgDirs:
-        img.append(cv2.imread(i))
+    # get info to place all the images into a standard size to process (if there
+    # is a mask)
 
-    imgShape = []
-    for i in img:
-        imgShape.append(i.shape)
+    name = nameFromPath(imgDir)
+    img = cv2.imread(imgDir)
 
-    imgShape = np.array(imgShape)
 
-    yM, xM, zM = np.max(imgShape, axis = 0)
+    # if there is a mask, process
+    if imgShapes is not None:
 
-    fieldO = np.zeros([yM, xM, zM]).astype(np.uint8)
-
-    bound = {}
-
-    # apply the mask to all the images then save as its original size
-    for i, idir in zip(img, imgDirs):
-
-        name = nameFromPath(idir)
+        imgShapes = np.array(imgShapes)
+        yM, xM, zM = np.max(imgShapes, axis = 0)
+        fieldO = np.zeros([yM, xM, zM]).astype(np.uint8)
 
         field = fieldO.copy()
-
-        y, x, z = i.shape
+        y, x, z = img.shape
 
         ym0 = int((yM - y) / 2)
         xm0 = int((xM - x) / 2)
 
         # place the image in the centre of the field
-        field[ym0:(ym0 + y), xm0:(xm0 + x), :z] = i
+        field[ym0:(ym0 + y), xm0:(xm0 + x), :z] = img
+        img = field
 
         # process if there is a mask
-        if (type(mask) != None) & (np.sum(mask[name]) > 1):
-            # rescale the mask to the image size (using PIL for multiprocessing)
-            maskS = np.array(Image.fromarray(mask[name]).resize((int(xM), int(yM))))
-            
-            # expand the dims so that it can multiply the original image
-            maskS = np.expand_dims(maskS, -1)
-            field *= maskS
+        # repositin the mask to the new image (using PIL for multiprocessing)
+        # maskS = np.array(Image.fromarray(maskS).resize((int(xM), int(yM))))
+        field[ym0:(ym0 + y), xm0:(xm0 + x), :z] = maskS
+        maskS = field
 
+    # if there are masks, apply them
+    if maskS is not None:
+
+        # expand the dims so that it can multiply the original image
+        maskS = np.expand_dims(maskS, -1)
+        img *= maskS
+
+    if imgShapes is not None:
+        
         # extract the image from the centre of the field back into its original position
-        imageSection = field[ym0:(ym0 + y), xm0:(xm0 + x), :z]
+        img = img[ym0:(ym0 + y), xm0:(xm0 + x), :z]
 
-        cv2.imwrite(imgMasked + name + ".jpg", imageSection)
+    cv2.imwrite(imgMasked + name + ".jpg", img)
 
 
 if __name__ == "__main__":
