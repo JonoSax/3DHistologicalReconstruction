@@ -14,15 +14,11 @@ Processing includes:
 from HelperFunctions import *
 
 # dataHome is where all the directories created for information are stored 
-dataHome = '/Volumes/USB/H653/'
-
-# dataHome = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/HistologicalTraining2/'
-
-# research drive access from HPC
-# dataHome = '/eresearch/uterine/jres129/AllmaterialforBoydpaper/ResultsBoydpaper/ArcuatesandRadials/NDPIsegmentations/'
+dataHome = '/Volumes/USB/H1029a/'
+dataHome = '/Volumes/Storage/H653A_11.3new/'
 
 # research drive access via VPN
-# dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
+# dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/H1029A_8.4/'
 
 
 size = 3
@@ -46,14 +42,9 @@ print("\n----------- featFind -----------")
 # identifies corresponding features per samples 
 featFind(dataHome, name, size)
 
-print("\n----------- SegmentExtract -----------") # --> NOTE add size of all the shapes and make these functions adjust the size of the files for this image size
-# extract only the sample from the whole slide
-# if there are multiple specimens, seperate these into a, b, c... samples (including info)
-# sampleExtract(dataHome, name, size, True)
-
 print("\n----------- AignSegments -----------") # --> NOTE add size of all the shapes and make these functions adjust the size of the files for this image size
 # align all the specimens 
-align(dataHome, name, size, True)
+# align(dataHome, name, size, True)
 
 # NOTE to complete
 # Identify a feature to propogate through the entire tissue
@@ -61,7 +52,7 @@ align(dataHome, name, size, True)
 
 print("\n----------- FeatureExtraction -----------")
 # propogate an annotated feature through the aligned tissue and extract
-featSelectArea(dataHome, size, 'H653_01A', 3)
+# featSelectArea(dataHome, size, 'H653_01A', 3)
 
 # NOTE run the results of the feat extraction THROUGH the align function again to 
 # provide the fine scale alignment for the tissue segment
