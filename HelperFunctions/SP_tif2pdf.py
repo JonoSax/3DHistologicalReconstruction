@@ -64,17 +64,16 @@ def pdfCreator(specificSample, spec, path, scale, remove = True):
 
     # create an ordered list of the sample directories
     c = 0   # count for user to observe progress
-    allShape = {}
-    startTime = clock()
+    tifShape = {}
 
     # NOTE creating the jpeg files should be very parallelised and at the end
     # the order of the files shoudl be sorted out and the pdf created
     for n, name in zip(order, nameFromPath(specificSample)):
-        allShape[name] = miniSample(dataTemp, specificSample[n], scale, n)
+        tifShape[name] = miniSample(dataTemp, specificSample[n], scale, n)
 
     # create the all.shape information file
-    dictToTxt(allShape, path + "info/all.shape")
-    
+    dictToTxt(tifShape, path + "info/all.tifshape")
+
     # NOTE the order should be the same as the tif files because it is collected 
     # with glob in the same way and the sample name is preserved (?? verify...)
     # Just FYI on why this is so convoluted, it is because the file names can often
@@ -146,8 +145,6 @@ def miniSample(dataTemp, sample, scale, n):
 
     return(imgt.shape)
 
-
-
 def sampleCollector(dataHome, size):
 
     # this function collects all the sample tif images and organises them
@@ -200,11 +197,12 @@ if __name__ == "__main__":
     # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/ConvertedNDPI/'
     dataHome = '/Volumes/USB/Testing1/'
     dataHome = '/Volumes/USB/H653/'
+    dataHome = '/Volumes/Storage/H653A_11.3new/'
 
     size = 3
     name = ''
 
-    smallerTif(dataHome, name, size)
+    smallerTif(dataHome, name, size, 0.2)
     
     
     
