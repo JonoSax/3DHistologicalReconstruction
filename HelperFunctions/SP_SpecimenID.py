@@ -52,8 +52,8 @@ def sectionSelecter(spec, datasrc):
     #               by tif2pdf)
 
     imgsrc = datasrc + "images/"
-    imgsrc = '/Volumes/USB/IndividualImages/temporaryH710B/'
-    datasrc = '/Volumes/USB/IndividualImages/temporaryH710B/'
+    # imgsrc = '/Volumes/USB/IndividualImages/temporaryH710A/'
+    # datasrc = '/Volumes/USB/IndividualImages/temporaryH710A/'
 
     # create the directory where the masked files will be created
     imgMasked = datasrc + "masked/"
@@ -62,6 +62,7 @@ def sectionSelecter(spec, datasrc):
     imgs = sorted(glob(imgsrc + spec + "*.*"))
 
     masksStore = {}
+    splitStore = {}
     imgsStore = {}
     maskShapes = []
     q = {}
@@ -71,7 +72,6 @@ def sectionSelecter(spec, datasrc):
 
     print("Processing " + spec)
 
-    imgShapes = []
     # NOTE this can probably be parallelised 
     for i in imgs:
         name = nameFromPath(i)
@@ -80,8 +80,7 @@ def sectionSelecter(spec, datasrc):
         # read in the image and downsample
         imgO = cv2.imread(i)
         imgsStore[name] = imgO
-        y, x, c = imgO.shape
-        imgShapes.append(imgO.shape)
+        imgShapes = imgO.shape
 
         # downsample the image for masking
         # NOTE uses PIL object instead of cv2 so multiprocessing can work
@@ -91,13 +90,15 @@ def sectionSelecter(spec, datasrc):
         img = imgO  # NOTE it looks like the mask making is REALLY good at full res
         
         # create the mask for the individual image
-        mask = maskMaker(name, img, 15, True)
+        mask, split = maskMaker(name, img, 15, False)
         
         # plt.imshow(cv2.cvtColor(imgMasked, cv2.COLOR_BGR2RGB)); plt.show()
 
         # store mask info to standardise mask size
         masksStore[name] = mask
+        splitStore[name] = split
         maskShapes.append(mask.shape)
+
     '''
     for name in nameFromPath(imgs):
         mask = q[name].get()
@@ -109,43 +110,18 @@ def sectionSelecter(spec, datasrc):
 
     print(spec + "   Masks created")
 
-    # for specific specimens, a master mask (combining all the masks together)
-    # is useful to reduce outlier mask outlines
-    if name.find("H653") >=0 or name.find("1029a") >= 0:
-        # Standardise the size of the mask to create a mastermask
-        maskShapes = np.array(maskShapes)
-        yM, xM = np.max(maskShapes, axis = 0)
-        fieldO = np.zeros([yM, xM]).astype(np.uint8)
-        maskAll = fieldO.copy()
-        for m in masksStore:
-            field = fieldO.copy()
-            mask = masksStore[m]
-            y, x = mask.shape
-            ym0 = int((yM - y) / 2)
-            xm0 = int((xM - x) / 2)
-
-            # replace the mask with a centred and standardised sized version
-            field[ym0:(ym0 + y), xm0:(xm0 + x)] += mask
-            masksStore[m] = field
-            maskAll += field 
-
-        # create a master mask which is made of only the masks which appear in at least
-        # 1/3 of all the other masks --> this is to reduce the appearance of random masks
-        masterMask = maskAll > len(masksStore) / 3
-    else:
-        imgShapes = None        # if not doing a master mask don't need the shapes
-        masterMask = 1
-
-    # apply the master mask to all the specimen masks 
-    for m in masksStore:
-        masksStore[m] *= masterMask
+    masksStore, maskShapes = masterMaskMaker(name, maskShapes, masksStore)
 
     # NOTE this should be optional.....
     # apply the mask to all the images and save
+    jpgShapes = {}
     for i in imgs:
         name = nameFromPath(i)
-        imgStandardiser(i, imgMasked, masksStore[name], imgShapes)
+        jpgShapes = imgStandardiser(i, imgMasked, splitStore[name], jpgShapes, masksStore[name], maskShapes)
         print(name + " modified")
+
+    # store the jpg shapes
+    dictToTxt(jpgShapes, datasrc + "info/all.jpgshape")
 
 def maskMaker(name, imgO, r, plotting = False, q = None):     
 
@@ -182,6 +158,13 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
 
         img[:int(cols * 0.08), :] = 255
         img[-int(cols * 0.05):, :] = 255
+        a = 150
+
+    if name.find("H710B") >= 0:
+
+        # remove some of the bottom row
+        img[-int(cols*0.05):, :] = np.median(img)
+        a = np.mean(img)
 
     
     # ----------- low pass filter -----------
@@ -204,9 +187,7 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
 
     # accentuate the colour
     im_accentuate = img_lowPassFilter.copy()
-    a = np.mean(im_accentuate)
-    a = 127.5           # this sets the tanh to plateau at 0 and 255 (pixel intensity range)
-    a = 150
+    # a = 127.5           # this sets the tanh to plateau at 0 and 255 (pixel intensity range)
     b = a - np.median(im_accentuate) # sample specific adjustments, 
                                         # NOTE this method is just based on observation, no 
                                         # actual theory... seems to work. Key is that it is 
@@ -260,6 +241,33 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
     # so it causes an accumulation of "fat" at the bottom of the image. this removes it
     im_id = cv2.rotate(cv2.dilate(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 5), cv2.ROTATE_180)
     
+    # flatten the mask and use this to figure out how many samples there 
+    # are and where to split them
+    count = (np.sum(cv2.resize(im_id, (20, 5)), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
+    # plt.imshow(np.expand_dims(count, 0)); plt.show()
+
+    edgeup = False
+    edgedown = False
+    midp = []
+    midp.append(0)
+    for n in range(len(count)-1):
+        xo = int(count[n])
+        x1 = int(count[n+1])
+        if x1 - xo == 1:
+            if edgedown:
+                edgeup = True
+            mide = n
+        elif xo - x1 == 1:
+            edgedown = True
+            mids = n
+        # get the middle of the images
+        if edgeup and edgedown:
+            midp.append(int((mide + mids)/2 * cols / 20))
+            edgeup = False
+            edgedown = False
+    midp.append(cols)
+    midp = np.array(midp)
+
     # plot the key steps of processing
     if plotting:
         # create sub plotting capabilities
@@ -292,22 +300,63 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
     '''
 
     if q is None:
-        return(im_id)
+        return(im_id, midp)
     else:
-        q.put(im_id)
-        
-def imgStandardiser(imgDir, imgMasked, maskS = None, imgShapes = None):
+        q.put(im_id, midp)
+
+def masterMaskMaker(name, maskShapes, masksStore): 
+
+    # for specific specimens, a master mask (combining all the masks together)
+    # is useful to reduce outlier mask outlines
+    if name.find("H653") >=0 or name.find("1029a") >= 0:
+        # Standardise the size of the mask to create a mastermask
+        maskShapes = np.array(maskShapes)
+        yM, xM = np.max(maskShapes, axis = 0)
+        fieldO = np.zeros([yM, xM]).astype(np.uint8)
+        maskAll = fieldO.copy()
+        for m in masksStore:
+            field = fieldO.copy()
+            mask = masksStore[m]
+            y, x = mask.shape
+            ym0 = int((yM - y) / 2)
+            xm0 = int((xM - x) / 2)
+
+            # replace the mask with a centred and standardised sized version
+            field[ym0:(ym0 + y), xm0:(xm0 + x)] += mask
+            masksStore[m] = field
+            maskAll += field 
+
+        # create a master mask which is made of only the masks which appear in at least
+        # 1/3 of all the other masks --> this is to reduce the appearance of random masks
+        masterMask = maskAll > len(masksStore) / 3
+
+    else:
+        maskShapes = None        # if not doing a master mask don't need the shapes
+        masterMask = 1
+
+    # ------------------------------------------------------------------
+
+    # apply the master mask to all the specimen masks 
+    for m in masksStore:
+        masksStore[m] *= masterMask  
+
+    return(masksStore, maskShapes)
+
+def imgStandardiser(imgDir, imgMasked, split, jpgShapes, maskS = None, imgShapes = None):
 
     # this gets all the images in a directory and applies a mask to isolate 
     # only the target tissue
     # an area of the largest possible dimension of all the images
     # Inputs:   (dest), destination directory for all the info
     #           (imgsrc), directory containg the images
+    #           (split), the positions to split the images if there are multiple samples
+    #           (jpgShapes), dictionary to store all the jpg image shapes that are segemented out, it is recursive
     #           (src), source destination for all the info
     #           (mask), masks to apply to the image. 
     #               If NOT inputted then the image saved is just resized
     #               If inputted then it should be a dictionary and mask is applied
     # Outputs:  (), saves image at destination with standard size and mask if inputted
+    #           (jpgShapes), jpeg image shapes 
 
     # get info to place all the images into a standard size to process (if there
     # is a mask)
@@ -315,13 +364,12 @@ def imgStandardiser(imgDir, imgMasked, maskS = None, imgShapes = None):
     name = nameFromPath(imgDir)
     img = cv2.imread(imgDir)
 
-
-    # if there is a mask, process
+    # if there is a master mask, process
     if imgShapes is not None:
 
         imgShapes = np.array(imgShapes)
-        yM, xM, zM = np.max(imgShapes, axis = 0)
-        fieldO = np.zeros([yM, xM, zM]).astype(np.uint8)
+        yM, xM = np.max(imgShapes, axis = 0)
+        fieldO = np.zeros([yM, xM, 3]).astype(np.uint8)
 
         field = fieldO.copy()
         y, x, z = img.shape
@@ -336,10 +384,8 @@ def imgStandardiser(imgDir, imgMasked, maskS = None, imgShapes = None):
         # process if there is a mask
         # repositin the mask to the new image (using PIL for multiprocessing)
         # maskS = np.array(Image.fromarray(maskS).resize((int(xM), int(yM))))
-        field[ym0:(ym0 + y), xm0:(xm0 + x), :z] = maskS
-        maskS = field
 
-    # if there are masks, apply them
+    # if there are just normal masks, apply them
     if maskS is not None:
 
         # expand the dims so that it can multiply the original image
@@ -351,14 +397,22 @@ def imgStandardiser(imgDir, imgMasked, maskS = None, imgShapes = None):
         # extract the image from the centre of the field back into its original position
         img = img[ym0:(ym0 + y), xm0:(xm0 + x), :z]
 
-    cv2.imwrite(imgMasked + name + ".jpg", img)
+    # save the segmented images
+    for n in range(len(split) - 1): 
+        xo = split[n]
+        x1 = split[n+1]
+        imgSect = img[:, xo:x1, :]
+        cv2.imwrite(imgMasked + name + "_" + str(n) + ".jpg", imgSect)
+        jpgShapes[name + "_" + str(n)] = imgSect.shape
+
+    return(jpgShapes)
 
 
 if __name__ == "__main__":
 
     dataSource = '/Volumes/USB/Testing1/'
     # dataSource = '/Volumes/USB/IndividualImages/'
-    dataSource = '/Volumes/USB/H653/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
     name = ''
     size = 3
         
