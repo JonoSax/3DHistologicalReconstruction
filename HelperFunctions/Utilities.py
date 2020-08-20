@@ -244,31 +244,37 @@ def txtToDict(path, typeV = int):
 
     return(sampleDict)
 
-def denseMatrixViewer(coords, plot = True):
+def denseMatrixViewer(coords, plot = True, sets = 1):
 
     # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
     # which can be view with matplotlib
-    # Inputs:   (coords), the coordinates
+    # Inputs:   (coords), a list of co-ordinates
     #           (plot), boolean to control plotting
+    #           (sets), if there are more than 1 sets of information in the list, 
+    #           assume it is a vertical stack and colour them differently
     # Outputs:  (), produces a plot to view
     #           (area), the array 
 
-    Xmax = int(coords[:, 0].max())
-    Xmin = int(coords[:, 0].min())
-    Ymax = int(coords[:, 1].max())
-    Ymin = int(coords[:, 1].min())
+    # enusre numpy array is int
+    coordsMax = np.vstack(coords).astype(int)
 
-    coordsNorm = coords - [Xmin, Ymin]
+    # get max and min size to bound the box of the whole image
+    Xmax = int(coordsMax[:, 0].max())
+    Xmin = int(coordsMax[:, 0].min())
+    Ymax = int(coordsMax[:, 1].max())
+    Ymin = int(coordsMax[:, 1].min())
 
-    area = np.zeros([Xmax - Xmin + 1, Ymax - Ymin + 1])
+    area = np.zeros([Ymax - Ymin + 1, Xmax - Xmin + 1, 3]).astype(np.uint8)
 
-    X, Y = coords.shape
-    for x in range(X):
-        xp, yp = coordsNorm[x, :].astype(int)
-        area[xp, yp] = 1
+    cols = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+
+    for coord, col in zip(coords, cols):
+        coord = (coord - [Xmin, Ymin]).astype(int)
+        for xp, yp in coord:
+            cv2.circle(area, (xp, yp), 20, col, 4)
 
     if plot:
-        plt.imshow(area, cmap = 'gray')
+        plt.imshow(area)
         plt.show()
 
     shift = (Xmin, Ymin)
