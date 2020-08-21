@@ -20,7 +20,7 @@ if __name__.find("HelperFunctions") == -1:
 else:
     from HelperFunctions.Utilities import nameFromPath, dirMaker
 
-def featSelectArea(datahome, size, sample, feats = 1):
+def featSelectArea(datahome, size, feats = 1, sample = 0):
 
     # this function brings up a gui which allows user to manually selection a 
     # roi on the image. This extracts samples from the aligned tissues and saves them
@@ -32,10 +32,17 @@ def featSelectArea(datahome, size, sample, feats = 1):
 
     alignedSamples = datahome + str(size) + "/alignedSamples/"
 
-    img = glob(alignedSamples + sample + "*.tif")[0]
-
+    # get all the samples to be processed
     samples = glob(alignedSamples + "*.tif")
 
+    # get the image to be used as the reference
+    if type(sample) == int:
+        img = samples[0]
+    elif type(sample) == str:
+        img = glob(alignedSamples + sample + "*.tif")[0]
+    
+
+    
     if type(img) == str:
         img = tifi.imread(img)
 
@@ -68,7 +75,7 @@ def featSelectArea(datahome, size, sample, feats = 1):
 def sectionExtract(segSections, feats, s, x, y):
 
     img = tifi.imread(s)
-    name = nameFromPath(s)
+    name = nameFromPath(s, 3)
 
     for f in range(feats):
         print(name + " section " + str(f))
@@ -229,8 +236,10 @@ if __name__ == "__main__":
     # featSelectPoint(nameref, nametar, matchRef, matchTar)
 
     alignedimghome = '/Volumes/USB/H653/'
+    alignedimghome = '/Volumes/Storage/H653A_11.3new/'
+
     sample = 'H653_01A'
     size = 3
 
-    featSelectArea(alignedimghome, size, sample, 5)
+    featSelectArea(alignedimghome, size, 5)
 
