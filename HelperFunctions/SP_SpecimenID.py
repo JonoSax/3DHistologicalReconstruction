@@ -90,7 +90,7 @@ def sectionSelecter(spec, datasrc):
         img = imgO  # NOTE it looks like the mask making is REALLY good at full res
         
         # create the mask for the individual image
-        mask, split = maskMaker(name, img, 15, False)
+        mask, split = maskMaker(name, img, 30, imgMasked, True)
         
         # plt.imshow(cv2.cvtColor(imgMasked, cv2.COLOR_BGR2RGB)); plt.show()
 
@@ -123,11 +123,11 @@ def sectionSelecter(spec, datasrc):
     # store the jpg shapes
     dictToTxt(jpgShapes, datasrc + "info/all.jpgshape")
 
-def maskMaker(name, imgO, r, plotting = False, q = None):     
+def maskMaker(name, imgO, r, imgMasked = None, plotting = False, q = None):     
 
     # this function loads the desired image and processes it as follows:
     #   0 - GrayScale image
-    #   1 - TODO, hard coded specimen specific transforms
+    #   1 - Hard coded specimen specific transforms
     #   2 - Low pass filter (to remove noise)
     #   3 - Passes through a tanh filter to accentuate the darks and light, adaptative
     #   4 - Smoothing function
@@ -158,14 +158,14 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
 
         img[:int(cols * 0.08), :] = 255
         img[-int(cols * 0.05):, :] = 255
-        a = 150
+        b = 140
 
     if name.find("H710B") >= 0:
 
         # remove some of the bottom row
         img[-int(cols*0.05):, :] = np.median(img)
-        a = np.mean(img)
-
+    
+        b = np.mean(img)
     
     # ----------- low pass filter -----------
 
@@ -183,20 +183,25 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
     img_lowPassFilter = np.abs(img_backLow)
     img_lowPassFilter = (img_lowPassFilter / np.max(img_lowPassFilter) * 255).astype(np.uint8)
 
-    # ----------- tanh filter -----------
+    # ----------- background remove filter -----------
+
+    histinfo = np.histogram(img, 20)
+    hist = histinfo[0]
+    diffback = np.diff(hist)
+    background = histinfo[1][np.argmax(diffback)-1]
 
     # accentuate the colour
     im_accentuate = img_lowPassFilter.copy()
-    # a = 127.5           # this sets the tanh to plateau at 0 and 255 (pixel intensity range)
-    b = a - np.median(im_accentuate) # sample specific adjustments, 
-                                        # NOTE this method is just based on observation, no 
+    a = 127.5           # this sets the tanh to plateau at 0 and 255 (pixel intensity range)
+    b = a - background                                    # NOTE this method is just based on observation, no 
                                         # actual theory... seems to work. Key is that it is 
                                         # sample specific
-    im_accentuate = (a * np.tanh((im_accentuate - a + b) * 3 / a) + a).astype(np.uint8)
+    im_accentuate = (a * np.tanh((im_accentuate - a + b) * 3) + a).astype(np.uint8)
     im_accentuate = (im_accentuate - np.min(im_accentuate)) / (np.max(im_accentuate) - np.min(im_accentuate)) * 255
 
     # ----------- smoothing -----------
-
+    # plt.imshow(im_accentuate, cmap = 'gray'); plt.show()
+    # plt.scatter(histinfo[1][:-1], histinfo[0]); plt.show()
     # create kernel
     kernelb = np.ones([5, 5])
     kernelb /= np.sum(kernelb)
@@ -243,37 +248,32 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
     
     # flatten the mask and use this to figure out how many samples there 
     # are and where to split them
-    count = (np.sum(cv2.resize(im_id, (20, 5)), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
-    # plt.imshow(np.expand_dims(count, 0)); plt.show()
+    resize = cv2.erode(cv2.resize(im_id, (100, 100)), (3, 3), iterations=5)
+    count = (np.sum((resize), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
+    # plt.imshow(resize); plt.show()
 
-    edgeup = False
-    edgedown = False
+    # find where the edges are and get the mid points between samples
+    # (ignore the start and finish points)
+    down = np.where(np.diff(count) == -1)[0]
+    up = np.where(np.diff(count) == 1)[0]
+
+    # check there are values in up and down
+    # if there is an 'up' occuring before a 'down', remove it 
+    # (there has to be an image before a midpoint occurs)
+    if len(up) * len(down) > 0:
+        if up[0] < down[0]:
+            up = np.delete(up, 0)
+
     midp = []
     midp.append(0)
-    for n in range(len(count)-1):
-        xo = int(count[n])
-        x1 = int(count[n+1])
-        if x1 - xo == 1:
-            if edgedown:
-                edgeup = True
-            mide = n
-        elif xo - x1 == 1:
-            edgedown = True
-            mids = n
-        # get the middle of the images
-        if edgeup and edgedown:
-            midp.append(int((mide + mids)/2 * cols / 20))
-            edgeup = False
-            edgedown = False
+    for d, u in zip(down, up):
+        midp.append(int((d + u)/2 * cols / 100))
     midp.append(cols)
-    midp = np.array(midp)
 
     # plot the key steps of processing
     if plotting:
         # create sub plotting capabilities
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-
-        imgMod = imgO * np.expand_dims(im_id, -1)
 
         ax1.imshow(im_accentuate, cmap = 'gray')
         ax1.set_title('accentuated colour')
@@ -289,9 +289,15 @@ def maskMaker(name, imgO, r, plotting = False, q = None):
         ax3.imshow(im_id, cmap = 'gray')
         ax3.set_title("identified sample ")
 
+        imgMod = imgO * np.expand_dims(im_id, -1)
+        
+        for p in midp:
+            cv2.line(imgMod, (p, 0), (p, rows), (255, 0, 0), 20)
+
         ax4.imshow(imgMod) 
         ax4.set_title("masked image")
-        plt.show()
+        # plt.show()
+        plt.savefig(imgMasked + 'plot' + name + ".jpg")
     
     '''
     # convert mask into 3D array and rescale for the original image
@@ -402,6 +408,11 @@ def imgStandardiser(imgDir, imgMasked, split, jpgShapes, maskS = None, imgShapes
         xo = split[n]
         x1 = split[n+1]
         imgSect = img[:, xo:x1, :]
+
+        # if more than 90% of the image is black then it is not useful information
+        if np.where(imgSect == 0)[0].size > (imgSect.size) * 0.9:
+            continue
+
         cv2.imwrite(imgMasked + name + "_" + str(n) + ".jpg", imgSect)
         jpgShapes[name + "_" + str(n)] = imgSect.shape
 
@@ -413,6 +424,8 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     # dataSource = '/Volumes/USB/IndividualImages/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
     name = ''
     size = 3
         
