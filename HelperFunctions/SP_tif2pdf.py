@@ -65,12 +65,12 @@ def pdfCreator(specificSample, spec, path, scale, remove = True):
     # create an ordered list of the sample directories
     c = 0   # count for user to observe progress
     tifShape = {}
-
+    
     # NOTE creating the jpeg files should be very parallelised and at the end
     # the order of the files shoudl be sorted out and the pdf created
     for n, name in zip(order, nameFromPath(specificSample)):
         tifShape[name] = miniSample(dataTemp, specificSample[n], scale, n)
-
+    
     # create the all.shape information file
     dictToTxt(tifShape, path + "info/all.tifshape")
 
@@ -117,7 +117,10 @@ def miniSample(dataTemp, sample, scale, n):
     # imgt = tifi.imread(specificSample[n])
 
     spec = nameFromPath(sample) 
-    imgt = tifi.imread(sample)
+    try:
+        imgt = tifi.imread(sample)
+    except:
+        imgt = cv2.cvtColor(cv2.imread(sample), cv2.COLOR_BGR2RGB)
 
     print("Specimen: " + spec + " downsampled")
 
@@ -197,7 +200,8 @@ if __name__ == "__main__":
     # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/ConvertedNDPI/'
     dataHome = '/Volumes/USB/Testing1/'
     dataHome = '/Volumes/USB/H653/'
-    dataHome = '/Volumes/Storage/H653A_11.3new/'
+    dataHome = '/Volumes/USB/H653A_11.3/'
+    dataHome = '/Volumes/USB/H673A_7.6/'
 
     size = 3
     name = ''
