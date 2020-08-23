@@ -51,7 +51,7 @@ def align(data, name = '', size = 0, saving = True):
     specimenTifs = sorted(nameFromPath(glob(dataSegmented + "*.tif")))
 
     # get affine transformation information of the features for optimal fitting
-    shiftFeatures(specimenFeats, segInfo)
+    # shiftFeatures(specimenFeats, segInfo)
     
     # serial transformation
     for spec in specimenTifs:
@@ -135,7 +135,6 @@ def shiftFeatures(featNames, src):
         featsMod = featsO.copy()
         n = 0
         err1 = 100000
-        err2 = 0
         errorC = 100000
         errCnt = 0  
 
@@ -178,7 +177,7 @@ def shiftFeatures(featNames, src):
             featsO[fn][f] -= translateNet[fn]
 
         # perform a final rotation on the fully translated features to create a SINGLE rotational transformation
-        rotationAdjustment, featsFinalMod, errN, centre = rotatePoints(featsO, tol = 1e-8, plot = True)
+        rotationAdjustment, featsFinalMod, errN, centre = rotatePoints(featsO, tol = 1e-8, plot = False)
         rotateNet[fn] = [rotationAdjustment[fn], centre[fn][0], centre[fn][1]]  # pass the rotational degree and the centre of rotations
         feats[fn] = featsFinalMod[fn]                      # re-assign the new feature positions to fit for
 
@@ -240,13 +239,13 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
         rotateNet = segInfo + "all.rotated")
 
     # Load the entire image
-    fieldWhole = cv2.imread(src[spec]['segments'])
+    fieldWhole = cv2.imread(src[spec]['segments'][0])
 
     # load the whole specimen info
-    translateNet = txtToDict(src['all']['translateNet'])[0]
-    tifShapes = txtToDict(src['all']['tifShapes'])[0]
-    jpgShapes = txtToDict(src['all']['jpgShapes'])[0]
-    rotateNet = txtToDict(src['all']['rotateNet'], float)[0]
+    translateNet = txtToDict(src['all']['translateNet'][0])[0]
+    tifShapes = txtToDict(src['all']['tifShapes'][0])[0]
+    jpgShapes = txtToDict(src['all']['jpgShapes'][0])[0]
+    rotateNet = txtToDict(src['all']['rotateNet'][0], float)[0]
     specInfo = {}
 
     # initialise the end position of the tif image to be cropped
@@ -537,7 +536,7 @@ def objectivePolar(w, centre, *args):
     # factor in order to reduce the time taken to compute
     # NOTE the more it is scaled the more innacuracies are created, however appears 
     # that it is pretty accurate with a 10 scaling but is also acceptably fast
-    scale = 2
+    scale = 5
 
     tarA = dictToArray(tar)
     
@@ -650,11 +649,12 @@ if __name__ == "__main__":
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
 
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
     size = 3
 
-    align(dataSource, name, size, False)
+    align(dataSource, name, size, True)
