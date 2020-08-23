@@ -20,14 +20,33 @@ tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 def WSILoad(dataTrain, name, size):
 
     # this is the function called by main. Organises the inputs for findFeats
-    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpi")))
+    ndpis = sorted(glob(dataTrain + name + "*.*"))
 
+    # ensure all ndpi files have at least a two digit category number (prevents 
+    # false identification)
+    for ndpi in ndpis:
+        name = nameFromPath(ndpi).replace(" ", "")
+        home = regionOfPath(ndpi).replace(" ", "\ ")    # remove the spaces from final name
+        no = name.split("_")
+        prefix = "." + ndpi.split(".")[-1]
+
+        # if there are less than two digits in the name, add a 0
+        if len(no[-1]) == 1:
+            name = no[0] + "_00" + no[-1]
+        elif len(no[-1]) == 2:
+            name = no[0] + "_0" + no[-1]
+
+        if ndpi.replace(" ", "\ ") != home + name + prefix:
+            os.system("mv " + ndpi.replace(" ", "\ ") + " " + home + name + prefix)
+        else:
+            print(name + " well named")
+
+    specimens = sorted(glob(dataTrain + "*.*"))
     # load(dataTrain, '', size)
 
     # parallelise work
     jobs = {}
 
-    
     for spec in specimens:
         jobs[spec] = Process(target=load, args=(dataTrain, spec, size))
         jobs[spec].start()
@@ -36,12 +55,12 @@ def WSILoad(dataTrain, name, size):
         jobs[spec].join()
     
 
-def load(dataTrain, imageName = '', size = 0):
+def load(dataTrain, dirimg = '', size = 0):
 
     # This moves the quadrants into training/testing data based on the annotations provided
     # Input:    (dataTrain), directory/ies which contain the txt files of the annotation co-ordinates 
     #               as extracted by SegmentLoad.py
-    #           (imageName), list of the directories of the quandrated tif files as sectioned by quadrants
+    #           (dirimg), path of the tif files 
     #           (size), image size to extract, defaults to the largest one
     # Output:   (), the tif file at the chosen level of magnification
 
@@ -54,13 +73,10 @@ def load(dataTrain, imageName = '', size = 0):
     # create a folder for the tif files
     dataTif = dataTrain + str(size) + '/tifFiles/'
     dirMaker(dataTif)
-
-    imagesNDPI = sorted(glob(dataTrain + imageName + "*.ndpi"))
     
-    # convert the ndpi into a tif
-    for img in imagesNDPI:
-        ndpiLoad(size, img, dataTif)
-        print(nameFromPath(img) + " converted @ " + str(tifLevels[size]) + " res")
+
+    ndpiLoad(size, dirimg, dataTif)
+    print(nameFromPath(dirimg) + " converted @ " + str(tifLevels[size]) + " res")
 
 def ndpiLoad(sz, src, dest):
 
@@ -98,6 +114,7 @@ def ndpiLoad(sz, src, dest):
 if __name__ == "__main__":
 
     dataTrain = '/Volumes/USB/H653/'
+    dataTrain = '/Volumes/USB/IndividualImages/temporaryH653/'
     name = ''
     size = 3
 
