@@ -488,7 +488,7 @@ def dictOfDirs(**kwargs):
             if no[np.where(spec == nameFromPath(p))] > 1:
                 dictToWrite[nameFromPath(p)][k].append(p)
             else:
-                dictToWrite[nameFromPath(p)][k] = p
+                dictToWrite[nameFromPath(p)][k] = [p]
 
     return(dictToWrite)
 
