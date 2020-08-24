@@ -244,13 +244,12 @@ def txtToDict(path, typeV = int):
 
     return(sampleDict)
 
-def denseMatrixViewer(coords, plot = True, sets = 1):
+def denseMatrixViewer(coords, plot = True):
 
     # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
     # which can be view with matplotlib
     # Inputs:   (coords), a list of co-ordinates
     #           (plot), boolean to control plotting
-    #           (sets), if there are more than 1 sets of information in the list, 
     #           assume it is a vertical stack and colour them differently
     # Outputs:  (), produces a plot to view
     #           (area), the array 
@@ -267,11 +266,15 @@ def denseMatrixViewer(coords, plot = True, sets = 1):
     area = np.zeros([Ymax - Ymin + 1, Xmax - Xmin + 1, 3]).astype(np.uint8)
 
     cols = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+    sizes = [20, 16, 12, 8]
 
-    for coord, col in zip(coords, cols):
+    for coord, col, s in zip(coords, cols, sizes):
         coord = (coord - [Xmin, Ymin]).astype(int)
+        coord = list(coord)
+        if type(coord[0]) is np.int64:
+            coord = [coord]
         for xp, yp in coord:
-            cv2.circle(area, (xp, yp), 20, col, 4)
+            cv2.circle(area, (xp, yp), s, col, 4)
 
     if plot:
         plt.imshow(area)
@@ -459,9 +462,9 @@ def dictOfDirs(**kwargs):
     names = list()
     for k in kwargs:
         if type(kwargs[k]) == list:
-            names += nameFromPath(kwargs[k])
+            names += nameFromPath(kwargs[k], 3)
         else:
-            names += [nameFromPath(kwargs[k])]
+            names += [nameFromPath(kwargs[k]), 3]
 
     # get all the unique names
     names = np.unique(np.array(names))
@@ -474,7 +477,7 @@ def dictOfDirs(**kwargs):
         path = kwargs[k]
         if type(path) != list:  path = [path]
 
-        spec, no = np.unique(nameFromPath(path), return_counts = True)
+        spec, no = np.unique(nameFromPath(path, 3), return_counts = True)
 
         for s, n in zip(spec, no):
             if n > 1:
@@ -486,9 +489,9 @@ def dictOfDirs(**kwargs):
         # if there are multiple files under the label for that specimen, append ot a list
         for p in path:
             if no[np.where(spec == nameFromPath(p))] > 1:
-                dictToWrite[nameFromPath(p)][k].append(p)
+                dictToWrite[nameFromPath(p, 3)][k].append(p)
             else:
-                dictToWrite[nameFromPath(p)][k] = [p]
+                dictToWrite[nameFromPath(p, 3)][k] = [p]
 
     return(dictToWrite)
 
