@@ -9,11 +9,12 @@ from matplotlib import pyplot as plt
 import os 
 from glob import glob
 from PIL import Image
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Manager
+import tifffile as tifi
 if __name__ == "__main__":
-    from Utilities import nameFromPath, dirMaker, dictToTxt
+    from Utilities import nameFromPath, dirMaker, dictToTxt, txtToDict
 else:
-    from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt
+    from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt, txtToDict
 
 '''
 
@@ -51,7 +52,9 @@ def sectionSelecter(spec, datasrc):
     #           (datasrc), the location of the jpeg images (as extracted 
     #               by tif2pdf)
 
-    imgsrc = datasrc + "images/"
+    imgsmallsrc = datasrc + "images/"
+    imgbigsrc = datasrc + "tifFiles/"
+
     # imgsrc = '/Volumes/USB/IndividualImages/temporaryH710A/'
     # datasrc = '/Volumes/USB/IndividualImages/temporaryH710A/'
 
@@ -59,12 +62,13 @@ def sectionSelecter(spec, datasrc):
     imgMasked = datasrc + "masked/"
     dirMaker(imgMasked)
 
-    imgs = sorted(glob(imgsrc + spec + "*.*"))
+    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
+    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
+
 
     masksStore = {}
     splitStore = {}
-    imgsStore = {}
-    maskShapes = []
+    get = {}
     q = {}
     jobs = {}
 
@@ -72,58 +76,57 @@ def sectionSelecter(spec, datasrc):
 
     print("Processing " + spec)
 
-    # NOTE this can probably be parallelised 
-    for i in imgs:
-        name = nameFromPath(i)
-        q[name] = Queue()
+    # Create a mask from a LOWER RESOLUTION IMAGE --> uses less ram
+    
+    return_dict = Manager().dict()
+    for i in imgsmall:
+        name = nameFromPath(i, 3)
 
         # read in the image and downsample
-        imgO = cv2.imread(i)
-        imgsStore[name] = imgO
-        imgShapes = imgO.shape
+        img = cv2.imread(i)
 
         # downsample the image for masking
         # NOTE uses PIL object instead of cv2 so multiprocessing can work
         # img = np.array(Image.fromarray(imgO).resize((int(x*scale), int(y*scale))))
-        # img = cv2.resize(imgO, (int(x*scale), int(y*scale)))
-
-        img = imgO  # NOTE it looks like the mask making is REALLY good at full res
+        
+        # img = imgO  # NOTE it looks like the mask making is REALLY good at full res
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         # create the mask for the individual image
-        mask, split = maskMaker(name, img, 30, imgMasked, True)
-        
-        # plt.imshow(cv2.cvtColor(imgMasked, cv2.COLOR_BGR2RGB)); plt.show()
+        # split = maskMaker(name, img, 30, True, imgMasked, False)
 
-        # store mask info to standardise mask size
-        masksStore[name] = mask
-        splitStore[name] = split
-        maskShapes.append(mask.shape)
+        # parallelise
+        jobs[name] = Process(target = maskMaker, args = (name, img, 30, True, imgMasked, False, return_dict))
+        jobs[name].start()
 
-    '''
-    for name in nameFromPath(imgs):
-        mask = q[name].get()
-        print(name + " got")
+    for name in jobs:
         jobs[name].join()
-        masksStore[name] = mask
-        maskShapes.append(mask.shape)
-    '''
+        
+    for name in return_dict.keys():
+        splitStore[name] = return_dict[name]
 
     print(spec + "   Masks created")
 
-    masksStore, maskShapes = masterMaskMaker(name, maskShapes, masksStore)
+    dictToTxt(splitStore, imgMasked + "all.splitstore")
 
-    # NOTE this should be optional.....
-    # apply the mask to all the images and save
-    jpgShapes = {}
-    for i in imgs:
-        name = nameFromPath(i)
-        jpgShapes = imgStandardiser(i, imgMasked, splitStore[name], jpgShapes, masksStore[name], maskShapes)
+    masks = sorted(glob(imgMasked + "*.pbm"))
+
+    # APPLY THE MASK TO THE LOW AND HIGH RESOLUTION IMAGES
+    # Note this is serialised only because it will destroy my ram.... 
+    # loading tif files is a big no no
+    tifShape = {}
+    jpegShape = {}
+    for iB, iS, m in zip(imgbig, imgsmall, masks):
+        name = nameFromPath(iB)
+        tifShape, jpegShape = imgStandardiser(iB, iS, imgMasked, tifShape, jpegShape, m)
         print(name + " modified")
 
-    # store the jpg shapes
-    dictToTxt(jpgShapes, datasrc + "info/all.jpgshape")
+    # create the all.shape information file
+    dictToTxt(tifShape, datasrc + "info/all.tifshape")
+    dictToTxt(jpegShape, datasrc + "info/all.jpgshape")
+    print('Info Saved')
 
-def maskMaker(name, imgO, r, imgMasked = None, plotting = False, q = None):     
+def maskMaker(name, img, r, split = True, imgMasked = None, plotting = False, return_dict = None):     
 
     # this function loads the desired image and processes it as follows:
     #   0 - GrayScale image
@@ -138,12 +141,7 @@ def maskMaker(name, imgO, r, imgMasked = None, plotting = False, q = None):
     #           (plotting), boolean whether to show key processing outputs, defaults false
     # Outputs:  (im), mask of the image  
 
-    # ----------- grayscale -----------
-
     print(name + " masking")
-
-    # make image grayScale
-    img = cv2.cvtColor(imgO, cv2.COLOR_BGR2GRAY)
     rows, cols = img.shape
 
     # ----------- specimen specific modification -----------
@@ -246,29 +244,46 @@ def maskMaker(name, imgO, r, imgMasked = None, plotting = False, q = None):
     # so it causes an accumulation of "fat" at the bottom of the image. this removes it
     im_id = cv2.rotate(cv2.dilate(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 5), cv2.ROTATE_180)
     
-    # flatten the mask and use this to figure out how many samples there 
-    # are and where to split them
-    resize = cv2.erode(cv2.resize(im_id, (100, 100)), (3, 3), iterations=5)
-    count = (np.sum((resize), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
-    # plt.imshow(resize); plt.show()
+    extract = np.array([])
+    if split:
+        # flatten the mask and use this to figure out how many samples there 
+        # are and where to split them
+        resize = cv2.erode(cv2.resize(im_id, (100, 100)), (3, 3), iterations=5)
+        count = (np.sum((resize), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
+        # plt.imshow(resize); plt.show()
 
-    # find where the edges are and get the mid points between samples
-    # (ignore the start and finish points)
-    down = np.where(np.diff(count) == -1)[0]
-    up = np.where(np.diff(count) == 1)[0]
+        # find where the edges are and get the mid points between samples
+        # (ignore the start and finish points)
+        down = np.where(np.diff(count) == -1)[0]
+        up = np.where(np.diff(count) == 1)[0]
 
-    # check there are values in up and down
-    # if there is an 'up' occuring before a 'down', remove it 
-    # (there has to be an image before a midpoint occurs)
-    if len(up) * len(down) > 0:
-        if up[0] < down[0]:
-            up = np.delete(up, 0)
+        # check there are values in up and down
+        # if there is an 'up' occuring before a 'down', remove it 
+        # (there has to be an image before a midpoint occurs)
+        if len(up) * len(down) > 0:
+            if up[0] > down[0]:
+                up = np.insert(up, 0, 0)
+            if down[-1] < up[-1]:
+                down = np.insert(down, 0, 100) 
+        # if there is no start or stop just add the start and end
+        if len(up) == 0:
+            up = np.insert(up, 0, 0)
+        if len(down) == 0:
+            down = np.insert(down, 0, 100)
 
-    midp = []
-    midp.append(0)
-    for d, u in zip(down, up):
-        midp.append(int((d + u)/2 * cols / 100))
-    midp.append(cols)
+        # ensure the order of points
+        down = np.sort(down)
+        up = np.sort(up)
+        
+        # find the start and stop of each sample, perfectly extracting them
+        for d, u in zip(down, up):
+            samp = (np.array([u, d]) * cols / 100)
+            extract = np.hstack([extract, samp]).astype(int)
+        
+        extract = list(extract)
+
+    # save the mask as a .pbm file
+    cv2.imwrite(imgMasked + name + ".pbm", im_id)
 
     # plot the key steps of processing
     if plotting:
@@ -291,8 +306,8 @@ def maskMaker(name, imgO, r, imgMasked = None, plotting = False, q = None):
 
         imgMod = imgO * np.expand_dims(im_id, -1)
         
-        for p in midp:
-            cv2.line(imgMod, (p, 0), (p, rows), (255, 0, 0), 20)
+        for x0, x1 in extract:
+            cv2.line(imgMod, (x0, 0), (x1, rows), (255, 0, 0), 20)
 
         ax4.imshow(imgMod) 
         ax4.set_title("masked image")
@@ -305,10 +320,11 @@ def maskMaker(name, imgO, r, imgMasked = None, plotting = False, q = None):
     im = np.expand_dims(im, -1)
     '''
 
-    if q is None:
-        return(im_id, midp)
+    if return_dict is None:
+        return(extract)
     else:
-        q.put(im_id, midp)
+        return_dict[name] = extract
+        print("put " + name)
 
 def masterMaskMaker(name, maskShapes, masksStore): 
 
@@ -348,7 +364,7 @@ def masterMaskMaker(name, maskShapes, masksStore):
 
     return(masksStore, maskShapes)
 
-def imgStandardiser(imgDir, imgMasked, split, jpgShapes, maskS = None, imgShapes = None):
+def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, maskdir = None):
 
     # this gets all the images in a directory and applies a mask to isolate 
     # only the target tissue
@@ -367,65 +383,74 @@ def imgStandardiser(imgDir, imgMasked, split, jpgShapes, maskS = None, imgShapes
     # get info to place all the images into a standard size to process (if there
     # is a mask)
 
-    name = nameFromPath(imgDir)
-    img = cv2.imread(imgDir)
+    name = nameFromPath(imgsmallDir, 3)
+    imgsmall = cv2.imread(imgsmallDir)
+    imgbig = tifi.imread(imgbigDir)
 
-    # if there is a master mask, process
-    if imgShapes is not None:
+    split = txtToDict(imgMasked + "all.splitstore")[0][name]
 
-        imgShapes = np.array(imgShapes)
-        yM, xM = np.max(imgShapes, axis = 0)
-        fieldO = np.zeros([yM, xM, 3]).astype(np.uint8)
+    ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
 
-        field = fieldO.copy()
-        y, x, z = img.shape
 
-        ym0 = int((yM - y) / 2)
-        xm0 = int((xM - x) / 2)
+    # ----------- HARD CODED SPECIMEN SPEICIFIC MODIFICATIONS -----------
 
-        # place the image in the centre of the field
-        field[ym0:(ym0 + y), xm0:(xm0 + x), :z] = img
-        img = field
-
-        # process if there is a mask
-        # repositin the mask to the new image (using PIL for multiprocessing)
-        # maskS = np.array(Image.fromarray(maskS).resize((int(xM), int(yM))))
+    if (name.lower().find("a+b") == -1) & (name.lower().find("h710c") >= 0):
+        imgbig = cv2.rotate(imgbig, cv2.ROTATE_180)
 
     # if there are just normal masks, apply them
-    if maskS is not None:
+    if maskdir is not None:
+
+        mask = cv2.imread(maskdir)/255
 
         # expand the dims so that it can multiply the original image
-        maskS = np.expand_dims(maskS, -1)
-        img *= maskS
+        maskS = cv2.resize(mask, (imgsmall.shape[1], imgsmall.shape[0])).astype(np.uint8)
+        maskB = cv2.resize(mask, (imgbig.shape[1], imgbig.shape[0])).astype(np.uint8)
 
-    if imgShapes is not None:
-        
-        # extract the image from the centre of the field back into its original position
-        img = img[ym0:(ym0 + y), xm0:(xm0 + x), :z]
+        # apply the mask to the images 
+        imgsmall *= maskS
+        imgbig *= maskB
 
     # save the segmented images
-    for n in range(len(split) - 1): 
-        xo = split[n]
-        x1 = split[n+1]
-        imgSect = img[:, xo:x1, :]
+    if len(split) > 0:
+        for n in range(int(len(split)/2)):
+            # get the pairs of start and end points 
+            xo = split[int(2*n)]
+            x1 = split[int(2*n + 1)]
 
-        # if more than 90% of the image is black then it is not useful information
-        if np.where(imgSect == 0)[0].size > (imgSect.size) * 0.9:
-            continue
+            imgSectSmall = imgsmall[:, xo:x1, :]
+            newid = name + "_" + str(n)
 
-        cv2.imwrite(imgMasked + name + "_" + str(n) + ".jpg", imgSect)
-        jpgShapes[name + "_" + str(n)] = imgSect.shape
+            # if more than 90% of the image is black then it is not useful information
+            if np.where(imgSectSmall == 0)[0].size > (imgSectSmall.size) * 0.9:
+                continue
 
-    return(jpgShapes)
+            imgSectBig = imgbig[:, int(xo/ratio):int(x1/ratio), :]
+            
+            cv2.imwrite(imgMasked + newid + ".png", imgSectSmall)
+            tifi.imwrite(imgMasked + newid + ".tif", imgSectBig)
+
+            tifShape[newid] = imgSectBig.shape
+            jpegShape[newid] = imgSectSmall.shape
+
+    # if there are no segmentations, save as is
+    else:
+        cv2.imwrite(imgMasked + name + ".png", imgsmall)
+        tifi.imwrite(imgMasked + name + ".tif", imgbig)
+
+        tifShape[name] = imgsmall.shape
+        jpegShape[name] = imgbig.shape
+
+    return(tifShape, jpegShape)
 
 
 if __name__ == "__main__":
 
     dataSource = '/Volumes/USB/Testing1/'
     # dataSource = '/Volumes/USB/IndividualImages/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
     name = ''
     size = 3
         
