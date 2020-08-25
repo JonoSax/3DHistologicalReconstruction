@@ -15,11 +15,11 @@ from glob import glob
 import os
 from multiprocessing import Process
 if __name__ == "__main__":
-    from Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray
-    from SP_SampleFinder import featSelectPoint
+    from Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray, hist_match
+    from SP_SampleAnnotator import featSelectPoint
 else:
-    from HelperFunctions.Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray
-    from HelperFunctions.SP_SampleFinder import featSelectPoint
+    from HelperFunctions.Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray, hist_match
+    from HelperFunctions.SP_SampleAnnotator import featSelectPoint
 
 '''
 
@@ -86,7 +86,7 @@ def featFind(dataHome, name, size):
     imgdest = datasrc + "matched2/"
     '''
 
-    findFeats(imgsrc, dataDest, imgdest, dist = 250, sz = 4, gridNo = 10, featNo = 3)
+    findFeats(imgsrc, dataDest, imgdest, dist = 250, sz = 2, gridNo = 6, featNo = 2)
 
     '''
     # for parallelisation
@@ -101,56 +101,6 @@ def featFind(dataHome, name, size):
     for spec in specimens:
         jobs[spec].join()
     '''
-
-def hist_match(source, template):
-    """
-    Courtesy of https://stackoverflow.com/questions/31490167/how-can-i-transform-the-histograms-of-grayscale-images-to-enforce-a-particular-r/31493356#31493356
-    Adjust the pixel values of a grayscale image such that its histogram
-    matches that of a target image
-
-    Arguments:
-    -----------
-        source: np.ndarray
-            Image to transform; the histogram is computed over the flattened
-            array
-        template: np.ndarray
-            Template image; can have different dimensions to source
-    Returns:
-    -----------
-        matched: np.ndarray
-            The transformed output image
-    """
-
-    # NOTE this is done here rather than in SpecimenID because it only works well
-    # when the sample is very well identified
-
-    oldshape = source.shape
-    source = source.ravel()
-    template = template.ravel()
-
-    # get the set of unique pixel values and their corresponding indices and
-    # counts
-    s_values, bin_idx, s_counts = np.unique(source, return_inverse=True,
-                                            return_counts=True)
-    t_values, t_counts = np.unique(template, return_counts=True)
-
-    # remove the effect of black (it is working on a masked image)
-    s_counts[0] = 0
-    t_counts[0] = 0
-
-    # take the cumsum of the counts and normalize by the number of pixels to
-    # get the empirical cumulative distribution functions for the source and
-    # template images (maps pixel value --> quantile)
-    s_quantiles = np.cumsum(s_counts).astype(np.float64)
-    s_quantiles /= s_quantiles[-1]
-    t_quantiles = np.cumsum(t_counts).astype(np.float64)
-    t_quantiles /= t_quantiles[-1]
-
-    # interpolate linearly to find the pixel values in the template image
-    # that correspond most closely to the quantiles in the source image
-    interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
-
-    return interp_t_values[bin_idx].reshape(oldshape)
 
 def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, featNo = None):
 
@@ -172,7 +122,11 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
     #               .bound files which are the top/bottom/left/right positions with the image
     #               jpg images which show where the features were found bewteen slices
 
-    dirMaker(imgdest)
+    matchedimgdest = imgdest + 'featpairs/'
+    featuredimgdest = imgdest + 'featimg/'
+    dirMaker(matchedimgdest)
+    dirMaker(featuredimgdest)
+    
     dirMaker(dataDest)
 
     featNoM = featNo
@@ -242,7 +196,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
         
         x, y, c = img_ref.shape
         p = int(np.round(y/gridNo, -1))     # pixel grid size
-        sc = 0.2    # the extra 1D length size of the target section
+        sc = 0.    # the extra 1D length size of the target section
 
         matchDistance = []
         matchRef = []
@@ -282,7 +236,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
 
                 # if the proporption of information within the slide is black (ie background)
                 # is more than a threshold, don't process
-                if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.01): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
+                if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.1): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
                     continue
                 # plt.imshow(imgSect_ref); plt.show()
                 # get the key points and descriptors of each section
@@ -340,7 +294,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
                         # only confirm points which have a good match
                         bestMatches = np.argsort(np.array(m_info['distance']))
 
-                        for m in bestMatches[:2]:
+                        for m in bestMatches[:1]:
                             # NOTE this match value is chosen based on observations.... 
                             # lower scores mean the matches are better (which results in fewer
                             # matches found). 
@@ -386,7 +340,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
 
         img_refC = img_refO.copy()
         img_tarC = img_tarO.copy()
-        txtsz = 2
+        txtsz = 1
         # add in the features
         for i, n in enumerate(newFeats):
 
@@ -437,8 +391,8 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
         # print a combined image showing the matches
         img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
         img_tarF = field.copy(); img_tarF[:xt, :yt] = img_tarC
-        cv2.imwrite(imgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_refF, img_tarF]))
-    
+        cv2.imwrite(matchedimgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_refF, img_tarF]))
+
         # ---------------- write the individual reference and target images ----------
 
         img_refC = img_refO.copy()
@@ -465,7 +419,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
             tuple(ref + np.array([0, 50])),
             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 5)
 
-        cv2.imwrite(imgdest + "/" + name_ref + "_ref.jpg", img_refC)
+        cv2.imwrite(featuredimgdest + "/" + name_ref + "_ref.jpg", img_refC)
 
         # re-assign the target dictionary now as the ref dictioary
         matchRefDict = matchTarDict
@@ -498,7 +452,7 @@ def matchMaker(matchTar, matchDistance, n = 5):
 
     # there features should be found (best match, 2 centres) and if more features are to be
     # found then it is on top of this
-    extra = n - 3
+    extra = n - 2
 
     # create a list of the best match positions
     bestMatches = list()
@@ -522,7 +476,7 @@ def matchMaker(matchTar, matchDistance, n = 5):
 
         # if the match is the same as the previously added one, don't add it again but 
         # note that an extra match will need to be found
-        if len(np.where(bestMatches == p)[0]) == 0: bestMatches.append(p)
+        if len(np.where(bestMatches == p)[0]) == 0 and len(bestMatches) < n: bestMatches.append(p)
 
     middle = []
     for p in bestMatches:
@@ -650,8 +604,9 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/3/segSections/seg4/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/USB/H671B_18.5/'
 
     
 
