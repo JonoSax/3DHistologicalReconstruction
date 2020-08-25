@@ -54,7 +54,7 @@ def align(data, name = '', size = 0, saving = True):
     
     # serial transformation
     for spec in samples:
-        transformSamples(dataSegmented, segInfo, alignedSamples, spec, size, saving)
+        transformSamples(dataSegmented, segInfo, alignedSamples, spec, size, saving = False)
 
     # my attempt at parallelising this part of the process. Unfortunately it doesn't work 
     # because the cv2.warpAffine function is objectivePolar fails for AN UNKNOWN REASON
@@ -84,7 +84,7 @@ def shiftFeatures(featNames, src):
     
     for f in featNames:
 
-        feats[f] = txtToDict(src + f + ".feat")[0]
+        feats[f] = txtToDict(src + f + ".feat", float)[0]
 
 
     translate = {}
@@ -120,96 +120,42 @@ def shiftFeatures(featNames, src):
             
         print("Transforming " + fn + " features")
 
-        # -------- translation only --------
-        '''
-        translation, featsMod, err = translatePoints(featsMod)
-        feats[fn] = featsMod[fn]
-        translateNet[fn] = translation[fn]      # assigning rather than iterating over 
-        rotateNet[fn] = cv2.getRotationMatrix2D((1, 1), 0, 1)
-        '''
 
-        # -------- translation and rotation --------
-        translateNet[fn] = np.zeros(2).astype(int)
-
-        featsMod = featsO.copy()
+        # declare variables for error checking and iteration counting
         n = 0
-        err1 = np.inf
-        errorC = 100000
+        errN = 1e6
+        errorC = 1e6
         errCnt = 0  
+        errorStore = np.ones(3) * 1e6
+        translateNet[fn] = np.zeros(2).astype(float)
+        featsMod = featsO.copy()
 
-        process = False
-
-        errorStore = np.zeros(10)
-
+        # -------- CREATE THE MOST OPTIMISED POSSIBLE FIT OF FEATURES POSSIBLE --------
         # continue until error value converges for two iterations
-        while process:        
+        while True:        
             
             # use the previous error for the next calculation
-            err0 = err1
+            errO = errN
             errorCc = errorC
 
             # get the translation vector
             translation, featsT, err = translatePoints(featsMod, True)
-            print(translation)
-            # store the accumulative translation vectors 
+            
             translateNet[fn] += translation[fn]
+            
+            # print(translation[fn]) # --> the last optimal change in location is the WRONG shift
+            # store the accumulative translation vectors 
 
             # find the optimum rotational adjustment and produce modified feats
-            _, featsMod, err1, _ = rotatePoints(featsT, bestfeatalign=True, plot = True)
-            # change in errors between iterations, using two errors
-            errorC = err0 - err1
+            _, feattmp, errN, centre = rotatePoints(featsT, bestfeatalign=False, plot = False)
 
-            # iterator for printing purposes
-            n += 1
+            # print("     Fit " + str(n) + " Error = " + str(errN))
+
+            # change in errors between iterations, using two errors
+            errorC = errO - errN
 
             # store the last 10 changes in error
-            errorStore[n%len(errorStore)] = errorC
-            
-            # sometimes the calcultions get stuck, ossiclating between two errrors
-            # of the same magnitude but opposite sign
-            if errorC + errorCc == 0:
-                errCnt += 1     # count the number of times these ossiclations occur
-
-            # conditions to break the fitting proceduce
-            #   if the ossiclation of errors has occured more than 10 times
-            #   if the fitting procedure has attempted to converge more than 200 times
-            #   if for the last 10 iterations the error has net increased
-            if errCnt > 10 or n > 200 or np.sum(errorStore) < 0:
-                print("\n\n---- NOTE: FITTING PROCEDUCE DID NOT CONVERGE  ----\n\n")
-                break
-            else:
-                print("     Fit " + str(n) + ", ErrorC = " + str(errorC))
-                process = False
-        
-        translation, featsT, err = translatePoints(featsMod, True)
-        translateNet[fn] = translation[fn]
-
-        '''
-        # apply ONLY the translation transformations to the original features so that the adjustments are made 
-        # to the optimised feature positions
-        for f in featsO[fn]:
-            featsO[fn][f] -= translateNet[fn]
-        '''
-
-        # perform a final rotation on the fully translated features to create a SINGLE rotational transformation
-        errorC = 1
-        rotateSum = 0
-        errorN = np.inf
-        n = 0
-        errorStore = np.ones(3) * 1e6
-        while True:
-
-            # store the previous errors
-            errorO = errorN
-            errorCc = errorC
-
-            rotationAdjustment, feattmp, errorN, centre = rotatePoints(featsT, tol = 1e-8, bestfeatalign = False, plot = False)
-
-
-            print("     Fit " + str(n) + ", Error = " + str(errorN))
-
-            # store the last 3 changes in error
-            errorStore = np.insert(errorStore, 0, errorN)
+            errorStore = np.insert(errorStore, 0, errN)
             errorStore = np.delete(errorStore, -1)
             
             # sometimes the calcultions get stuck, ossiclating between two errrors
@@ -217,25 +163,63 @@ def shiftFeatures(featNames, src):
             if errorC + errorCc == 0:
                 errCnt += 1     # count the number of times these ossiclations occur
 
+            # conditions to finish the fitting proceduce
+            #   the error of fitting = 0
+            #   a turning point has been detected and error is increasing
+            if errN == 0:
+                print("     Fitting successful")
+                featsMod = feattmp      # this set of feats are the ones to use
+
+            elif np.sum(np.diff(errorStore)) <= 0:
+                print("     Fitting converged")
+                break
+
             # conditions to break the fitting proceduce
             #   if the ossiclation of errors has occured more than 10 times
             #   if the fitting procedure has attempted to converge more than 200 times
-            #   if for the last 10 iterations the error has net increased
-            if np.sum(np.diff(errorStore)**2) == 0:
-                rotateSum += rotationAdjustment[fn]
+            elif errCnt > 10 or n > 200:
+                print("\n\n!! ---- FITTING PROCEDUCE DID NOT CONVERGE  ---- !!\n\n")
                 break
 
-            elif errCnt > 10 or n > 200 or np.sum(np.diff(errorStore)) < 0:
-                print("\n\n---- NOTE: FITTING PROCEDUCE DID NOT CONVERGE  ----\n\n")
-                break
-            featsT = feattmp
+            featsMod = feattmp
+            n += 1 
+
+
+        # -------- PERFORM THE OPTIMISED FITTING AGAIN BUT IN ONLY A SINGLE TRANSLATION AND ROTATION --------
+        # replicate the whole fitting proceduce in a single go to be applied to the 
+        # images later on
+        featToMatch = {}
+        featToMatch[fn + "fitted"] = featsMod[fn]
+        featToMatch[fn] = featsO[fn]
+
+        # translation, featToMatch, err = translatePoints(featToMatch, True)
+
+        # apply ONLY the translation transformations to the original features so that the 
+        # adjustments are made to the optimised feature positions
+        for f in featToMatch[fn]:
+            featToMatch[fn][f] -= translateNet[fn] 
+
+        # perform a single rotational fitting procedure
+        # NOTE add recursive feat updater
+        rotated = 10
+        rotateSum = 0
+        n = 0
+
+        # view the final points before rotating VS the optimised points
+        # denseMatrixViewer([dictToArray(featToMatch[fn]), dictToArray(featsMod[fn]), centre[fn]], True)
+
+        # continue fitting until convergence with the already fitted results
+        while abs(rotated) > 1e-6:
+            rotationAdjustment, featToMatch, errN, centre = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre[fn])
+            rotated = rotationAdjustment[fn]
+            rotateSum += rotationAdjustment[fn]
+            # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
             n += 1
 
-
         rotateNet[fn] = [rotateSum, centre[fn][0], centre[fn][1]]  # pass the rotational degree and the centre of rotations
-        feats[fn] = featsT[fn]                      # re-assign the new feature positions to fit for
+        feats[fn] = featToMatch[fn]                      # re-assign the new feature positions to fit for
 
-        denseMatrixViewer([dictToArray(feats[refFeat]), dictToArray(feats[fn]), centre[fn]], True)
+        # denseMatrixViewer([dictToArray(feats[refFeat]), dictToArray(feats[fn]), centre[fn]], True)
         refFeat = fn        # re-assign the re-Feat if aligning between slices
 
     
@@ -271,7 +255,7 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
         # adjust the positions based on the fitting process
         for f in infoE:
             infoE[f] = (infoE[f] - translateNet) * shapeR
-        infoE = objectivePolar(w, centre, False, infoE) 
+        infoE = objectivePolar(-w, centre, False, infoE) 
 
         # adjust the positions based on the whole image adjustment
         
@@ -291,16 +275,16 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     rotateNetdir = segInfo + "all.rotated"
 
     # load the whole specimen info
-    translateNet = txtToDict(translateNetdir)[0]
-    tifShapes = txtToDict(tifShapesdir)[0]
-    jpgShapes = txtToDict(jpgShapesdir)[0]
+    translateNet = txtToDict(translateNetdir, float)[0]
+    tifShapes = txtToDict(tifShapesdir, int)[0]
+    jpgShapes = txtToDict(jpgShapesdir, int)[0]
     rotateNet = txtToDict(rotateNetdir, float)[0]
     specInfo = {}
 
     # initialise the end position of the tif image to be cropped
     posE = 0
 
-    featA = txtToDict(featdir)
+    featA = txtToDict(featdir, float)
     specInfo['feat'] = featA[0]
 
     sample = nameFromPath(segmentdir, 3)
@@ -322,7 +306,7 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     maxPos = (maxSx, maxSy)
 
     # get the anlge and centre of rotation used to align the samples
-    w = rotateNet[sample][0]
+    w = -rotateNet[sample][0]
     centre = rotateNet[sample][1:] * shapeR
 
     # make destinate directory
@@ -351,8 +335,8 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     yF, xF, cF = (my + maxSy - minSy, mx + maxSx - minSx, 3)       # NOTE this will always be slightly larger than necessary because to work it    
                                                                     # out precisely I would have to know what the max displacement + size of the img
                                                                     # is... this is over-estimating the size needed but is much simpler
-    xp = int(maxSx - translateNet[sample][0] * shapeR)
-    yp = int(maxSy - translateNet[sample][1] * shapeR)
+    xp = int(maxSx - np.floor(translateNet[sample][0]) * shapeR)
+    yp = int(maxSy - np.floor(translateNet[sample][1]) * shapeR)
 
     # Load the entire image
     field = cv2.imread(segmentdir)
@@ -423,7 +407,7 @@ def translatePoints(feats, bestfeatalign = False):
 
         # get the shift needed and store
         res = minimize(objectiveCartesian, (0, 0), args=(refP, tarP), method = 'Nelder-Mead', tol = 1e-6)
-        shift = np.round(res.x).astype(int)
+        shift = res.x
         err = objectiveCartesian(res.x, tarP, refP)
         shiftStore[i] = shift
 
@@ -436,7 +420,7 @@ def translatePoints(feats, bestfeatalign = False):
 
     return(shiftStore, featsMod, err)
 
-def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False):
+def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre = None):
 
     # get the rotations of each frame
     # Inputs:   (feats), dictionary of each feature
@@ -482,14 +466,15 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False):
 
         # if doing best align, use the first feature as the centre of rotation,
         # otherwise use the mean of all the features
-        if bestfeatalign:
-            centre = tarP[commonFeat[0]]
-        else:
-            centre = findCentre(tarP)
+        if centre is None:
+            if bestfeatalign:
+                centre = tarP[commonFeat[0]]
+            else:
+                centre = findCentre(tarP)
         
         # get the shift needed and store
         res = minimize(objectivePolar, -5.0, args=(centre, True, tarP, refP), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
-        refN = objectivePolar(res.x, centre, False, tar, refP)   # get the transformed features and re-assign as the ref
+        refN = objectivePolar(res.x, centre, False, tar, refP, plot)   # get the transformed features and re-assign as the ref
         rotationStore[i] = float(res.x)
 
         err = res.fun
@@ -558,8 +543,8 @@ def objectiveCartesian(pos, *args):
     ref = args[0]   # the first argument is ALWAYS the reference
     tar = args[1]   # the second argument is ALWAYS the target
 
-    tarA = dictToArray(tar, int)
-    refA = dictToArray(ref, int)
+    tarA = dictToArray(tar, float)
+    refA = dictToArray(ref, float)
 
     # error calcuation
     err = np.sum((refA + pos - tarA)**2)
@@ -568,8 +553,6 @@ def objectiveCartesian(pos, *args):
     return(err)      
 
 def objectivePolar(w, centre, *args):
-
-    # NOTE THIS WHOLE THING SHOULD BE DONE WITH TRIG, NOT FUCKING MATRICES
 
     # this function is the error function of rotations to minimise error 
     # between reference and target feature co-ordinates    
@@ -605,15 +588,15 @@ def objectivePolar(w, centre, *args):
     # that it is pretty accurate with a 10 scaling but is also acceptably fast
     scale = 1
 
-    tarA = dictToArray(tar)
+    tarA = dictToArray(tar, float)
     
     # if the centre is not specified, find it from the target points
     if np.sum(centre == None) == 1:
         centre = findCentre(tarA)       # this is the mean of all the features
 
     # find the centre of the target from the annotated points
-    tarA = (tarA/scale).astype(int)
-    centre = (centre/scale).astype(int)
+    tarA = (tarA/scale).astype(float)
+    centre = (centre/scale).astype(float)
 
     Xmax = int(tarA[:, 0].max())
     Xmin = int(tarA[:, 0].min())
@@ -630,11 +613,6 @@ def objectivePolar(w, centre, *args):
     m = 1
     plotting = False
 
-    # create the field to plot points and plot the centre used for rotation
-    if plotting:
-        totalField = np.zeros([y + int(2*m), x + int(2*m), 3])
-        cv2.circle(totalField, tuple(centre - [Xmin, Ymin]), 3, (0, 0, 255), 6)
-    
     # process per target feature
     tarNames = list(tar)
 
@@ -654,7 +632,7 @@ def objectivePolar(w, centre, *args):
         featPos = tarA[n, :] - centre
 
         # calculate the distance from the centre
-        hyp = ceil(np.sqrt(np.sum((featPos)**2)))
+        hyp = np.sqrt(np.sum((featPos)**2))
 
         # if there is no length (ie rotating on the point of interest)
         # just skip
@@ -668,13 +646,27 @@ def objectivePolar(w, centre, *args):
         if featPos[0] < 0:
             inv = True
 
-        
         # calculate the angle of the feature relative to the horizontal line
+        '''
+        xr = np.arange(0, 2*np.pi, 0.01)
+        anglestore = np.zeros(len(xr))
+        for n, x in enumerate(xr):
+            featPos = [np.sin(x), np.cos(x)]
+
+            unit_vector_1 = featPos / np.linalg.norm(featPos)
+            unit_vector_2 = horizontal / np.linalg.norm(horizontal)
+            dot_product = np.dot(unit_vector_1, unit_vector_2)
+            angle = np.arccos(dot_product)
+            anglestore[n] = angle
+            if n > 320:
+                pass
+            # print(angle / np.pi * 180)
+
+        '''
         unit_vector_1 = featPos / np.linalg.norm(featPos)
         unit_vector_2 = horizontal / np.linalg.norm(horizontal)
         dot_product = np.dot(unit_vector_1, unit_vector_2)
         angle = np.arccos(dot_product)
-        # print(angle)
 
         '''
         if featPos[1] != 0:
@@ -685,30 +677,29 @@ def objectivePolar(w, centre, *args):
         '''
 
         # add the angle of change (work in radians)
+        if inv:
+            angle = 2*np.pi - angle
+
+
         anglen = angle + w*np.pi/180
 
         # calculate the new position
         opp = hyp * np.sin(anglen)
         adj = hyp * np.cos(anglen)
 
-        if inv:
-            opp *= -1
 
-
-        newfeatPos = np.round([opp, adj] *scale).astype(int) + centre
+        newfeatPos = np.array([opp, adj] * scale).astype(float) + centre
 
         # if the features were inversed, un-inverse
 
         tarN[i] = newfeatPos
-        
-        # plot where the now rotated features are
-        if plotting: 
-            cv2.circle(totalField, tuple([featPos[0] + centre[0] + m - Xmin, featPos[1] + centre[1] + m - Ymin]), 3, (255, 0, 0), 6)
-            cv2.circle(totalField, tuple([newfeatPos[0]+m - Xmin, newfeatPos[1]+m - Ymin]), 3, (0, 255, 0), 6)
 
-            # print([featPos[0] + centre[0] + m - Xmin, featPos[1] + centre[1] + m - Ymin])
-       
-            plt.imshow(totalField); plt.show()   
+
+        # if plotting: denseMatrixViewer([tarA[n], tarN[i], centre])
+
+    
+    if plotting: denseMatrixViewer([tarA, dictToArray(tarN), centre])
+
     # print(dictToArray(tarN))
     # print(tarA)
 
@@ -717,8 +708,8 @@ def objectivePolar(w, centre, *args):
     # if not optimising, return the affine matrix used for the transform
     if minimising:
 
-        tarNa = dictToArray(tarN, int)
-        refa = dictToArray(ref, int)
+        tarNa = dictToArray(tarN, float)
+        refa = dictToArray(ref, float)
         err = np.sum((tarNa - refa)**2)
         # error calculation
         # print("     err = " + str(err))
@@ -727,16 +718,16 @@ def objectivePolar(w, centre, *args):
     else:
         return(tarN)
 
-def findCentre(pos):
+def findCentre(pos, typeV = float):
 
     # find the mean of an array of points which represent the x and y positions
     # Inputs:   (pos), array
     # Outputs:  (centre), the mean of the x and y points (rounded and as an int)
 
     if type(pos) == dict:
-        pos = dictToArray(pos)
+        pos = dictToArray(pos, float)
 
-    centre = np.array([np.round(np.mean(pos[:, 0])), np.round(np.mean(pos[:, 1]))]).astype(int)
+    centre = np.array([np.mean(pos[:, 0]), np.mean(pos[:, 1])]).astype(typeV)
 
     return(centre)
 
@@ -746,8 +737,8 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H710C_6.1/'
 
     # dataTrain = dataHome + 'FeatureID/'
