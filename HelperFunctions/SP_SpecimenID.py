@@ -60,10 +60,12 @@ def sectionSelecter(spec, datasrc):
 
     # create the directory where the masked files will be created
     imgMasked = datasrc + "masked/"
+    imgPlots = imgMasked + 'plot/'
     dirMaker(imgMasked)
+    dirMaker(imgPlots)
 
-    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
-    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
+    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))[90:]
+    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))[90:]
 
 
     masksStore = {}
@@ -77,26 +79,28 @@ def sectionSelecter(spec, datasrc):
     print("Processing " + spec)
 
     # Create a mask from a LOWER RESOLUTION IMAGE --> uses less ram
-    
-    return_dict = Manager().dict()
-    for i in imgsmall:
+    # serialised
+    for i in imgsmall[:0]:
         name = nameFromPath(i, 3)
-
-        # read in the image and downsample
         img = cv2.imread(i)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) 
 
-        # downsample the image for masking
-        # NOTE uses PIL object instead of cv2 so multiprocessing can work
-        # img = np.array(Image.fromarray(imgO).resize((int(x*scale), int(y*scale))))
-        
-        # img = imgO  # NOTE it looks like the mask making is REALLY good at full res
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
         # create the mask for the individual image
-        # split = maskMaker(name, img, 30, True, imgMasked, False)
+        split = maskMaker(name, img, 30, True, imgPlots, True)
+        splitStore[name] = split
+
+    # parallelised
+    return_dict = Manager().dict()
+    for i in imgsmall[:0]:
+        name = nameFromPath(i, 3)
+        img = cv2.imread(i)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) 
+
+        # create the mask for the individual image
+        split = maskMaker(name, img, 30, True, imgMasked, True)
 
         # parallelise
-        jobs[name] = Process(target = maskMaker, args = (name, img, 30, True, imgMasked, False, return_dict))
+        jobs[name] = Process(target = maskMaker, args = (name, img, 30, True, imgMasked, True, return_dict))
         jobs[name].start()
 
     for name in jobs:
@@ -107,7 +111,7 @@ def sectionSelecter(spec, datasrc):
 
     print(spec + "   Masks created")
 
-    dictToTxt(splitStore, imgMasked + "all.splitstore")
+    # dictToTxt(splitStore, imgMasked + "all.splitstore")
 
     masks = sorted(glob(imgMasked + "*.pbm"))
 
@@ -126,7 +130,7 @@ def sectionSelecter(spec, datasrc):
     dictToTxt(jpegShape, datasrc + "info/all.jpgshape")
     print('Info Saved')
 
-def maskMaker(name, img, r, split = True, imgMasked = None, plotting = False, return_dict = None):     
+def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, return_dict = None):     
 
     # this function loads the desired image and processes it as follows:
     #   0 - GrayScale image
@@ -142,7 +146,10 @@ def maskMaker(name, img, r, split = True, imgMasked = None, plotting = False, re
     # Outputs:  (im), mask of the image  
 
     print(name + " masking")
-    rows, cols = img.shape
+    rows, cols = imgO.shape
+
+    img = imgO.copy()
+
 
     # ----------- specimen specific modification -----------
     
@@ -244,43 +251,7 @@ def maskMaker(name, img, r, split = True, imgMasked = None, plotting = False, re
     # so it causes an accumulation of "fat" at the bottom of the image. this removes it
     im_id = cv2.rotate(cv2.dilate(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 5), cv2.ROTATE_180)
     
-    extract = np.array([])
-    if split:
-        # flatten the mask and use this to figure out how many samples there 
-        # are and where to split them
-        resize = cv2.erode(cv2.resize(im_id, (100, 100)), (3, 3), iterations=5)
-        count = (np.sum((resize), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
-        # plt.imshow(resize); plt.show()
-
-        # find where the edges are and get the mid points between samples
-        # (ignore the start and finish points)
-        down = np.where(np.diff(count) == -1)[0]
-        up = np.where(np.diff(count) == 1)[0]
-
-        # check there are values in up and down
-        # if there is an 'up' occuring before a 'down', remove it 
-        # (there has to be an image before a midpoint occurs)
-        if len(up) * len(down) > 0:
-            if up[0] > down[0]:
-                up = np.insert(up, 0, 0)
-            if down[-1] < up[-1]:
-                down = np.insert(down, 0, 100) 
-        # if there is no start or stop just add the start and end
-        if len(up) == 0:
-            up = np.insert(up, 0, 0)
-        if len(down) == 0:
-            down = np.insert(down, 0, 100)
-
-        # ensure the order of points
-        down = np.sort(down)
-        up = np.sort(up)
-        
-        # find the start and stop of each sample, perfectly extracting them
-        for d, u in zip(down, up):
-            samp = (np.array([u, d]) * cols / 100)
-            extract = np.hstack([extract, samp]).astype(int)
-        
-        extract = list(extract)
+    extract = bounder(im_id)
 
     # save the mask as a .pbm file
     cv2.imwrite(imgMasked + name + ".pbm", im_id)
@@ -304,12 +275,18 @@ def maskMaker(name, img, r, split = True, imgMasked = None, plotting = False, re
         ax3.imshow(im_id, cmap = 'gray')
         ax3.set_title("identified sample ")
 
-        imgMod = imgO * np.expand_dims(im_id, -1)
-        
-        for x0, x1 in extract:
-            cv2.line(imgMod, (x0, 0), (x1, rows), (255, 0, 0), 20)
+        # imgMod = imgO * np.expand_dims(im_id, -1)
+        imgMod = imgO * im_id
 
-        ax4.imshow(imgMod) 
+        # draw the bounding box of the image being extracted
+        for n in extract:
+            x, y = extract[n]
+            for i in range(2):
+                cv2.line(imgMod, (x[i], y[i]), (x[1], y[0]), (255, 0, 0), 10)
+                cv2.line(imgMod, (x[i], y[i]), (x[0], y[1]), (255, 0, 0), 10)
+
+
+        ax4.imshow(imgMod, cmap = 'gray') 
         ax4.set_title("masked image")
         # plt.show()
         plt.savefig(imgMasked + 'plot' + name + ".jpg")
@@ -325,6 +302,88 @@ def maskMaker(name, img, r, split = True, imgMasked = None, plotting = False, re
     else:
         return_dict[name] = extract
         print("put " + name)
+
+def bounder(im_id):
+    
+    # this function extracts the co-ordinates which are to be used to bound
+    # the mask and image
+    # Inputs:   (im_id), the binary image
+    # Outputs:  (extractA), co-ordinates of bounding positions corresponding to 
+    #           the binary image
+
+    def edgefinder(im, max = False):
+        
+        # this function find the occurence of the up and down edges
+        # indicating the start and end of an image
+        # Inputs:   (im): binary image 
+        #           (vertical): boolean, if it is vertical then it changes this 
+        #           from finding multple starts and stops to finding only the max
+        #           positions (used to find vertical points in a known continuous 
+        #           structure)
+        # Outputs:  (up, down): positions of the edges
+
+        # find where the edges are and get the mid points between samples
+        # (ignore the start and finish points)
+
+        # convert the image into a 1d array 
+        count = (np.sum((im), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
+
+        # get the edges
+        down = np.where(np.diff(count) == -1)[0]
+        up = np.where(np.diff(count) == 1)[0]
+
+        # check there are values in up and down
+        # if there is an 'up' occuring before a 'down', remove it 
+        # (there has to be an image before a midpoint occurs)
+        if len(up) * len(down) > 0:
+            if up[0] > down[0]:
+                up = np.insert(up, 0, 0)
+            if down[-1] < up[-1]:
+                down = np.insert(down, 0, 100) 
+        # if there is no start or stop just add the start and end
+        if len(up) == 0:
+            up = np.insert(up, 0, 0)
+        if len(down) == 0:
+            down = np.insert(down, 0, 100)
+
+        # ensure the order of points
+        down = np.sort(down)
+        up = np.sort(up)
+
+        if max:
+            down = np.max(down)
+            up = np.min(up)
+
+        return(up, down)
+    
+    rows, cols = im_id.shape
+    
+    # flatten the mask and use this to figure out how many samples there 
+    # are and where to split them
+    resize = cv2.erode(cv2.resize(im_id, (100, 100)), (3, 3), iterations=5)
+    # plt.imshow(resize); plt.show()
+
+    up, down = edgefinder(resize)
+
+    extractA = {}
+    extractS = {}
+    # find the horizontal start and stop positions of each sample
+    for n, (d, u) in enumerate(zip(down, up)):
+        extractA[n] = []
+        extractS[n] = []
+        sampH = np.clip(np.array([u-3, d+3]).astype(int), 0, 100)    # +- 3 to compensate for erosion (approx)
+        extractA[n].append((sampH * cols / 100).astype(int))
+        extractS[n].append(sampH)
+    
+    # find the vertical stop an start positions of each sample
+    for ext in extractS:
+        x0, x1 = extractS[ext][0]
+        imgsect = resize[:, x0:x1]
+        bottom, top = edgefinder(cv2.rotate(imgsect, cv2.ROTATE_90_COUNTERCLOCKWISE), True)
+        sampV = np.clip(np.array([bottom-3, top+3]).astype(int), 0, 100)   # +- 3 to compensate for erosion (approx)
+        extractA[ext].append((sampV * rows / 100).astype(int))
+
+    return(extractA)
 
 def masterMaskMaker(name, maskShapes, masksStore): 
 
@@ -387,29 +446,58 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
     imgsmall = cv2.imread(imgsmallDir)
     imgbig = tifi.imread(imgbigDir)
 
-    split = txtToDict(imgMasked + "all.splitstore")[0][name]
+    # split = txtToDict(imgMasked + "all.splitstore")[0][name]
 
     ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
 
 
     # ----------- HARD CODED SPECIMEN SPEICIFIC MODIFICATIONS -----------
 
-    if (name.lower().find("a+b") == -1) & (name.lower().find("h710c") >= 0):
-        imgbig = cv2.rotate(imgbig, cv2.ROTATE_180)
-
     # if there are just normal masks, apply them
     if maskdir is not None:
 
-        mask = cv2.imread(maskdir)/255
+        # read in the raw mask
+        mask = (cv2.imread(maskdir)/255).astype(np.uint8)
 
-        # expand the dims so that it can multiply the original image
-        maskS = cv2.resize(mask, (imgsmall.shape[1], imgsmall.shape[0])).astype(np.uint8)
-        maskB = cv2.resize(mask, (imgbig.shape[1], imgbig.shape[0])).astype(np.uint8)
+        # get the bounding positional information
+        extract = bounder(mask[:, :, 0])
 
-        # apply the mask to the images 
-        imgsmall *= maskS
-        imgbig *= maskB
+        for n in extract:
 
+            # create a a name
+            newid = name + "_" + str(n)
+
+            # get the co-ordinates
+            x, y = extract[n]
+
+            # extract only the mask containing the sample
+            maskE = mask[y[0]:y[1], x[0]:x[1], :]
+
+            # extract only the image which contains the sample
+            imgsmallsect = imgsmall[y[0]:y[1], x[0]:x[1], :]
+
+            # adjust for the original size image
+            xb, yb = (extract[n]/ratio).astype(int)
+            imgbigsect = imgbig[yb[0]:yb[1], xb[0]:xb[1], :]
+
+            # expand the dims so that it can multiply the original image
+            maskS = cv2.resize(maskE, (imgsmallsect.shape[1], imgsmallsect.shape[0])).astype(np.uint8)
+            maskB = cv2.resize(maskE, (imgbigsect.shape[1], imgbigsect.shape[0])).astype(np.uint8)
+
+            # apply the mask to the images 
+            imgsmallsect *= maskS
+            imgbigsect *= maskB
+
+            # write the new images
+            cv2.imwrite(imgMasked + newid + ".png", imgsmallsect)
+            tifi.imwrite(imgMasked + newid + ".tif", imgbigsect)
+            
+            # save the new image dimensions
+            tifShape[newid] = imgbigsect.shape
+            jpegShape[newid] = imgsmallsect.shape
+
+    
+    '''
     # save the segmented images
     if len(split) > 0:
         for n in range(int(len(split)/2)):
@@ -439,6 +527,7 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
 
         tifShape[name] = imgsmall.shape
         jpegShape[name] = imgbig.shape
+    '''
 
     return(tifShape, jpegShape)
 
@@ -450,7 +539,8 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H673A_7.6/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/USB/H671B_18.5/'
     name = ''
     size = 3
         
