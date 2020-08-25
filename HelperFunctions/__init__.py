@@ -7,5 +7,5 @@ from .SP_AlignSamples import align
 from .SP_tif2pdf import smallerTif
 from .SP_SpecimenID import specID
 from .SP_FeatureFinder import featFind
-from .SP_SampleFinder import featSelectArea
+from .SP_SampleAnnotator import featSelectArea, featChangePoint
 from .CI_WSIExtract import WSIExtract
