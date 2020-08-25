@@ -86,7 +86,7 @@ def featFind(dataHome, name, size):
     imgdest = datasrc + "matched2/"
     '''
 
-    findFeats(imgsrc, dataDest, imgdest, dist = 250, sz = 6, gridNo = 4, featNo = 2)
+    findFeats(imgsrc, dataDest, imgdest, dist = 250, sz = 4, gridNo = 10, featNo = 3)
 
     '''
     # for parallelisation
@@ -152,7 +152,7 @@ def hist_match(source, template):
 
     return interp_t_values[bin_idx].reshape(oldshape)
 
-def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, featNo = 5):
+def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, featNo = None):
 
     # This script finds features between two sequential samples (based on their
     # name) that correspond to biologically the same location. 
@@ -174,6 +174,8 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
 
     dirMaker(imgdest)
     dirMaker(dataDest)
+
+    featNoM = featNo
 
     # get the images
     imgs = sorted(glob(dataSource + "*.png"))
@@ -247,6 +249,14 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
         matchTar = []
         matchSize = []
 
+        kp_ref, des_ref = sift.detectAndCompute(img_ref,None)
+        kp_tar, des_tar = sift.detectAndCompute(img_tar,None)
+        bf = cv2.BFMatcher()
+        matches = bf.knnMatch(des_ref,des_tar, k=2)   
+        # cv2.drawMatchesKnn expects list of lists as matches.
+        img3 = cv2.drawMatchesKnn(img_ref,kp_ref,img_tar,kp_tar,matches, None, flags=2)
+
+
         # iterate through a pixel grid of p ** 2 x c size
         # NOTE the target section is (p + 2sc) ** 2 x c in size --> idea is that the
             # target secition will have some significant shift therefore should look in
@@ -272,7 +282,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
 
                 # if the proporption of information within the slide is black (ie background)
                 # is more than a threshold, don't process
-                if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.05): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
+                if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.01): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
                     continue
                 # plt.imshow(imgSect_ref); plt.show()
                 # get the key points and descriptors of each section
@@ -304,7 +314,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
                     for kpi, desi in zip(kp_tar, des_tar):
                         if kpi.size > sz:
                             # NOTE if the range of search for targets is larger then the adjust needs to match as well
-                            kp_keep_tar.append(np.array(kpi.pt) + np.array([int((r-sc)*p), int((c-sc)*p)])) 
+                            kp_keep_tar.append(np.array(kpi.pt) + np.array([(r-sc)*p, (c-sc)*p])) 
                             des_keep_tar.append(desi)
                             size_keep_tar.append(kpi.size)
 
@@ -330,7 +340,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
                         # only confirm points which have a good match
                         bestMatches = np.argsort(np.array(m_info['distance']))
 
-                        for m in bestMatches[:10]:
+                        for m in bestMatches[:2]:
                             # NOTE this match value is chosen based on observations.... 
                             # lower scores mean the matches are better (which results in fewer
                             # matches found). 
@@ -340,6 +350,9 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
                                 matchTar.append(m_info['tar'][m])
                                 matchSize.append(m_info['size'][m])
 
+
+        if featNoM is None:
+            featNo = len(matchTar)
 
         if len(matchTar) < featNo:
             matchRef, matchTar = featSelectPoint(img_ref, img_tar, matchRef, matchTar, featNo)
@@ -361,12 +374,12 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
         for kr, kt in zip(matchRef, matchTar):
             
             # get the features in the correct formate
-            featRef = tuple(kr.astype(int))
-            featTar = tuple(kt.astype(int))
+            featRef = tuple(kr)
+            featTar = tuple(kt)
 
             # add matched feature, adjust for the initial standardisation of the image
-            matchRefDict["feat_" + str(noFeat)] = kr.astype(int) - np.array([yrefDif, xrefDif])
-            matchTarDict["feat_" + str(noFeat)] = kt.astype(int) - np.array([ytarDif, xtarDif])
+            matchRefDict["feat_" + str(noFeat)] = kr - np.array([yrefDif, xrefDif])
+            matchTarDict["feat_" + str(noFeat)] = kt - np.array([ytarDif, xtarDif])
 
             newFeats.append("feat_" + str(noFeat))
             noFeat += 1     # continuously iterate through feature numbers
@@ -382,11 +395,11 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
             except: md = np.inf; ms = np.inf
 
             # mark the feature
-            newref = matchRefDict[n]
-            tar = matchTarDict[n]
+            newref = matchRefDict[n].astype(int)
+            tar = matchTarDict[n].astype(int)
 
-            cv2.circle(img_refC, tuple(newref), int(txtsz*10), (255, 0, 0), int(txtsz*6))
-            cv2.circle(img_tarC, tuple(tar), int(txtsz*10), (255, 0, 0), int(txtsz*6))
+            cv2.circle(img_refC, tuple(newref.astype(int)), int(txtsz*10), (255, 0, 0), int(txtsz*6))
+            cv2.circle(img_tarC, tuple(tar.astype(int)), int(txtsz*10), (255, 0, 0), int(txtsz*6))
 
             # add the feature number onto the image
             cv2.putText(img_refC, str(n), 
@@ -440,9 +453,10 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
         # add in the ALL features into a single image
 
         for p in matchRefDict:
-            cv2.circle(img_refC, tuple(matchRefDict[p]), 20, (255, 0, 0), 8)
 
-            ref = matchRefDict[p]
+            ref = matchRefDict[p].astype(int)
+
+            cv2.circle(img_refC, tuple(ref), 20, (255, 0, 0), 8)
 
             cv2.putText(img_refC, p,
             tuple(ref + np.array([0, 50])),
@@ -502,7 +516,7 @@ def matchMaker(matchTar, matchDistance, n = 5):
     else: 
         matchTarM = matchTarSort
 
-    for i in range(extra):
+    for i in range(2):
         # get the position of the median on either the x and y axis
         p = np.where(np.array(matchTarM)[:, i] == np.median(matchTarM, axis = 0)[i])[0][0]
 
@@ -534,11 +548,11 @@ def matchMaker(matchTar, matchDistance, n = 5):
     i = 0
     while len(bestMatches) < n:
         # get the point which is of interest
-        p = int(errSort[-(i + 1)])
+        p = errSort[-(i + 1)]
 
         # if point has not been used then add it to the bestmatches
         if len(np.where(np.array(bestMatches) == p)[0]) == 0:
-            bestMatches.append(int(errSort[-(i + 1)]))
+            bestMatches.append(errSort[-(i + 1)])
 
         i += 1
 
@@ -635,9 +649,9 @@ if __name__ == "__main__":
 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H673A_7.6/3/segSections/seg4/'
     dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
 
     
 
