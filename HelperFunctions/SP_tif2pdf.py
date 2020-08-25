@@ -37,7 +37,7 @@ def smallerTif(dataHome, name, size, scale = 0.3):
     for spec in allSpecimens:
         pdfCreator(allSpecimens[spec], spec, path, scale, False)
 
-def pdfCreator(specificSample, spec, path, scale, remove = True):
+def pdfCreator(specificSample, spec, path, scale, remove = False):
     # this function takes the directory names and creates a pdf of each sample 
     # Inputs:   (sampleCollections), dictionary containing all the dir names of the imgs
     #           (spec), specimen of interest
@@ -70,9 +70,6 @@ def pdfCreator(specificSample, spec, path, scale, remove = True):
     # the order of the files shoudl be sorted out and the pdf created
     for n, name in zip(order, nameFromPath(specificSample)):
         tifShape[name] = miniSample(dataTemp, specificSample[n], scale, n)
-    
-    # create the all.shape information file
-    dictToTxt(tifShape, path + "info/all.tifshape")
 
     # NOTE the order should be the same as the tif files because it is collected 
     # with glob in the same way and the sample name is preserved (?? verify...)
@@ -90,7 +87,8 @@ def pdfCreator(specificSample, spec, path, scale, remove = True):
 
     # combine all the sample images to create a single pdf 
     with open(dataPDF + spec + "NotScaled.pdf","wb") as f:
-        f.write(i2p.convert(dirStore))
+        pass
+        # f.write(i2p.convert(dirStore))
     print("PDF writing complete for " + spec + "!\n")
     # remove the temporary jpg files
     if remove:
@@ -124,15 +122,19 @@ def miniSample(dataTemp, sample, scale, n):
 
     print("Specimen: " + spec + " downsampled")
 
-    # scale = imgt.shape[1]/imgt.shape[0]
-    # img = cv2.resize(imgt, (int(1000*scale), 1000))
-    img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
-
     # NOTE right here could be a SINGLE function which takes the info and 
     # determines if there are any hard coded rules to apply
     # for sample H710C, all the c samples are rotated
-    if (n.lower().find("c") >= 0) & (spec.lower().find("h710c") >= 0):
-        img = cv2.rotate(img, cv2.ROTATE_180)
+    if (n.lower().find("c") >= 0) & (spec.lower().find("h710c") >= 0) or \
+        (n.lower().find("d") >= 0) & (spec.lower().find("h710b") >= 0) or \
+        (n.lower().find("c") >= 0) & (spec.lower().find("h671b") >= 0):
+        imgt = cv2.rotate(imgt, cv2.ROTATE_180)
+        tifi.imwrite(sample, imgt)
+
+
+    # scale = imgt.shape[1]/imgt.shape[0]
+    # img = cv2.resize(imgt, (int(1000*scale), 1000))
+    img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
 
     # add the sample name to the image (top left corner)
     cv2.putText(img, spec + "_" + str(n), 
@@ -198,15 +200,19 @@ if __name__ == "__main__":
     # or just as an observation?
 
     # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/ConvertedNDPI/'
-    dataHome = '/Volumes/USB/Testing1/'
-    dataHome = '/Volumes/USB/H653/'
-    dataHome = '/Volumes/USB/H653A_11.3/'
-    dataHome = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/Testing1/'
+    dataSource = '/Volumes/USB/H653/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/USB/H671B_18.5/'
+
 
     size = 3
     name = ''
+    scale = 0.2
 
-    smallerTif(dataHome, name, size, 0.2)
+    smallerTif(dataSource, name, size, scale)
     
     
     
