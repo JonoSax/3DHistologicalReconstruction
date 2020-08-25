@@ -15,7 +15,10 @@ from HelperFunctions import *
 
 # dataHome is where all the directories created for information are stored 
 dataHome = '/Volumes/USB/H1029a/'
-dataHome = '/Volumes/Storage/H653A_11.3new/'
+dataHome = '/Volumes/USB/H653A_11.3/'
+dataHome = '/Volumes/USB/H673A_7.6/'
+dataHome = '/Volumes/USB/H710C_6.1/'
+dataHome = '/Volumes/USB/H710B_6.1/'
 
 # research drive access via VPN
 # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/H1029A_8.4/'
@@ -28,11 +31,11 @@ portion = 0.2
 
 print("\n----------- WSILoad -----------")
 # extract the tif file of the specified size
-WSILoad(dataHome, name, size)
+# WSILoad(dataHome, name, size)
 
 print("\n----------- smallerTif -----------")
 # create jpeg images of all the tifs and a single collated pdf
-smallerTif(dataHome, name, size, 0.2)
+# smallerTif(dataHome, name, size, 0.2)
 
 print("\n----------- specID -----------")
 # identifies the sample within the slide from the jpegs created
@@ -44,15 +47,19 @@ featFind(dataHome, name, size)
 
 print("\n----------- AignSegments -----------") # --> NOTE add size of all the shapes and make these functions adjust the size of the files for this image size
 # align all the specimens 
-# align(dataHome, name, size, True)
+align(dataHome, name, size, True)
 
-# NOTE to complete
-# Identify a feature to propogate through the entire tissue
-# SP_SampleFinder()
+fd
+print("\n----------- FixPoint -----------")
+for imgref, imgtar in zip(imgrefs, imgtars):
+    pass
+
+# if there are any images which weren't annotated correct change their features manually
+featChangePoint(imgref, imgtar, matchRef, matchTar, ts = 4)
 
 print("\n----------- FeatureExtraction -----------")
 # propogate an annotated feature through the aligned tissue and extract
-# featSelectArea(dataHome, size, 'H653_01A', 3)
+# featSelectArea(dataHome, size, 3)
 
 # NOTE run the results of the feat extraction THROUGH the align function again to 
 # provide the fine scale alignment for the tissue segment
