@@ -263,13 +263,16 @@ def denseMatrixViewer(coords, plot = True):
     Ymax = int(coordsMax[:, 1].max())
     Ymin = int(coordsMax[:, 1].min())
 
-    area = np.zeros([Ymax - Ymin + 1, Xmax - Xmin + 1, 3]).astype(np.uint8)
+    # add padding to the view
+    pad = int(np.mean(np.array([Ymax - Ymin + 1, Xmax - Xmin + 1])) * 0.05)
+
+    area = np.zeros([Ymax - Ymin + 1 + 2*pad, Xmax - Xmin + 1 + 2*pad, 3]).astype(np.uint8)
 
     cols = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
     sizes = [20, 16, 12, 8]
 
     for coord, col, s in zip(coords, cols, sizes):
-        coord = (coord - [Xmin, Ymin]).astype(int)
+        coord = (coord - [Xmin, Ymin] + pad).astype(int)
         coord = list(coord)
         if type(coord[0]) is np.int64:
             coord = [coord]
