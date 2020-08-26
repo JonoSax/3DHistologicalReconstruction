@@ -54,7 +54,7 @@ def align(data, name = '', size = 0, saving = True):
     
     # serial transformation
     for spec in samples:
-        transformSamples(dataSegmented, segInfo, alignedSamples, spec, size, saving = False)
+        transformSamples(dataSegmented, segInfo, alignedSamples, spec, size, saving = True)
 
     # my attempt at parallelising this part of the process. Unfortunately it doesn't work 
     # because the cv2.warpAffine function is objectivePolar fails for AN UNKNOWN REASON
@@ -118,7 +118,7 @@ def shiftFeatures(featNames, src):
         featsO[refFeat] = feats[refFeat].copy()         # MUST USE the first input as reference
         featsO[fn] = feats[fn].copy()                  # MUST USE the second input as target
             
-        print("Transforming " + fn + " features")
+        print("Shifting " + fn + " features")
 
 
         # declare variables for error checking and iteration counting
@@ -167,18 +167,22 @@ def shiftFeatures(featNames, src):
             #   the error of fitting = 0
             #   a turning point has been detected and error is increasing
             if errN == 0:
-                print("     Fitting successful")
+                print("     Fitting successful, err = " + str(errN)) 
                 featsMod = feattmp      # this set of feats are the ones to use
 
             elif np.sum(np.diff(errorStore)) <= 0:
-                print("     Fitting converged")
-                break
+                print("     Fitting converged, err = " + str(errO))
+                if errO < 1e5:
+                    break
+                else:
+
 
             # conditions to break the fitting proceduce
             #   if the ossiclation of errors has occured more than 10 times
             #   if the fitting procedure has attempted to converge more than 200 times
             elif errCnt > 10 or n > 200:
                 print("\n\n!! ---- FITTING PROCEDUCE DID NOT CONVERGE  ---- !!\n\n")
+                denseMatrixViewer([dictToArray(feattmp[refFeat]), dictToArray(feattmp[fn]), centre[fn]], True)
                 break
 
             featsMod = feattmp
@@ -219,7 +223,7 @@ def shiftFeatures(featNames, src):
         rotateNet[fn] = [rotateSum, centre[fn][0], centre[fn][1]]  # pass the rotational degree and the centre of rotations
         feats[fn] = featToMatch[fn]                      # re-assign the new feature positions to fit for
 
-        # denseMatrixViewer([dictToArray(feats[refFeat]), dictToArray(feats[fn]), centre[fn]], True)
+        denseMatrixViewer([dictToArray(feats[refFeat]), dictToArray(feats[fn]), centre[fn]], True)
         refFeat = fn        # re-assign the re-Feat if aligning between slices
 
     
@@ -623,11 +627,6 @@ def objectivePolar(w, centre, *args):
     # rather than doing some kind of k-means clustering rubbish etc. 
     for n in range(len(tarNames)):
 
-        inv = False
-        horizontal = [0, 1]
-
-        i = tarNames[n]
-
         # find the feature relative to the centre
         featPos = tarA[n, :] - centre
 
@@ -640,59 +639,19 @@ def objectivePolar(w, centre, *args):
             tarN[i] = tarA[n, :]
             continue
 
-        # ensure that the angle calculations are consistent regardless of 
-        # location 
-        
-        if featPos[0] < 0:
-            inv = True
-
-        # calculate the angle of the feature relative to the horizontal line
-        '''
-        xr = np.arange(0, 2*np.pi, 0.01)
-        anglestore = np.zeros(len(xr))
-        for n, x in enumerate(xr):
-            featPos = [np.sin(x), np.cos(x)]
-
-            unit_vector_1 = featPos / np.linalg.norm(featPos)
-            unit_vector_2 = horizontal / np.linalg.norm(horizontal)
-            dot_product = np.dot(unit_vector_1, unit_vector_2)
-            angle = np.arccos(dot_product)
-            anglestore[n] = angle
-            if n > 320:
-                pass
-            # print(angle / np.pi * 180)
-
-        '''
-        unit_vector_1 = featPos / np.linalg.norm(featPos)
-        unit_vector_2 = horizontal / np.linalg.norm(horizontal)
-        dot_product = np.dot(unit_vector_1, unit_vector_2)
-        angle = np.arccos(dot_product)
-
-        '''
-        if featPos[1] != 0:
-            angle = np.arctan(featPos[0]/featPos[1])
-        else:
-            # if the feature is directly above, angle is 90º
-            angle = np.pi/2
-        '''
-
-        # add the angle of change (work in radians)
-        if inv:
-            angle = 2*np.pi - angle
-
-
+        # get the angle of the point relative to the horiztonal
+        angle = findangle(tarA[n, :], centre)
         anglen = angle + w*np.pi/180
 
         # calculate the new position
         opp = hyp * np.sin(anglen)
         adj = hyp * np.cos(anglen)
 
-
         newfeatPos = np.array([opp, adj] * scale).astype(float) + centre
 
         # if the features were inversed, un-inverse
 
-        tarN[i] = newfeatPos
+        tarN[tarNames[n]] = newfeatPos
 
 
         # if plotting: denseMatrixViewer([tarA[n], tarN[i], centre])
@@ -738,8 +697,8 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H653/'
     dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
