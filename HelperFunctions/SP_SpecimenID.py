@@ -60,12 +60,12 @@ def sectionSelecter(spec, datasrc):
 
     # create the directory where the masked files will be created
     imgMasked = datasrc + "masked/"
-    imgPlots = imgMasked + 'plot/'
+    imgPlots = imgMasked + "plot/"
     dirMaker(imgMasked)
     dirMaker(imgPlots)
 
-    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))[90:]
-    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))[90:]
+    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
+    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
 
 
     masksStore = {}
@@ -80,13 +80,13 @@ def sectionSelecter(spec, datasrc):
 
     # Create a mask from a LOWER RESOLUTION IMAGE --> uses less ram
     # serialised
-    for i in imgsmall[:0]:
+    for i in imgsmall:
         name = nameFromPath(i, 3)
         img = cv2.imread(i)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) 
 
         # create the mask for the individual image
-        split = maskMaker(name, img, 30, True, imgPlots, True)
+        split = maskMaker(name, img, 30, True, imgMasked, True)
         splitStore[name] = split
 
     # parallelised
@@ -149,7 +149,6 @@ def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, r
     rows, cols = imgO.shape
 
     img = imgO.copy()
-
 
     # ----------- specimen specific modification -----------
     
@@ -289,7 +288,7 @@ def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, r
         ax4.imshow(imgMod, cmap = 'gray') 
         ax4.set_title("masked image")
         # plt.show()
-        plt.savefig(imgMasked + 'plot' + name + ".jpg")
+        plt.savefig(imgMasked + 'plot/' + name + ".jpg")
     
     '''
     # convert mask into 3D array and rescale for the original image
@@ -535,12 +534,13 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
 if __name__ == "__main__":
 
     dataSource = '/Volumes/USB/Testing1/'
-    # dataSource = '/Volumes/USB/IndividualImages/'
+    dataSource = '/Volumes/USB/IndividualImages/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
+
     name = ''
     size = 3
         
