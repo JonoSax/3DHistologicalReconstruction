@@ -587,3 +587,55 @@ def hist_match(source, template):
     # return the image with normalised distribtution of pixel values and 
     # in the same data type as np.uin8
     return (interp_t_values[bin_idx].reshape(oldshape)).astype(np.uint8)
+
+
+def findangle(point1, point2, point3 = None):
+
+        # this function finds the angle between three points, where point2 is connected 
+        # to both point1 and point2
+        # Inputs:   (point1, 2), the positions of the points of interet
+        #           (point3), an optional point, if not input then defaults to the horizontal 
+        #           along the x-axis
+
+        # create copies to prevent modifications to dictionaries
+        p1 = point1.copy()
+        p2 = point2.copy()
+
+        def dotpro(vector1, vector2 = [0, 1]):
+
+            # find the dot product of vectors
+            # vector2 if not inputted defaults to the horizontal 
+
+            unit_vector_1 = vector1 / np.linalg.norm(vector1)
+            unit_vector_2 = vector2 / np.linalg.norm(vector2)
+            dot_product = np.dot(unit_vector_1, unit_vector_2)
+
+            return dot_product
+
+        # makes point2 the origin
+        p1 -= p2
+        if point3 is None:
+            p3 = [0, 1]
+        else:
+            p3 = point3.copy()
+            p3 -= p2
+
+        # find the angle relative to the horizontal for both points
+        dp1 = dotpro(p1)
+        angle1 = np.arccos(dp1)
+
+        dp3 = dotpro(p3)
+        angle3 = np.arccos(dp3)
+        
+        # adjust the angles 
+        if p1[0] < 0:
+            angle1 = 2*np.pi - angle1
+
+        # adjust the angles 
+        if p3[0] < 0:
+            angle3 = 2*np.pi - angle3
+        
+        angle = abs(angle1 - angle3)
+        
+
+        return(angle)
