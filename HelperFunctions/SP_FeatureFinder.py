@@ -15,10 +15,10 @@ from glob import glob
 import os
 from multiprocessing import Process
 if __name__ == "__main__":
-    from Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray, hist_match
+    from Utilities import *
     from SP_SampleAnnotator import featSelectPoint
 else:
-    from HelperFunctions.Utilities import listToTxt, dictToTxt, nameFromPath, dirMaker, dictToArray, hist_match
+    from HelperFunctions.Utilities import *
     from HelperFunctions.SP_SampleAnnotator import featSelectPoint
 
 '''
@@ -52,11 +52,7 @@ TO DO:
 
     - Apply the sift operators over the target image ONCE and then organise these 
     into the appropriate grids for searching --> NOTE this is only useful when it is 
-    on a reference image which I have tried and it doesn't work very well.
-
-    - Probably create a function before this which extracts the images out of their 
-    bounded areas first, then process (would also allow for iterative sample extraction)
-        - after doing 
+    on a reference image which I have tried and it doesn't work very well
 
     - EXTRA FOR EXPERTS: conver this into C++ for superior speed
 '''
@@ -224,6 +220,11 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
         # reason why the bounding method cannot be applied before this step to extract the 
         # images from the slide. This would make the likelihood of the central placement on
         # the sample more likely + reduce computation given the more precise area created
+        allMatches = []
+        allrefpt = []
+        alltarpt = []
+        alldistance = []
+        allsize = []
         for c in range(1, int(np.ceil(x/p)) - 1):
             for r in range(1, int(np.ceil(y/p)) - 1):
 
@@ -254,6 +255,17 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
                 if (des_ref is not None) and (des_tar is not None):
                     # identify strongly identifiable features in both the target and 
                     # reference tissues
+                    matches = bf.match(des_ref, des_tar)
+                    allMatches.append(bf.match(des_ref, des_tar))
+
+                    # get all the matches, adjust for the window used 
+                    for m in matches:
+                        allrefpt.append(kp_ref[m.queryIdx].pt + np.array([r*p, c*p]))
+                        alltarpt.append(kp_tar[m.trainIdx].pt + + np.array([(r-sc)*p, (c-sc)*p]))
+                        allsize.append(kp_tar[m.trainIdx].size)
+                        alldistance.append(m.distance)
+
+                    '''
                     for kpi, desi in zip(kp_ref, des_ref):
                         # set a minimum size for the feature match
                         if kpi.size > sz:
@@ -303,16 +315,18 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
                                 matchRef.append(m_info['ref'][m])
                                 matchTar.append(m_info['tar'][m])
                                 matchSize.append(m_info['size'][m])
-
+                    '''
 
         if featNoM is None:
             featNo = len(matchTar)
 
-        if len(matchTar) < featNo:
+        if len(matchTar) > featNo:
             matchRef, matchTar = featSelectPoint(img_ref, img_tar, matchRef, matchTar, featNo)
 
         # if there are more than 5 matches then pick the 5 most appropriate matches
         else:
+            matchRef, matchTar, matchSize, matchDistance = matchMakerN(allrefpt, alltarpt, allsize, alldistance)
+            '''
             bestMatches = matchMaker(matchTar, matchDistance, featNo)
             
             # select only the five best matches
@@ -320,6 +334,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
             matchTar = np.array(matchTar)[bestMatches]
             matchDistance = np.array(matchDistance)[bestMatches]
             matchSize = np.array(matchSize)[bestMatches]
+            '''
 
         # ---------- create a combined image of the target and reference image matches ---------
 
@@ -340,7 +355,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
 
         img_refC = img_refO.copy()
         img_tarC = img_tarO.copy()
-        txtsz = 1
+        txtsz = 2
         # add in the features
         for i, n in enumerate(newFeats):
 
@@ -438,6 +453,105 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
     # store the boundary of the image based on the mask
     dictToTxt(boundTar, dataDest + "/" + name_tar + ".bound", shape = str(img_tarO.shape))
 
+
+def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = 5):
+
+    # this takes lists of all the information from the sift feature identification 
+    # and bf matching and returns only n number of points which match the criteria
+
+    # create normalised distances and sizes with a score of 1 being the best and 0
+    # being the worst
+
+    matchRef = []
+    matchTar = []
+    matchSize = []
+    matchDistance = []
+
+    '''
+    # normalise the distances, weight the importance of smaller distances by squaring them
+    alldistancesq = np.square(alldistance)
+    normdist = 1 - (alldistancesq - np.min(alldistancesq)) / (np.max(alldistancesq) - np.min(alldistancesq))
+
+    # normalise the sizes
+    normsize = (allsize - np.min(allsize)) / (np.max(allsize) - np.min(allsize))
+
+    # both size and distance are predictors of a features relevance. Combine both 
+    # to get the strongest overall features
+    # NOTE there is room to weight the distance and size
+    normfields = normdist * normsize
+
+    # find the descending order of the normalised fields 
+    sort = np.argsort(-normfields)
+    '''
+    np.random.random(4)
+
+    sort = np.argsort(np.array(alldistance))
+
+    sortedrefpt = list(np.array(allrefpt)[sort])
+    sortedtarpt = list(np.array(alltarpt)[sort])
+    sortedsize = list(np.array(allsize)[sort])
+    sorteddistance = list(np.array(alldistance)[sort])
+
+    # get the best features
+    matchRef.append(sortedrefpt[0]); del sortedrefpt[0]
+    matchTar.append(sortedtarpt[0]); del sortedtarpt[0]
+    matchSize.append(sortedsize[0]); del sortedsize[0]
+    matchDistance.append(sorteddistance[0]); del sorteddistance[0]
+
+    # get the second best feature, ensuring that it is an acceptable distance away from 
+    # the best feature (sometimes two really good matches are found pretty much next
+    # to each other which isn't useful for fitting)
+    for r, t, s, d in zip(sortedrefpt, sortedtarpt, sortedsize, sorteddistance):
+
+        # if the difference between the next best feature is less than 100 
+        # pixels, don't use it
+        if abs(np.sum(matchRef - r)) < 100 and abs(np.sum(matchTar - t) < 100):
+            continue
+        
+        # if the 2nd best feature found meets the criteria append and move on
+        else:
+            matchRef.append(r); del sortedrefpt[0]
+            matchTar.append(t); del sortedtarpt[0]
+            matchSize.append(s); del sortedsize[0]
+            matchDistance.append(d); del sorteddistance[0]
+            break
+
+    # append the next n number of best fit features to the matches but 
+    # ONLY if their angle from the two reference features is within a tolerance 
+    # range --> this heavily assumes that the two best fits found are actually 
+    # good features...
+    for r, t, s, d in zip(sortedrefpt, sortedtarpt, sortedsize, sorteddistance):
+        # once the criteria of meeting the number of features is met, break
+        if len(matchTar) >= featNo:
+            break
+
+        # if the difference between the any of the already found feature is less than 100 
+        # pixels, don't use it
+        repeated = False
+        for mr, tr in zip(matchRef, matchTar):
+            if abs(np.sum(mr - r)) < 100 and abs(np.sum(tr - t) < 100):
+                repeated = True
+                break
+
+        if repeated:
+            continue
+
+        # get the relative angles of the new features compared to the best features 
+        # found
+        newrefang = findangle(matchRef[0], matchRef[1], r)
+        newtarang = findangle(matchTar[0], matchTar[1], t)
+
+        # if the new feature is less than 5 degress off from each other then append them
+        if abs(newrefang - newtarang)*180/np.pi < 5:
+
+            # add the features
+            matchRef.append(r)
+            matchTar.append(t)
+            matchSize.append(s)
+            matchDistance.append(d)
+
+    return(matchRef, matchTar, matchSize, matchDistance)
+
 def matchMaker(matchTar, matchDistance, n = 5):
 
     # this function takes all the matches which meet the criteria and chooses only the 
@@ -447,7 +561,7 @@ def matchMaker(matchTar, matchDistance, n = 5):
     #           (n), number of samples to be selected as the best samples to choose from, defulats as 5
     # Outputs:  (bestMatches), returns the positions of the best matches in all the lists
 
-    # create a copy so that I don't much up the original array
+    # create a copy so that I don't muck up the original array
     matchTarSort = matchTar.copy()
 
     # there features should be found (best match, 2 centres) and if more features are to be
@@ -604,9 +718,9 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/3/segSections/seg4/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
 
     
 
