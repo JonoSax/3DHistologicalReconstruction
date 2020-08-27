@@ -80,7 +80,7 @@ def sectionSelecter(spec, datasrc):
 
     # Create a mask from a LOWER RESOLUTION IMAGE --> uses less ram
     # serialised
-    for i in imgsmall:
+    for i in imgsmall[:0]:
         name = nameFromPath(i, 3)
         img = cv2.imread(i)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) 
@@ -288,7 +288,7 @@ def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, r
         ax4.imshow(imgMod, cmap = 'gray') 
         ax4.set_title("masked image")
         # plt.show()
-        plt.savefig(imgMasked + 'plot/' + name + ".jpg")
+        fig.savefig(imgMasked + 'plot/' + name + ".jpg")
     
     '''
     # convert mask into 3D array and rescale for the original image
@@ -326,6 +326,7 @@ def bounder(im_id):
 
         # convert the image into a 1d array 
         count = (np.sum((im), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
+        l = len(count)
 
         # get the edges
         down = np.where(np.diff(count) == -1)[0]
@@ -338,12 +339,12 @@ def bounder(im_id):
             if up[0] > down[0]:
                 up = np.insert(up, 0, 0)
             if down[-1] < up[-1]:
-                down = np.insert(down, 0, 100) 
+                down = np.insert(down, 0, l) 
         # if there is no start or stop just add the start and end
         if len(up) == 0:
             up = np.insert(up, 0, 0)
         if len(down) == 0:
-            down = np.insert(down, 0, 100)
+            down = np.insert(down, 0, l)
 
         # ensure the order of points
         down = np.sort(down)
@@ -361,17 +362,19 @@ def bounder(im_id):
     # are and where to split them
     resize = cv2.erode(cv2.resize(im_id, (100, 100)), (3, 3), iterations=5)
     # plt.imshow(resize); plt.show()
+    # resize = cv2.erode(im_id, (3, 3), iterations = 5)
+    x, y = resize.shape
 
-    up, down = edgefinder(resize)
+    start, end = edgefinder(resize)
 
     extractA = {}
     extractS = {}
     # find the horizontal start and stop positions of each sample
-    for n, (d, u) in enumerate(zip(down, up)):
+    for n, (s, e) in enumerate(zip(start, end)):
         extractA[n] = []
         extractS[n] = []
-        sampH = np.clip(np.array([u-3, d+3]).astype(int), 0, 100)    # +- 3 to compensate for erosion (approx)
-        extractA[n].append((sampH * cols / 100).astype(int))
+        sampH = np.clip(np.array([s, e+1]).astype(int), 0, y)    # +- 3 to compensate for erosion (approx)
+        extractA[n].append((sampH * cols / y).astype(int))
         extractS[n].append(sampH)
     
     # find the vertical stop an start positions of each sample
@@ -379,8 +382,8 @@ def bounder(im_id):
         x0, x1 = extractS[ext][0]
         imgsect = resize[:, x0:x1]
         bottom, top = edgefinder(cv2.rotate(imgsect, cv2.ROTATE_90_COUNTERCLOCKWISE), True)
-        sampV = np.clip(np.array([bottom-3, top+3]).astype(int), 0, 100)   # +- 3 to compensate for erosion (approx)
-        extractA[ext].append((sampV * rows / 100).astype(int))
+        sampV = np.clip(np.array([bottom-5, top+1]).astype(int), 0, x)   # +- 3 to compensate for erosion (approx)
+        extractA[ext].append((sampV * rows / x).astype(int))
 
     return(extractA)
 
@@ -443,7 +446,7 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
 
     name = nameFromPath(imgsmallDir, 3)
     imgsmall = cv2.imread(imgsmallDir)
-    imgbig = tifi.imread(imgbigDir)
+    imgbig = cv2.imread(imgbigDir)
 
     # split = txtToDict(imgMasked + "all.splitstore")[0][name]
 
@@ -472,6 +475,11 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
             # extract only the mask containing the sample
             maskE = mask[y[0]:y[1], x[0]:x[1], :]
 
+            # if the mask section is less than 10% of the entire mask area, it probably isn't 
+            # a sample and is not useful
+            if maskE.size < mask.size * 0.1:
+                continue
+
             # extract only the image which contains the sample
             imgsmallsect = imgsmall[y[0]:y[1], x[0]:x[1], :]
 
@@ -489,7 +497,7 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
 
             # write the new images
             cv2.imwrite(imgMasked + newid + ".png", imgsmallsect)
-            tifi.imwrite(imgMasked + newid + ".tif", imgbigsect)
+            cv2.imwrite(imgMasked + newid + ".tif", imgbigsect)
             
             # save the new image dimensions
             tifShape[newid] = imgbigsect.shape
@@ -537,9 +545,9 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/IndividualImages/'
     dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
-    dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
 
     name = ''
     size = 3
