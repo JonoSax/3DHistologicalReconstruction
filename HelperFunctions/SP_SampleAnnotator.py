@@ -30,7 +30,7 @@ else:
     from HelperFunctions.Utilities import nameFromPath, dirMaker, txtToDict, dictToTxt, hist_match
 
 
-def featChangePoint(ref, tar, ts = 4):
+def featChangePoint(dataSource, ref, tar, ts = 4):
 
     # this fuction brings up a gui which allows for a user to manually CHANGE
     # features on the images. This modifies the original .feat file
@@ -49,8 +49,8 @@ def featChangePoint(ref, tar, ts = 4):
     matchRefdir = infodirs + ref + ".feat"
     matchTardir = infodirs + tar + ".feat"
     
-    matchRefO = txtToDict(matchRefdir)[0]
-    matchTarO = txtToDict(matchTardir)[0]
+    matchRefO = txtToDict(matchRefdir, float)[0]
+    matchTarO = txtToDict(matchTardir, float)[0]
     matchRef = matchRefO.copy()
     matchTar = matchTarO.copy()
 
@@ -119,8 +119,8 @@ def featChangePoint(ref, tar, ts = 4):
                 yme = featID[0]
                 xme = featID[1]
             else:
-                yme = int(np.mean(y))
-                xme = int(np.mean(x))
+                yme = np.mean(y)
+                xme = np.mean(x)
 
             # append reference and target information to the original list
             if featC == 'ref':
@@ -177,10 +177,11 @@ def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
     y = {}
     for f in range(feats):
         x[f], y[f] = roiselector(img)
-        cv2.rectangle(img, (x[f][0], y[f][0]), (x[f][1], y[f][1]), (255, 255, 255), 40)
-        cv2.rectangle(img, (x[f][0], y[f][0]), (x[f][1], y[f][1]), (0, 0, 0), 20)
+        cv2.rectangle(img, (int(x[f][0]), int(y[f][0])), (int(x[f][1]), int(y[f][1])), (255, 255, 255), 40)
+        cv2.rectangle(img, (int(x[f][0]), int(y[f][0])), (int(x[f][1]), int(y[f][1])), (0, 0, 0), 20)
 
-    for s in samples[3:]:
+
+    for s in samples:
         sectionExtract(segSections, feats, s, x, y, imgref)
 
     # NOTE only parallelise on the HPC
@@ -271,9 +272,8 @@ def sectionExtract(segSections, feats, s, x, y, ref = None):
 
         print(name + " section " + str(f))
         segdir = segSections + "seg" + str(f) + "/"
-        section = img[y[f][0]:y[f][1], x[f][0]:x[f][1] :]
+        section = img[int(y[f][0]):int(y[f][1]), int(x[f][0]):int(x[f][1]), :]
         tifi.imwrite(segdir + name + ".tif", section)
-
 
 def roiselector(img):
 
@@ -285,7 +285,7 @@ def roiselector(img):
     xc, yc, c = img.shape
     r = xc/yc
     size = 700
-    scale = yc / (size / r)
+    scale = yc / int(size / r)
 
     # perform a search over a reduced size area
     roi = cv2.selectROI("image", cv2.resize(img, (int(size / r), size)))
@@ -295,8 +295,8 @@ def roiselector(img):
     x = np.array([roi[0], roi[0] + roi[2]])
 
     # scale the positions back to their original size
-    y = (np.round(y * scale)).astype(int)
-    x = (np.round(x * scale)).astype(int)
+    y = y * scale
+    x = x * scale
 
     return(x, y)
 
@@ -336,6 +336,9 @@ def annotateImg(imgs, info, ts):
     for m, match in enumerate(info):
 
         for pos, r in enumerate(match):
+
+            if type(match) is dict:
+                r = match[r]
 
             # enusre that the co-ordinate is in the right format and position 
             if type(r) is np.ndarray: r = tuple((r.astype(int)) + np.array([int(ym * m), 0]))
@@ -383,14 +386,16 @@ if __name__ == "__main__":
     '''
 
     dataSource = '/Volumes/USB/H653/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H710C_6.1/'
+
 
 
     size = 3
 
-    featSelectArea(dataSource, size, 5, 0, True)
+    featSelectArea(dataSource, size, 5, 0, False)
 
     '''
     'H710C_289A+B_0',
