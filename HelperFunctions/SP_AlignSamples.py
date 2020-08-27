@@ -6,8 +6,10 @@ the error between slices
 '''
 if __name__ == "__main__":
     from Utilities import *
+    from SP_SampleAnnotator import featChangePoint
 else:
     from HelperFunctions.Utilities import *
+    from HelperFunctions.SP_SampleAnnotator import featChangePoint
 import numpy as np
 import tifffile as tifi
 import cv2
@@ -42,9 +44,10 @@ def align(data, name = '', size = 0, saving = True):
     #           their identified featues
 
     # get the file of the features information 
-    dataSegmented = data + str(size) + '/masked/'     
-    alignedSamples = data + str(size) + '/alignedSamples/'
-    segInfo = data + str(size) + '/info/'
+    src = data + str(size)
+    dataSegmented = src + '/masked/'     
+    alignedSamples = src + '/alignedSamples/'
+    segInfo = src+ '/info/'
 
     # get the sample slices of the specimen to be processed
     samples = sorted(nameFromPath(glob(dataSegmented + "*.tif"), 3))
@@ -80,16 +83,14 @@ def shiftFeatures(featNames, src):
     # Outputs:  (translateNet), the translation information to be applied per image
     #           (rotateNet), the rotation information to be applied per image
 
+    # load the identified features
+    # NOTE it is loaded twice because the dictionary memories are way to linked and 
+    # they keep getting altered somewhere?!?!
+    featsMaster = {}
     feats = {}
-    
     for f in featNames:
-
+        featsMaster[f] = txtToDict(src + f + ".feat", float)[0]
         feats[f] = txtToDict(src + f + ".feat", float)[0]
-
-
-    translate = {}
-    rotate = {}
-
     # store the affine transformations
     translateNet = {}
     rotateNet = {}
@@ -100,8 +101,9 @@ def shiftFeatures(featNames, src):
 
     refFeat = featNames[int(len(featNames)/2)]  # using middle sample for aligning
     refFeat = featNames[0]      # initialise the refFeat as the first sample is sequentially aligning samples
-
     featNames.remove(refFeat)       # remove whatever feature you are using for aligning
+    featToMatch = {}
+    featToMatch[refFeat] = feats[refFeat].copy()        # initialise the first feature
 
     # perform transformations on neighbouring slices and build them up as you go
     for fn in featNames:
@@ -115,7 +117,7 @@ def shiftFeatures(featNames, src):
 
         # align all the images with respect to a single reference frame
         featsO = {}     
-        featsO[refFeat] = feats[refFeat].copy()         # MUST USE the first input as reference
+        featsO[refFeat] = featToMatch[refFeat].copy()         # MUST USE the first input as reference
         featsO[fn] = feats[fn].copy()                  # MUST USE the second input as target
             
         print("Shifting " + fn + " features")
@@ -127,11 +129,12 @@ def shiftFeatures(featNames, src):
         errorC = 1e6
         errCnt = 0  
         errorStore = np.ones(3) * 1e6
-        translateNet[fn] = np.zeros(2).astype(float)
+        translateSum = np.zeros(2).astype(float)
         featsMod = featsO.copy()
+        refit = False
 
         # -------- CREATE THE MOST OPTIMISED POSSIBLE FIT OF FEATURES POSSIBLE --------
-        # continue until error value converges for two iterations
+        
         while True:        
             
             # use the previous error for the next calculation
@@ -141,7 +144,8 @@ def shiftFeatures(featNames, src):
             # get the translation vector
             translation, featsT, err = translatePoints(featsMod, True)
             
-            translateNet[fn] += translation[fn]
+            # keep track of a temporary translation
+            translateSum += translation[fn]
             
             # print(translation[fn]) # --> the last optimal change in location is the WRONG shift
             # store the accumulative translation vectors 
@@ -170,38 +174,82 @@ def shiftFeatures(featNames, src):
                 print("     Fitting successful, err = " + str(errN)) 
                 featsMod = feattmp      # this set of feats are the ones to use
 
+            # positions have converged on the optimum and the error is acceptable
             elif np.sum(np.diff(errorStore)) <= 0:
-                print("     Fitting converged, err = " + str(errO))
-                if errO < 1e5:
+                if errO < 0.9e2:
+                    print("     Fitting converged, err = " + str(errO))
                     break
+
+                # positions have converged on the optimum but the error is unacceptable
+                # so perform a refitting of the features
                 else:
-
-
-            # conditions to break the fitting proceduce
+                    # view the positions and how they have been fitted
+                    denseMatrixViewer([featsMod[refFeat], featsMod[fn], centre[fn]], True, True)
+                    refit = True
+                
+            # conditions to refit the features
             #   if the ossiclation of errors has occured more than 10 times
             #   if the fitting procedure has attempted to converge more than 200 times
-            elif errCnt > 10 or n > 200:
+            #   if the features converged but the error was unacceptably high high
+            if errCnt > 10 or n > 200 or refit:
                 print("\n\n!! ---- FITTING PROCEDUCE DID NOT CONVERGE  ---- !!\n\n")
-                denseMatrixViewer([dictToArray(feattmp[refFeat]), dictToArray(feattmp[fn]), centre[fn]], True)
-                break
+                print("     Refitting, err = " + str(errO))
+
+                # denseMatrixViewer([dictToArray(featsMod[refFeat]), dictToArray(featsMod[fn]), centre[fn]], True)
+
+                # change the original positions used
+                annoRef, annoTar = featChangePoint(regionOfPath(src, 2), refFeat, fn, ts = 4)
+
+                _, commonFeats = uniqueKeys([annoRef, annoTar])
+                
+                # go through all the annotations and see if there have actually been any changes made
+                same = True
+                for cf in commonFeats:
+                    # check if any of the annotations have changed
+                    if (annoRef[cf] != featsMaster[refFeat][cf]).all() or (annoTar[cf] != featsMaster[fn][cf]).all():
+                        same = False 
+                        break
+
+                # if there have been no changes then break the fitting process and accept
+                # the fitting proceduce as final
+                if same:
+                    break
+
+                # update the relevant dictionaries
+                featsMaster[refFeat], featsMaster[fn] = annoRef, annoTar
+                featsO[refFeat], featsO[fn] = annoRef, annoTar
+
+                # restart the fitting process with the new points
+                n = 0
+                errN = 1e6
+                errorC = 1e6
+                errCnt = 0  
+                errorStore = np.ones(3) * 1e6
+                translateSum = np.zeros(2).astype(float)
+                featsMod = featsO.copy()
+                refit = False
+                continue
 
             featsMod = feattmp
             n += 1 
-
 
         # -------- PERFORM THE OPTIMISED FITTING AGAIN BUT IN ONLY A SINGLE TRANSLATION AND ROTATION --------
         # replicate the whole fitting proceduce in a single go to be applied to the 
         # images later on
         featToMatch = {}
-        featToMatch[fn + "fitted"] = featsMod[fn]
-        featToMatch[fn] = featsO[fn]
+        featToMatch[fn + "fitted"] = featsMod[fn].copy()
+        featToMatch[fn] = featsO[fn].copy()
 
         # translation, featToMatch, err = translatePoints(featToMatch, True)
 
         # apply ONLY the translation transformations to the original features so that the 
         # adjustments are made to the optimised feature positions
         for f in featToMatch[fn]:
-            featToMatch[fn][f] -= translateNet[fn] 
+            # print("Orig: " + str(featsMaster['H653A_09_1'][f]))
+            featToMatch[fn][f] = featToMatch[fn][f].copy() - translateSum
+            # print("Mod: " + str(featsMaster['H653A_09_1'][f]))
+
+        translateNet[fn] = translateSum
 
         # perform a single rotational fitting procedure
         # NOTE add recursive feat updater
@@ -221,10 +269,10 @@ def shiftFeatures(featNames, src):
             n += 1
 
         rotateNet[fn] = [rotateSum, centre[fn][0], centre[fn][1]]  # pass the rotational degree and the centre of rotations
-        feats[fn] = featToMatch[fn]                      # re-assign the new feature positions to fit for
 
-        denseMatrixViewer([dictToArray(feats[refFeat]), dictToArray(feats[fn]), centre[fn]], True)
+        # denseMatrixViewer([dictToArray(feats[refFeat]), dictToArray(feats[fn]), centre[fn]], True)
         refFeat = fn        # re-assign the re-Feat if aligning between slices
+        featsO[refFeat] = featToMatch[refFeat].copy()                      # re-assign the new feature positions to fit for
 
     
     # save the tif shapes, translation and rotation information
@@ -388,26 +436,7 @@ def translatePoints(feats, bestfeatalign = False):
 
         tar = feats[i]
 
-        # get all the features which both slices have
-        tarL = list(tar.keys())
-        refL = list(ref.keys())
-        feat, c = np.unique(refL + tarL, return_counts=True)
-        commonFeat = feat[np.where(c == 2)]
-
-        # create the dictionary with ONLY the common features and their positions
-        tarP = {}
-        refP = {}
-
-        # use the first matched feature which is, as per the featfinder function
-        # matchMaker, the best matched feature
-        if bestfeatalign:
-            bf = commonFeat[0]
-            tarP[bf] = tar[bf]
-            refP[bf] = ref[bf]
-        else:
-            for cf in commonFeat:
-                tarP[cf] = tar[cf]
-                refP[cf] = ref[cf]
+        [tarP, refP], _ = uniqueKeys([tar, ref])
 
         # get the shift needed and store
         res = minimize(objectiveCartesian, (0, 0), args=(refP, tarP), method = 'Nelder-Mead', tol = 1e-6)
@@ -451,22 +480,8 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
 
         tar = feats[i]
 
-        # get all the features which both slices have
-        tarL = list(tar.keys())
-        refL = list(ref.keys())
-        feat, c = np.unique(refL + tarL, return_counts=True)
-        commonFeat = feat[np.where(c == 2)]
-        # ensure feature names are sorted by NUMBER not string
-        commonFeat = commonFeat[np.argsort([int(i.split("_")[-1]) for i in feat[np.where(c == 2)]])]
-
-        # create a dictionary with ONLY the common features and their positions
-
-        tarP = {}
-        refP = {}
-
-        for cf in commonFeat:
-            tarP[cf] = tar[cf]
-            refP[cf] = ref[cf]
+        # get the common features
+        [tarP, refP], commonFeat = uniqueKeys([tar, ref])
 
         # if doing best align, use the first feature as the centre of rotation,
         # otherwise use the mean of all the features
@@ -481,7 +496,8 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
         refN = objectivePolar(res.x, centre, False, tar, refP, plot)   # get the transformed features and re-assign as the ref
         rotationStore[i] = float(res.x)
 
-        err = res.fun
+        # return the average error per point
+        err = res.fun / len(tarP)
 
         # reassign this as the new feature
         featsMod[i] = refN
@@ -526,7 +542,6 @@ def plotPoints(dir, imgO, cen, points):
     cen = cen.astype(int)
     # img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
     img = cv2.circle(img, tuple(cen), int(si*0.8), tuple(colour2), int(si*0.8/2)) 
-
 
     # resize the image
     x, y, c = img.shape
@@ -695,10 +710,12 @@ if __name__ == "__main__":
     # dataHome is where all the directories created for information are stored 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
-    dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
+
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
