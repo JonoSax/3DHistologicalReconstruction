@@ -244,7 +244,7 @@ def txtToDict(path, typeV = int):
 
     return(sampleDict)
 
-def denseMatrixViewer(coords, plot = True):
+def denseMatrixViewer(coords, plot = True, unique = False):
 
     # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
     # which can be view with matplotlib
@@ -253,6 +253,26 @@ def denseMatrixViewer(coords, plot = True):
     #           assume it is a vertical stack and colour them differently
     # Outputs:  (), produces a plot to view
     #           (area), the array 
+
+    # if unique, then only show the features which are unique
+    # NOTE this only works with a dictionary but at the end of the 
+    if unique:
+        coordsmatch = []
+        for c in coords:
+            if type(c) is dict:
+                coordsmatch.append(c)
+
+        samekeys, _ = uniqueKeys(coordsmatch)
+        p = 0
+        for n, c in enumerate(coords):
+            if type(c) is dict:
+                coords[n] = samekeys[p]
+                p += 1
+
+    # if in the list of coords there is a dictionary, convert to an array
+    for n, c in enumerate(coords): 
+        if type(c) is dict:
+            coords[n] = dictToArray(c)
 
     # enusre numpy array is int
     coordsMax = np.vstack(coords).astype(int)
@@ -588,11 +608,10 @@ def hist_match(source, template):
     # in the same data type as np.uin8
     return (interp_t_values[bin_idx].reshape(oldshape)).astype(np.uint8)
 
-
 def findangle(point1, point2, point3 = None):
 
-        # this function finds the angle between three points, where point2 is connected 
-        # to both point1 and point2
+        # this function finds the anti-clockwise angle between three points, where point2 
+        # is connected to both point1 and point2
         # Inputs:   (point1, 2), the positions of the points of interet
         #           (point3), an optional point, if not input then defaults to the horizontal 
         #           along the x-axis
@@ -639,3 +658,33 @@ def findangle(point1, point2, point3 = None):
         
 
         return(angle)
+
+def uniqueKeys(dictL):
+
+    # return dictionaries which contain only the featues which all
+    # the dictionaries have
+    # Inptus:   (dictL), list of dictionaries  
+    # Outputs:  (dictMod), list of dictionaries with common values
+    #           (commonKeys), list of the common keys found
+
+    # collect all the keys used
+    keys = []
+    for d in dictL:
+        keys += d.keys()
+
+    # count the occurence of each unique key and get only the ones whch 
+    # occur in all the dictionaries
+    feat, c = np.unique(keys, return_counts=True)
+    commonKeys = sorted(feat[np.where(c == len(dictL))])
+    
+    # create the dictionary with ONLY the common features 
+    dictMod = []
+    for d in dictL:
+        dN = {}
+        for cf in commonKeys:
+            dN[cf] = d[cf]
+
+        dictMod.append(dN)
+
+    return(dictMod, commonKeys)
+    
