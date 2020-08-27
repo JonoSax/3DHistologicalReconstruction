@@ -82,7 +82,7 @@ def featFind(dataHome, name, size):
     imgdest = datasrc + "matched2/"
     '''
 
-    findFeats(imgsrc, dataDest, imgdest, dist = 250, sz = 2, gridNo = 6, featNo = 2)
+    findFeats(imgsrc, dataDest, imgdest, gridNo = 6, featNo = 4)
 
     '''
     # for parallelisation
@@ -98,7 +98,7 @@ def featFind(dataHome, name, size):
         jobs[spec].join()
     '''
 
-def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, featNo = None):
+def findFeats(dataSource, dataDest, imgdest, gridNo = 1, featNo = None):
 
     # This script finds features between two sequential samples (based on their
     # name) that correspond to biologically the same location. 
@@ -192,7 +192,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
         
         x, y, c = img_ref.shape
         p = int(np.round(y/gridNo, -1))     # pixel grid size
-        sc = 0.    # the extra 1D length size of the target section
+        sc = 0.2    # the extra 1D length size of the target section
 
         matchDistance = []
         matchRef = []
@@ -320,12 +320,14 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
         if featNoM is None:
             featNo = len(matchTar)
 
-        if len(matchTar) > featNo:
+        # of there are less than the specific number of features, provide a GUI to perform 
+        # manual matching
+        if len(alltarpt) < featNo:
             matchRef, matchTar = featSelectPoint(img_ref, img_tar, matchRef, matchTar, featNo)
 
-        # if there are more than 5 matches then pick the 5 most appropriate matches
+        # if there are more than featNo matches then pick the best of all those features
         else:
-            matchRef, matchTar, matchSize, matchDistance = matchMakerN(allrefpt, alltarpt, allsize, alldistance)
+            matchRef, matchTar, matchSize, matchDistance = matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo)
             '''
             bestMatches = matchMaker(matchTar, matchDistance, featNo)
             
@@ -355,7 +357,7 @@ def findFeats(dataSource, dataDest, imgdest, dist = 250, sz = 2, gridNo = 1, fea
 
         img_refC = img_refO.copy()
         img_tarC = img_tarO.copy()
-        txtsz = 2
+        txtsz = 1
         # add in the features
         for i, n in enumerate(newFeats):
 
@@ -462,95 +464,152 @@ def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = 5):
     # create normalised distances and sizes with a score of 1 being the best and 0
     # being the worst
 
-    matchRef = []
-    matchTar = []
-    matchSize = []
-    matchDistance = []
 
-    '''
-    # normalise the distances, weight the importance of smaller distances by squaring them
-    alldistancesq = np.square(alldistance)
-    normdist = 1 - (alldistancesq - np.min(alldistancesq)) / (np.max(alldistancesq) - np.min(alldistancesq))
+    def findbestfeatures():
 
-    # normalise the sizes
-    normsize = (allsize - np.min(allsize)) / (np.max(allsize) - np.min(allsize))
+        matchRef = []
+        matchTar = []
+        matchSize = []
+        matchDistance = []
 
-    # both size and distance are predictors of a features relevance. Combine both 
-    # to get the strongest overall features
-    # NOTE there is room to weight the distance and size
-    normfields = normdist * normsize
+        # find the two best features ensuring that they are located 
+        # a reasonable distane away
 
-    # find the descending order of the normalised fields 
-    sort = np.argsort(-normfields)
-    '''
-    np.random.random(4)
+        # get the best features and remove from the list of sorted features
+        matchRef.append(allrefpt[0]); del allrefpt[0]
+        matchTar.append(alltarpt[0]); del alltarpt[0]
+        matchSize.append(allsize[0]); del allsize[0]
+        matchDistance.append(alldistance[0]); del alldistance[0]
+
+        # get the second best feature, ensuring that it is an acceptable distance away from 
+        # the best feature (sometimes two really good matches are found pretty much next
+        # to each other which isn't useful for fitting)
+        for n, (r, t, s, d) in enumerate(zip(allrefpt, alltarpt, allsize, alldistance)):
+
+            # if the distance between the next best feature is less than 100 
+            # pixels, don't use it
+            if np.sqrt(np.sum(matchRef - r)**2) < 20 and np.sqrt(np.sum(matchTar - t)**2) < 20:
+                continue
+            
+            # if the 2nd best feature found meets the criteria append and move on
+            else:
+                matchRef.append(r); del allrefpt[n]
+                matchTar.append(t); del alltarpt[n]
+                matchSize.append(s); del allsize[n]
+                matchDistance.append(d); del alldistance[n]
+                break
+
+        return(matchRef, matchTar, matchSize, matchDistance)
+
+    def findgoodfeatures():
+
+        # find new features in the ref and target tissue which are positioned 
+        # in approximately the same location RELATIVE to the best features found already
+
+        matchRefn = []
+        matchTarn = []
+        matchSizen = []
+        matchDistancen = []
+
+        # apped the best matches to the new matches:
+        for r, t, s, d in zip(matchRef, matchTar, matchSize, matchDistance):
+
+            matchRefn.append(r)
+            matchTarn.append(t)
+            matchSizen.append(s)
+            matchDistancen.append(d)
+
+        # from all the remaining features, find the ones that meet the characteristics:
+        #   - The new feature is a distance away from all previous features
+        #   - The new features on each sample are within a threshold angle and distance
+        #   difference relative to the best features found 
+        for r, t, s, d in zip(allrefpt, alltarpt, allsize, alldistance):
+            
+            # once the criteria of meeting the number of features is met, break
+            if len(matchTarn) >= featNo:
+                break
+
+            # if the difference between the any of the already found feature is less than 100 
+            # pixels, don't use it
+            repeated = False
+            for mr, tr in zip(matchRefn, matchTarn):
+                if np.sqrt(np.sum(mr - r)**2) < 20 or np.sqrt(np.sum(tr - t)**2) < 20:
+                    repeated = True
+                    break
+
+            if repeated:
+                continue
+
+            # get the relative angles of the new features compared to the best features 
+            # found. Essentially triangulate the new feature relative to all the previously 
+            # found features. This is particularly important as the further down the features
+            # list used, the worse the sift match is so being in a position relative to all 
+            # the other features found becomes a more important metric of fit
+            angdist = []
+            for n1, (m1, t1) in enumerate(zip(matchRefn, matchTarn)):
+                for n2, (m2, t2) in enumerate(zip(matchRefn, matchTarn)):
+
+                    # if the features are repeated, don't use it
+                    if n1 == n2:
+                        continue
+
+                    # find the angle for the new point and all the previously found point
+                    newrefang = findangle(m1, m2, r)
+                    newtarang = findangle(m1, m2, t)
+
+                    # store the difference of this new point relative to all the ponts
+                    # previously found
+                    angdist.append(abs(newrefang - newtarang))
+
+            # get the distances of the new points to the best feature
+            newrefdist = np.sqrt(np.sum((matchRef[0] - r)**2))
+            newtardist = np.sqrt(np.sum((matchTar[0] - t)**2))
+
+            # finds how much larger the largest distance is compared to the smallest distance
+            ratiodist = (newtardist/newrefdist)**(1-((newrefdist>newtardist)*2)) - 1
+
+            # if the new feature is less than 5 degress off from each other 
+            # and the distances from the best fit features are within 5% of each other
+            # then append 
+            if np.median(angdist) < 3/180*np.pi and ratiodist < 0.03:
+
+                # add the features
+                matchRefn.append(r)
+                matchTarn.append(t)
+                matchSizen.append(s)
+                matchDistancen.append(d)
+
+        return(matchRefn, matchTarn, matchSizen, matchDistancen)
 
     sort = np.argsort(np.array(alldistance))
 
-    sortedrefpt = list(np.array(allrefpt)[sort])
-    sortedtarpt = list(np.array(alltarpt)[sort])
-    sortedsize = list(np.array(allsize)[sort])
-    sorteddistance = list(np.array(alldistance)[sort])
+    # sort the information by ascending distance value
+    allrefpt = list(np.array(allrefpt)[sort])
+    alltarpt = list(np.array(alltarpt)[sort])
+    allsize = list(np.array(allsize)[sort])
+    alldistance = list(np.array(alldistance)[sort])
 
-    # get the best features
-    matchRef.append(sortedrefpt[0]); del sortedrefpt[0]
-    matchTar.append(sortedtarpt[0]); del sortedtarpt[0]
-    matchSize.append(sortedsize[0]); del sortedsize[0]
-    matchDistance.append(sorteddistance[0]); del sorteddistance[0]
-
-    # get the second best feature, ensuring that it is an acceptable distance away from 
-    # the best feature (sometimes two really good matches are found pretty much next
-    # to each other which isn't useful for fitting)
-    for r, t, s, d in zip(sortedrefpt, sortedtarpt, sortedsize, sorteddistance):
-
-        # if the difference between the next best feature is less than 100 
-        # pixels, don't use it
-        if abs(np.sum(matchRef - r)) < 100 and abs(np.sum(matchTar - t) < 100):
-            continue
-        
-        # if the 2nd best feature found meets the criteria append and move on
-        else:
-            matchRef.append(r); del sortedrefpt[0]
-            matchTar.append(t); del sortedtarpt[0]
-            matchSize.append(s); del sortedsize[0]
-            matchDistance.append(d); del sorteddistance[0]
-            break
+    # get the two best features found
+    matchRef, matchTar, matchSize, matchDistance = findbestfeatures()
 
     # append the next n number of best fit features to the matches but 
     # ONLY if their angle from the two reference features is within a tolerance 
     # range --> this heavily assumes that the two best fits found are actually 
     # good features...
-    for r, t, s, d in zip(sortedrefpt, sortedtarpt, sortedsize, sorteddistance):
-        # once the criteria of meeting the number of features is met, break
-        if len(matchTar) >= featNo:
+    while True:
+        matchRefn, matchTarn, matchSizen, matchDistancen = findgoodfeatures()
+
+        # if insufficient new features were not found then than suggests that the best 
+        # fit features are actually not best fit so use the next two best features 
+        # and repeat
+        if len(matchTarn) < featNo:
+            matchRef, matchTar, matchSize, matchDistance = findbestfeatures()
+
+        else:
             break
+    
 
-        # if the difference between the any of the already found feature is less than 100 
-        # pixels, don't use it
-        repeated = False
-        for mr, tr in zip(matchRef, matchTar):
-            if abs(np.sum(mr - r)) < 100 and abs(np.sum(tr - t) < 100):
-                repeated = True
-                break
-
-        if repeated:
-            continue
-
-        # get the relative angles of the new features compared to the best features 
-        # found
-        newrefang = findangle(matchRef[0], matchRef[1], r)
-        newtarang = findangle(matchTar[0], matchTar[1], t)
-
-        # if the new feature is less than 5 degress off from each other then append them
-        if abs(newrefang - newtarang)*180/np.pi < 5:
-
-            # add the features
-            matchRef.append(r)
-            matchTar.append(t)
-            matchSize.append(s)
-            matchDistance.append(d)
-
-    return(matchRef, matchTar, matchSize, matchDistance)
+    return(matchRefn, matchTarn, matchSizen, matchDistancen)
 
 def matchMaker(matchTar, matchDistance, n = 5):
 
@@ -649,7 +708,7 @@ def imgPlacement(name_spec, img_refO, img_tarO):
     field = np.zeros((xm, ym, cm)).astype(np.uint8)
 
     # something for the bottom right
-    if name_spec == 'H653A':
+    if name_spec == 'H653A' or name_spec == 'H710B':
         # these are the origin shifts to adapt each image
         xrefDif = xm-xr
         yrefDif = ym-yr
@@ -690,7 +749,7 @@ def imgPlacement(name_spec, img_refO, img_tarO):
         img_ref = fieldp.copy(); img_ref[-xrp:, -yrp:, :] = img_refp
         img_tar = fieldp.copy(); img_tar[-xtp:, -ytp:, :] = img_tarp
         
-    elif name_spec == 'test':
+    elif name_spec == 'H710C':
         # put the image in the middle of the field
         xrefDif = int((xm-xr) / 2)
         yrefDif = int((ym-yr) / 2)
@@ -717,10 +776,10 @@ if __name__ == "__main__":
 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H673A_7.6/3/segSections/seg4/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
 
     
 
