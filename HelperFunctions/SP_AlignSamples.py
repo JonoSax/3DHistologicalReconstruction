@@ -53,6 +53,7 @@ def align(data, name = '', size = 0, saving = True):
     samples = sorted(nameFromPath(glob(dataSegmented + "*.tif"), 3))
 
     # get affine transformation information of the features for optimal fitting
+    # NOTE this has to be sequential
     shiftFeatures(samples, segInfo)
     
     # serial transformation
@@ -77,7 +78,7 @@ def align(data, name = '', size = 0, saving = True):
 def shiftFeatures(featNames, src):
 
     # Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
-    # Inputs:   (feats), the identified features for each sample
+    # Inputs:   (featNames), the samples being aligned
     #           (src)
     #           (alignedSamples)
     # Outputs:  (translateNet), the translation information to be applied per image
@@ -88,9 +89,16 @@ def shiftFeatures(featNames, src):
     # they keep getting altered somewhere?!?!
     featsMaster = {}
     feats = {}
+    featRef = {}
+    featTar = {}
     for f in featNames:
-        featsMaster[f] = txtToDict(src + f + ".feat", float)[0]
-        feats[f] = txtToDict(src + f + ".feat", float)[0]
+        # featsMaster[f] = txtToDict(src + f + ".feat", float)[0]
+        # feats[f] = txtToDict(src + f + ".feat", float)[0]
+        try: featRef[f] = txtToDict(src + f + ".reffeat", float)[0]
+        except: pass
+        try: featTar[f] = txtToDict(src + f + ".tarfeat", float)[0]
+        except: pass
+
     # store the affine transformations
     translateNet = {}
     rotateNet = {}
@@ -99,29 +107,22 @@ def shiftFeatures(featNames, src):
     translateNet[featNames[0]] = np.array([0, 0])
     rotateNet[featNames[0]] = [0, 0, 0]
 
-    refFeat = featNames[int(len(featNames)/2)]  # using middle sample for aligning
-    refFeat = featNames[0]      # initialise the refFeat as the first sample is sequentially aligning samples
-    featNames.remove(refFeat)       # remove whatever feature you are using for aligning
-    featToMatch = {}
-    featToMatch[refFeat] = feats[refFeat].copy()        # initialise the first feature
-
     # perform transformations on neighbouring slices and build them up as you go
-    for fn in featNames:
+    for rF, tF in zip(featRef, featTar):
         
         '''
         # select neighbouring features to process
         featsO = {}     # feats optimum, at this initialisation they are naive but they will progressively converge 
-        for fn in featNames[i:i+2]:
-            featsO[fn] = feats[fn]
+        for tF in featNames[i:i+2]:
+            featsO[tF] = feats[tF]
         '''
 
         # align all the images with respect to a single reference frame
         featsO = {}     
-        featsO[refFeat] = featToMatch[refFeat].copy()         # MUST USE the first input as reference
-        featsO[fn] = feats[fn].copy()                  # MUST USE the second input as target
+        featsO[rF] = featRef[rF].copy()         # MUST USE the first input as reference
+        featsO[tF] = featTar[tF].copy()                  # MUST USE the second input as target
             
-        print("Shifting " + fn + " features")
-
+        print("Shifting " + tF + " features")
 
         # declare variables for error checking and iteration counting
         n = 0
@@ -145,9 +146,9 @@ def shiftFeatures(featNames, src):
             translation, featsT, err = translatePoints(featsMod, True)
             
             # keep track of a temporary translation
-            translateSum += translation[fn]
+            translateSum += translation[tF]
             
-            # print(translation[fn]) # --> the last optimal change in location is the WRONG shift
+            # print(translation[tF]) # --> the last optimal change in location is the WRONG shift
             # store the accumulative translation vectors 
 
             # find the optimum rotational adjustment and produce modified feats
@@ -184,7 +185,7 @@ def shiftFeatures(featNames, src):
                 # so perform a refitting of the features
                 else:
                     # view the positions and how they have been fitted
-                    denseMatrixViewer([featsMod[refFeat], featsMod[fn], centre[fn]], True, True)
+                    denseMatrixViewer([featsMod[rF], featsMod[tF], centre[tF]], True, True)
                     refit = True
                 
             # conditions to refit the features
@@ -195,10 +196,10 @@ def shiftFeatures(featNames, src):
                 print("\n\n!! ---- FITTING PROCEDUCE DID NOT CONVERGE  ---- !!\n\n")
                 print("     Refitting, err = " + str(errO))
 
-                # denseMatrixViewer([dictToArray(featsMod[refFeat]), dictToArray(featsMod[fn]), centre[fn]], True)
+                # denseMatrixViewer([dictToArray(featsMod[rF]), dictToArray(featsMod[tF]), centre[tF]], True)
 
                 # change the original positions used
-                annoRef, annoTar = featChangePoint(regionOfPath(src, 2), refFeat, fn, ts = 4)
+                annoRef, annoTar = featChangePoint(regionOfPath(src, 2), rF, tF, ts = 4)
 
                 _, commonFeats = uniqueKeys([annoRef, annoTar])
                 
@@ -206,7 +207,7 @@ def shiftFeatures(featNames, src):
                 same = True
                 for cf in commonFeats:
                     # check if any of the annotations have changed
-                    if (annoRef[cf] != featsMaster[refFeat][cf]).all() or (annoTar[cf] != featsMaster[fn][cf]).all():
+                    if (annoRef[cf] != featRef[rF][cf]).all() or (annoTar[cf] != featTar[tF][cf]).all():
                         same = False 
                         break
 
@@ -216,8 +217,8 @@ def shiftFeatures(featNames, src):
                     break
 
                 # update the relevant dictionaries
-                featsMaster[refFeat], featsMaster[fn] = annoRef, annoTar
-                featsO[refFeat], featsO[fn] = annoRef, annoTar
+                featRef[rF], featsMaster[tF] = annoRef, annoTar
+                featsO[rF], featsO[tF] = annoRef, annoTar
 
                 # restart the fitting process with the new points
                 n = 0
@@ -237,19 +238,19 @@ def shiftFeatures(featNames, src):
         # replicate the whole fitting proceduce in a single go to be applied to the 
         # images later on
         featToMatch = {}
-        featToMatch[fn + "fitted"] = featsMod[fn].copy()
-        featToMatch[fn] = featsO[fn].copy()
+        featToMatch[tF + "fitted"] = featsMod[tF].copy()
+        featToMatch[tF] = featsO[tF].copy()
 
         # translation, featToMatch, err = translatePoints(featToMatch, True)
 
         # apply ONLY the translation transformations to the original features so that the 
         # adjustments are made to the optimised feature positions
-        for f in featToMatch[fn]:
+        for f in featToMatch[tF]:
             # print("Orig: " + str(featsMaster['H653A_09_1'][f]))
-            featToMatch[fn][f] = featToMatch[fn][f].copy() - translateSum
+            featToMatch[tF][f] = featToMatch[tF][f].copy() - translateSum
             # print("Mod: " + str(featsMaster['H653A_09_1'][f]))
 
-        translateNet[fn] = translateSum
+        translateNet[tF] = translateSum
 
         # perform a single rotational fitting procedure
         # NOTE add recursive feat updater
@@ -258,21 +259,20 @@ def shiftFeatures(featNames, src):
         n = 0
 
         # view the final points before rotating VS the optimised points
-        # denseMatrixViewer([dictToArray(featToMatch[fn]), dictToArray(featsMod[fn]), centre[fn]], True)
+        # denseMatrixViewer([dictToArray(featToMatch[tF]), dictToArray(featsMod[tF]), centre[tF]], True)
 
         # continue fitting until convergence with the already fitted results
         while abs(rotated) > 1e-6:
-            rotationAdjustment, featToMatch, errN, centre = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre[fn])
-            rotated = rotationAdjustment[fn]
-            rotateSum += rotationAdjustment[fn]
+            rotationAdjustment, featToMatch, errN, centre = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre[tF])
+            rotated = rotationAdjustment[tF]
+            rotateSum += rotationAdjustment[tF]
             # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
             n += 1
 
-        rotateNet[fn] = [rotateSum, centre[fn][0], centre[fn][1]]  # pass the rotational degree and the centre of rotations
+        rotateNet[tF] = [rotateSum, centre[tF][0], centre[tF][1]]  # pass the rotational degree and the centre of rotations
 
-        # denseMatrixViewer([dictToArray(feats[refFeat]), dictToArray(feats[fn]), centre[fn]], True)
-        refFeat = fn        # re-assign the re-Feat if aligning between slices
-        featsO[refFeat] = featToMatch[refFeat].copy()                      # re-assign the new feature positions to fit for
+        # denseMatrixViewer([dictToArray(feats[rF]), dictToArray(feats[tF]), centre[tF]], True)
+        featsO[tF] = featToMatch[tF].copy()                      # re-assign the new feature positions to fit for
 
     
     # save the tif shapes, translation and rotation information
@@ -314,13 +314,14 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
         for f in infoE:
             infoE[f] += np.array(maxPos)  
         
-        # save the image
+        # save the info
         dictToTxt(infoE, dest + spec + "." + t)     # from the info in the txt file, rename
         return(infoE)
         
     
     segmentdir = segSamples + spec + ".tif"
-    featdir = segInfo + spec + ".feat"
+    refdir = segInfo + spec + ".reffeat"
+    tardir = segInfo + spec + ".tarfeat"
     tifShapesdir = segInfo + "all.tifshape"
     jpgShapesdir = segInfo + "all.jpgshape"
     translateNetdir = segInfo + "all.translated"
@@ -336,8 +337,11 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     # initialise the end position of the tif image to be cropped
     posE = 0
 
-    featA = txtToDict(featdir, float)
-    specInfo['feat'] = featA[0]
+    try: featR = txtToDict(refdir, float); specInfo['reffeat'] = featR[0]
+    except: pass
+
+    try: featT = txtToDict(tardir, float); specInfo['tarfeat'] = featT[0]
+    except: pass
 
     sample = nameFromPath(segmentdir, 3)
 
@@ -347,7 +351,7 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     
     # get the shapes of the jpeg image and original tif and find the ratio fo their sizes
     shapeO = tifShapes[sample]
-    shapeR = np.round((shapeO / jpegSize)[0], 3)
+    shapeR = np.round((shapeO / jpegSize)[0], 1)
 
     # get the measure of the amount of shift to create the 'platform' which all the images are saved to
     ss = (np.ceil(dictToArray(translateNet, int) * shapeR)).astype(int)     # scale up for the 40% reduction in tif2pdf
@@ -521,27 +525,27 @@ def plotPoints(dir, imgO, cen, points):
             imgO = cv2.imread(imgO)
 
     img = imgO.copy()
-    
+    colours = [(0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 255, 255)]
+    sizes = [1, 0.8, 0.6, 0.4]
+
     si = 50
 
     # for each set of points add to the image
-    for pf in points:
+    for n, pf in enumerate(points):
 
         point = points[pf]
 
-        colour = [randint(0, 1)*255, randint(0, 1) * 255, 0]
-        colour2 = [abs(c - 255) for c in colour]
         if type(point) is dict:
             point = dictToArray(point)
 
         for p in point:       # use the target keys in case there are features not common to the previous original 
             pos = tuple(np.round(p).astype(int))
-            img = cv2.circle(img, pos, si, tuple(colour), int(si/2)) 
+            img = cv2.circle(img, pos, int(si * sizes[n]), tuple(colours[n]), int(si * sizes[n]/2)) 
         
     # plot of the rotation as well using opposite colours
     cen = cen.astype(int)
     # img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
-    img = cv2.circle(img, tuple(cen), int(si*0.8), tuple(colour2), int(si*0.8/2)) 
+    img = cv2.circle(img, tuple(cen), int(si * sizes[n] * 0.8), (255, 0, 0), int(si * sizes[n] * 0.8/2)) 
 
     # resize the image
     x, y, c = img.shape
