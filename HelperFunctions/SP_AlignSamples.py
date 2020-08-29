@@ -19,6 +19,15 @@ from math import ceil
 from glob import glob
 import multiprocessing
 from multiprocessing import Process, Queue
+from copy import deepcopy
+
+# object which contains the reference and target positions between a single matching pair
+class sampleFeatures:
+    def __init__(self, ref = None, tar = None, fit = None, shape = None):
+        self.ref = ref
+        self.tar = tar
+        self.fit = fit
+
 
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
@@ -58,7 +67,7 @@ def align(data, name = '', size = 0, saving = True):
     
     # serial transformation
     for spec in samples:
-        transformSamples(dataSegmented, segInfo, alignedSamples, spec, size, saving = True)
+        transformSamples(dataSegmented, segInfo, alignedSamples, spec, size, saving = False)
 
     # my attempt at parallelising this part of the process. Unfortunately it doesn't work 
     # because the cv2.warpAffine function is objectivePolar fails for AN UNKNOWN REASON
@@ -87,18 +96,23 @@ def shiftFeatures(featNames, src):
     # load the identified features
     # NOTE it is loaded twice because the dictionary memories are way to linked and 
     # they keep getting altered somewhere?!?!
-    featsMaster = {}
     feats = {}
     featRef = {}
     featTar = {}
     for f in featNames:
         # featsMaster[f] = txtToDict(src + f + ".feat", float)[0]
         # feats[f] = txtToDict(src + f + ".feat", float)[0]
-        try: featRef[f] = txtToDict(src + f + ".reffeat", float)[0]
+        try: 
+            featTar[f] = txtToDict(src + f + ".tarfeat", float)
         except: pass
-        try: featTar[f] = txtToDict(src + f + ".tarfeat", float)[0]
-        except: pass
-
+        try: 
+            featRef[f] = txtToDict(src + f + ".reffeat", float)
+        except: featRef[f] = featTar[f]     # the last feature will never be fit so this 
+                                            # this is essentially a junk data allocated 
+                                            # only so that the whole script will run error 
+                                            # free (main issue is carry through transformation
+                                            # of features)                     
+                                            
     # store the affine transformations
     translateNet = {}
     rotateNet = {}
@@ -106,9 +120,12 @@ def shiftFeatures(featNames, src):
     # initialise the first sample with no transformation
     translateNet[featNames[0]] = np.array([0, 0])
     rotateNet[featNames[0]] = [0, 0, 0]
+    featsO = sampleFeatures()
 
     # perform transformations on neighbouring slices and build them up as you go
     for rF, tF in zip(featRef, featTar):
+
+        # print("Ref0: " + str(featRef[rF]['feat_0']) + " Tar0: " + str(featTar[tF]['feat_0']))
         
         '''
         # select neighbouring features to process
@@ -117,97 +134,157 @@ def shiftFeatures(featNames, src):
             featsO[tF] = feats[tF]
         '''
 
-        # align all the images with respect to a single reference frame
-        featsO = {}     
-        featsO[rF] = featRef[rF].copy()         # MUST USE the first input as reference
-        featsO[tF] = featTar[tF].copy()                  # MUST USE the second input as target
-            
-        print("Shifting " + tF + " features")
+        # get the features to align
+        # NOTE atm whichever dictionary assignment is first comes linked to featsMod
+        # so they both become changed but ONLY the first one..... ?????
+        featsO.ref = deepcopy(featRef[rF][0])
+        featsO.tar = deepcopy(featTar[tF][0])
+        featsO.fit = featTar[tF][1]['fit']
 
-        # declare variables for error checking and iteration counting
+        # set the initial attempt positional ranges to remove features in the case of 
+        # refitting attempts
+        atmpR = 1
+        atmp = 0
+        lastFt = []
         n = 0
-        errN = 1e6
-        errorC = 1e6
-        errCnt = 0  
-        errorStore = np.ones(3) * 1e6
-        translateSum = np.zeros(2).astype(float)
-        featsMod = featsO.copy()
-        refit = False
-
-        # -------- CREATE THE MOST OPTIMISED POSSIBLE FIT OF FEATURES POSSIBLE --------
         
-        while True:        
+        print("Shifting " + tF + " features")
+        # -------- CREATE THE MOST OPTIMISED POSSIBLE FIT OF 
+        #       FEATURES POSSIBLE, SAVE THE NEW FEATURES AND THEIR 
+        #                       TRANSFORMATIONS --------
+        while featsO.fit is False:
+
+            # !! Every time the loop starts here, it is trying to fit a NEW set of features !!
+
+            # featMod, the pair of features being fit
+            # featO, the pair of features to be fit BEFORE transformations have begun
+            # feattmp, the features that have been modified in a single fitting procedure
+            #   temporarily stored until they are assigned
+
+            # declare variables for error checking and iteration counting
+            errN = 1e6
+            errorC = 1e6
+            errCnt = 0  
+            errorStore = np.ones(3) * 1e6
+            translateSum = np.zeros(2).astype(float)
+            featsMod = deepcopy(featsO)
+            refit = False
+            manualFit = False
             
-            # use the previous error for the next calculation
-            errO = errN
-            errorCc = errorC
+            while True:        
 
-            # get the translation vector
-            translation, featsT, err = translatePoints(featsMod, True)
-            
-            # keep track of a temporary translation
-            translateSum += translation[tF]
-            
-            # print(translation[tF]) # --> the last optimal change in location is the WRONG shift
-            # store the accumulative translation vectors 
+                # !! Every time the loop starts here, it is OPTIMISING the fit of the CURRENT features !!
+                
+                # use the previous error for the next calculation
+                errO = errN
+                errorCc = errorC
 
-            # find the optimum rotational adjustment and produce modified feats
-            _, feattmp, errN, centre = rotatePoints(featsT, bestfeatalign=False, plot = False)
+                # get the translation vector
+                translation, feattmp, err = translatePoints(featsMod, bestfeatalign = False)
+                
+                # keep track of a temporary translation
+                #print("ts = " + str(translateSum))
+                translateSum += translation
+                #print("te = " + str(translateSum))
 
-            # print("     Fit " + str(n) + " Error = " + str(errN))
+                # print(translation[tF]) # --> the last optimal change in location is the WRONG shift
+                # store the accumulative translation vectors 
 
-            # change in errors between iterations, using two errors
-            errorC = errO - errN
+                # find the optimum rotational adjustment and produce modified feats
+                _, feattmp, errN, centre = rotatePoints(feattmp, bestfeatalign = False, plot = False)
 
-            # store the last 10 changes in error
-            errorStore = np.insert(errorStore, 0, errN)
-            errorStore = np.delete(errorStore, -1)
-            
-            # sometimes the calcultions get stuck, ossiclating between two errrors
-            # of the same magnitude but opposite sign
-            if errorC + errorCc == 0:
-                errCnt += 1     # count the number of times these ossiclations occur
+                # print("     Fit " + str(n) + " Error = " + str(errN))
 
-            # conditions to finish the fitting proceduce
-            #   the error of fitting = 0
-            #   a turning point has been detected and error is increasing
-            if errN == 0:
-                print("     Fitting successful, err = " + str(errN)) 
-                featsMod = feattmp      # this set of feats are the ones to use
+                # change in errors between iterations, using two errors
+                errorC = errO - errN
 
-            # positions have converged on the optimum and the error is acceptable
-            elif np.sum(np.diff(errorStore)) <= 0:
-                if errO < 0.9e2:
-                    print("     Fitting converged, err = " + str(errO))
+                # store the last n changes in error
+                errorStore = np.insert(errorStore, 0, errN)
+                errorStore = np.delete(errorStore, -1)
+                
+                # sometimes the calcultions get stuck, ossiclating between two errrors
+                # of the same magnitude but opposite sign
+                if errorC + errorCc == 0:
+                    errCnt += 1     # count the number of times these ossiclations occur
+
+                # conditions to finish the fitting proceduce
+                #   the error of fitting = 0
+                #   a turning point has been detected and error is increasing
+                if errN == 0:
+                    print("     Fitting successful, err/feat = " + str(errN)) 
+                    featsMod = feattmp      # this set of feats are the ones to use
+
+                # positions have converged on the optimum and the error is acceptable
+                elif np.round(np.sum(np.diff(errorStore)), 2) <= 0:
+                    # if the final error is below a threshold, it is complete
+                    # but use the previously fit features
+                    if errO < 1e2:
+                        print("     Fitting converged, attempt " + str(n) + ", err/feat = " + str(errO))
+                        break
+
+                    # with the current features, if they are not providing a good match
+                    # then delet them from the dictionary. The features are ordered by 
+                    # the distance of the descriptor with feat_0 the best fit.
+                    else:
+                        # print("     Modifying feat, err/feat = " + str(errO))
+                        # denseMatrixViewer([featsMod[rF], featsMod[tF], centre[tF]], True)
+                        
+                        # there have to be at least 3 points left to enable good fitting practice
+                        # if there aren't going to be 3 left do a manual fitting process
+                        if len(featsO.tar) < 3: 
+                            manualFit = True
+
+                        # if there are only 3 points left and the fitting hasn't converged, 
+                        # then remove a larger range of points
+                        elif atmp > len(featsO.tar):
+                            atmpR += 1
+                            atmp = 0
+
+                        # modify the availabe features to create a better alignment
+                        featsO.ref = deepcopy(featRef[rF][0])
+                        featsO.tar = deepcopy(featTar[tF][0])
+                        refit = True
+                        lastFt = np.flip(list(featsO.tar.keys()))[atmp:atmp+atmpR]
+                        # print("         Removed: " + str(lastFt))
+                        for lF in lastFt:
+                            del featsO.tar[lF]
+                            del featsO.ref[lF]
+                        atmp += 1
+                        break
+
+                # if there are only 3 features remaining for the fitting process
+                # then it will require manual fitting
+                elif errCnt > 10 or n > 200:
+                    refit = True
                     break
 
-                # positions have converged on the optimum but the error is unacceptable
-                # so perform a refitting of the features
-                else:
-                    # view the positions and how they have been fitted
-                    denseMatrixViewer([featsMod[rF], featsMod[tF], centre[tF]], True, True)
-                    refit = True
-                
-            # conditions to refit the features
-            #   if the ossiclation of errors has occured more than 10 times
-            #   if the fitting procedure has attempted to converge more than 200 times
-            #   if the features converged but the error was unacceptably high high
-            if errCnt > 10 or n > 200 or refit:
-                print("\n\n!! ---- FITTING PROCEDUCE DID NOT CONVERGE  ---- !!\n\n")
-                print("     Refitting, err = " + str(errO))
+                # update the current features being modified 
+                featsMod = feattmp
 
-                # denseMatrixViewer([dictToArray(featsMod[rF]), dictToArray(featsMod[tF]), centre[tF]], True)
+                # count the number of fits done
+                n += 1
+                    
+            # -------- PERFORM A NEW FITTING PROCEDURE WITH MODIFIED FEATURES --------
+
+            # if there is no possible combination of features that can fit the samples, 
+            # manually annotate new one
+            if manualFit:
+
+                print("\n\n!! ---- FITTING PROCEDUCE DID NOT CONVERGE  ---- !!\n\n")
+                print("     Refitting, err = " + str(errN))
+
+                denseMatrixViewer([dictToArray(featsMod.ref), dictToArray(featsMod.tar), centre], True)
 
                 # change the original positions used
                 annoRef, annoTar = featChangePoint(regionOfPath(src, 2), rF, tF, ts = 4)
 
-                _, commonFeats = uniqueKeys([annoRef, annoTar])
+                _, commonFeats = uniqueKeys([annoRef, featRef[rF][0]])
                 
                 # go through all the annotations and see if there have actually been any changes made
                 same = True
                 for cf in commonFeats:
                     # check if any of the annotations have changed
-                    if (annoRef[cf] != featRef[rF][cf]).all() or (annoTar[cf] != featTar[tF][cf]).all():
+                    if (annoRef[cf] != featRef[rF][0][cf]).all() or (annoTar[cf] != featTar[tF][0][cf]).all():
                         same = False 
                         break
 
@@ -216,68 +293,91 @@ def shiftFeatures(featNames, src):
                 if same:
                     break
 
-                # update the relevant dictionaries
-                featRef[rF], featsMaster[tF] = annoRef, annoTar
-                featsO[rF], featsO[tF] = annoRef, annoTar
+                # update the master dictionary as these are the new features saved
+                featRef[rF][0] = annoRef
+                featTar[tF][0] = annoTar
 
-                # restart the fitting process with the new points
-                n = 0
-                errN = 1e6
-                errorC = 1e6
-                errCnt = 0  
-                errorStore = np.ones(3) * 1e6
-                translateSum = np.zeros(2).astype(float)
-                featsMod = featsO.copy()
-                refit = False
+                # updated the featO features for a new fitting procedure based on these new
+                # modified features
+                featsO.ref = annoRef
+                featsO.tar = annoTar
+                atmpe = 1
+            
+            # if there are enough feature available but alignment didn't converge to 
+            # an error low enough, iterate through
+            elif refit: 
                 continue
 
-            featsMod = feattmp
-            n += 1 
+            # if a suitable alignment has been found then progress
+            else:
+                # replace the features that were found with the ones that 
+                # allowed for this fitting
+                featRefFinal = deepcopy(featRef[rF][0])
+                featTarFinal = deepcopy(featTar[tF][0])
+                for lF in lastFt:
+                    del featRefFinal[lF]
+                    del featTarFinal[lF]
 
-        # -------- PERFORM THE OPTIMISED FITTING AGAIN BUT IN ONLY A SINGLE TRANSLATION AND ROTATION --------
-        # replicate the whole fitting proceduce in a single go to be applied to the 
-        # images later on
-        featToMatch = {}
-        featToMatch[tF + "fitted"] = featsMod[tF].copy()
-        featToMatch[tF] = featsO[tF].copy()
+                # replace the features in the matched folder so that you dont' have to constantly 
+                # refit the features everytime you run this script
+                dictToTxt(featRefFinal, src + rF + ".reffeat", fit = True)
+                dictToTxt(featTarFinal, src + tF + ".tarfeat", fit = True)
+                break
 
-        # translation, featToMatch, err = translatePoints(featToMatch, True)
+        # -------- CREATE THE SINGLE TRANSLATION AND ROTATION FILES --------
 
-        # apply ONLY the translation transformations to the original features so that the 
-        # adjustments are made to the optimised feature positions
-        for f in featToMatch[tF]:
-            # print("Orig: " + str(featsMaster['H653A_09_1'][f]))
-            featToMatch[tF][f] = featToMatch[tF][f].copy() - translateSum
-            # print("Mod: " + str(featsMaster['H653A_09_1'][f]))
+        # if the file was already fit then don't save any information
+        if featsO.fit:
+            print("     " + tF + " is already fitted")
+            translateNet[tF] = np.array([0, 0])
+            rotateNet[tF] = [0, 0, 0]
 
-        translateNet[tF] = translateSum
+        else:
+            # replicate the whole fitting proceduce in a single go to be applied to the 
+            # images later on
+            featToMatch = sampleFeatures()
+            featToMatch.ref = deepcopy(featsMod.tar)       # get the fitted feature (ref)
+            featToMatch.tar = deepcopy(featsO.tar)        # get the previous position of it
 
-        # perform a single rotational fitting procedure
-        # NOTE add recursive feat updater
-        rotated = 10
-        rotateSum = 0
-        n = 0
+            # translation, featToMatch, err = translatePoints(featToMatch, True)
 
-        # view the final points before rotating VS the optimised points
-        # denseMatrixViewer([dictToArray(featToMatch[tF]), dictToArray(featsMod[tF]), centre[tF]], True)
+            # apply ONLY the translation transformations to the original features so that the 
+            # adjustments are made to the optimised feature positions
+            for f in featToMatch.tar:
+                # print("Orig: " + str(featsMaster['H653A_09_1'][f]))
+                featToMatch.tar[f] -= translateSum
+                
+            translateNet[tF] = translateSum
 
-        # continue fitting until convergence with the already fitted results
-        while abs(rotated) > 1e-6:
-            rotationAdjustment, featToMatch, errN, centre = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre[tF])
-            rotated = rotationAdjustment[tF]
-            rotateSum += rotationAdjustment[tF]
-            # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
-            n += 1
+            # perform a single rotational fitting procedure
+            # NOTE add recursive feat updater
+            rotated = 10
+            rotateSum = 0
+            n = 0
 
-        rotateNet[tF] = [rotateSum, centre[tF][0], centre[tF][1]]  # pass the rotational degree and the centre of rotations
+            # view the final points before rotating VS the optimised points
+            # denseMatrixViewer([dictToArray(featToMatch[tF]), dictToArray(featsMod[tF]), centre[tF]], True)
 
-        # denseMatrixViewer([dictToArray(feats[rF]), dictToArray(feats[tF]), centre[tF]], True)
-        featsO[tF] = featToMatch[tF].copy()                      # re-assign the new feature positions to fit for
+            # continue fitting until convergence with the already fitted results
+            while abs(errN) > 1e-8:
+                rotationAdjustment, featToMatch, errN, cent = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre)
+                rotated = rotationAdjustment
+                rotateSum += rotationAdjustment
+                # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
+                n += 1
 
-    
-    # save the tif shapes, translation and rotation information
-    dictToTxt(translateNet, src + "all.translated")
-    dictToTxt(rotateNet, src + "all.rotated")
+            # rotate the same transofmratino to the next set of reference features
+            for f in featRef[tF][0]: 
+                featRef[tF][0][f] -= translateSum      
+            featRef[tF][0] = objectivePolar(rotateSum, centre, False, featRef[tF][0]) 
+
+            # pass the rotational degree and the centre of rotations
+            rotateNet[tF] = [rotateSum, centre[0], centre[1]]  
+            # denseMatrixViewer([featsMod.ref, featsMod.tar, centre], True)
+
+            # save the tif shapes, translation and rotation information
+            dictToTxt(translateNet, src + "all.translated")
+            dictToTxt(rotateNet, src + "all.rotated")
 
 def transformSamples(segSamples, segInfo, dest, spec, size, saving):
     # this function takes the affine transformation information and applies it to the samples
@@ -307,7 +407,7 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
         # adjust the positions based on the fitting process
         for f in infoE:
             infoE[f] = (infoE[f] - translateNet) * shapeR
-        infoE = objectivePolar(-w, centre, False, infoE) 
+        infoE = objectivePolar(w, centre, False, infoE) 
 
         # adjust the positions based on the whole image adjustment
         
@@ -427,35 +527,35 @@ def translatePoints(feats, bestfeatalign = False):
     #           (bestfeatalign), boolean if true then will align all the samples
     #           based off a single point, rather than the mean of all
     # Outputs:  (shiftStore), translation applied
-    #           (featsMod), the features after translation
+    #           (feats), the features after translation
     #           (err), squred error of the target and reference features
-
+    
+    featsMod = deepcopy(feats)
     shiftStore = {}
-    segments = list(feats.keys())
-    shiftStore[segments[0]] = (np.array([0, 0]))
-    featsMod = feats.copy()
-    ref = feats[segments[0]]
+    ref = feats.ref
+    tar = feats.tar
 
-    for i in segments[1:]:
+    [tarP, refP], featkeys = uniqueKeys([tar, ref])
 
-        tar = feats[i]
+    if bestfeatalign:
+        refP = {}
+        tarP = {}
+        refP[featkeys[0]] = ref[featkeys[0]]
+        tarP[featkeys[0]] = tar[featkeys[0]]
 
-        [tarP, refP], _ = uniqueKeys([tar, ref])
+    # get the shift needed and store
+    res = minimize(objectiveCartesian, (0, 0), args=(refP, tarP), method = 'Nelder-Mead', tol = 1e-6)
+    shift = res.x
+    err = objectiveCartesian(res.x, tarP, refP)
 
-        # get the shift needed and store
-        res = minimize(objectiveCartesian, (0, 0), args=(refP, tarP), method = 'Nelder-Mead', tol = 1e-6)
-        shift = res.x
-        err = objectiveCartesian(res.x, tarP, refP)
-        shiftStore[i] = shift
+    # modify the target positions
+    tarM = {}
+    for t in tar.keys():
+        tarM[t] = tar[t] - shift
 
-        # ensure the shift of frame is passed onto the next frame
-        ref = {}
-        for t in tar.keys():
-            ref[t] = tar[t] - shift
+    featsMod.tar = tarM
 
-        featsMod[i] = ref
-
-    return(shiftStore, featsMod, err)
+    return(shift, featsMod, err)
 
 def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre = None):
 
@@ -465,51 +565,36 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
     #                       rotating the image is NOT the same as the features and this doesn't 
     #                       quite work propertly for some reason...
     #           (featsmod), features after rotation
-
-    segments = list(feats.keys())
-
-    rotationStore = {}
-    centreStore = {}
-    featsMod = feats.copy()
-
-    # store the angle of rotation
-    rotationStore[segments[0]] = 0
-
-    # store the centre of rotations
-    centreStore[segments[0]] = np.array([0, 0])
     
-    ref = feats[segments[0]]
+    featsMod = deepcopy(feats)
+    ref = feats.ref
+    tar = feats.tar
 
-    for i in segments[1:]:
+    # get the common features
+    [tarP, refP], commonFeat = uniqueKeys([tar, ref])
 
-        tar = feats[i]
+    # if doing best align, use the first feature as the centre of rotation,
+    # otherwise use the mean of all the features
+    if centre is None:
+        if bestfeatalign:
+            centre = tarP[commonFeat[0]]
+        else:
+            centre = findCentre(tarP)
+    
+    # get the shift needed and store
+    res = minimize(objectivePolar, -5.0, args=(centre, True, tarP, refP), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
+    tarM = objectivePolar(res.x, centre, False, tar, refP, plot)   # get the transformed features and re-assign as the ref
+    rotationStore = float(res.x)
 
-        # get the common features
-        [tarP, refP], commonFeat = uniqueKeys([tar, ref])
+    # return the average error per point
+    err = res.fun / len(tarP)
 
-        # if doing best align, use the first feature as the centre of rotation,
-        # otherwise use the mean of all the features
-        if centre is None:
-            if bestfeatalign:
-                centre = tarP[commonFeat[0]]
-            else:
-                centre = findCentre(tarP)
-        
-        # get the shift needed and store
-        res = minimize(objectivePolar, -5.0, args=(centre, True, tarP, refP), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
-        refN = objectivePolar(res.x, centre, False, tar, refP, plot)   # get the transformed features and re-assign as the ref
-        rotationStore[i] = float(res.x)
-
-        # return the average error per point
-        err = res.fun / len(tarP)
-
-        # reassign this as the new feature
-        featsMod[i] = refN
-        centreStore[i] = centre
+    # reassign this as the new feature
+    featsMod.tar = tarM
     
     if plot: denseMatrixViewer([dictToArray(refN), dictToArray(refP), centre], True)
 
-    return(rotationStore, featsMod, err, centreStore)
+    return(rotationStore, featsMod, err, centre)
 
 def plotPoints(dir, imgO, cen, points):
 
@@ -646,6 +731,8 @@ def objectivePolar(w, centre, *args):
     # rather than doing some kind of k-means clustering rubbish etc. 
     for n in range(len(tarNames)):
 
+        feat = tarNames[n]
+
         # find the feature relative to the centre
         featPos = tarA[n, :] - centre
 
@@ -655,7 +742,7 @@ def objectivePolar(w, centre, *args):
         # if there is no length (ie rotating on the point of interest)
         # just skip
         if hyp == 0:
-            tarN[i] = tarA[n, :]
+            tarN[feat] = tarA[n, :]
             continue
 
         # get the angle of the point relative to the horiztonal
@@ -670,7 +757,7 @@ def objectivePolar(w, centre, *args):
 
         # if the features were inversed, un-inverse
 
-        tarN[tarNames[n]] = newfeatPos
+        tarN[feat] = newfeatPos
 
 
         # if plotting: denseMatrixViewer([tarA[n], tarN[i], centre])
