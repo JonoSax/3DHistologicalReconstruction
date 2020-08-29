@@ -116,36 +116,32 @@ def miniSample(dataTemp, sample, scale, n):
 
     spec = nameFromPath(sample) 
     try:
-        imgt = tifi.imread(sample)
+        imgt = cv2.imread(sample)
     except:
-        imgt = cv2.cvtColor(cv2.imread(sample), cv2.COLOR_BGR2RGB)
+        print(spec + " failed")
+        return([])
 
-    print("Specimen: " + spec + " downsampled")
+    if imgt is None:
+        print(spec + " failed")
+        return([])
 
-    # NOTE right here could be a SINGLE function which takes the info and 
-    # determines if there are any hard coded rules to apply
-    # for sample H710C, all the c samples are rotated
-    if (n.lower().find("c") >= 0) & (spec.lower().find("h710c") >= 0) or \
-        (n.lower().find("d") >= 0) & (spec.lower().find("h710b") >= 0) or \
-        (n.lower().find("c") >= 0) & (spec.lower().find("h671b") >= 0):
-        imgt = cv2.rotate(imgt, cv2.ROTATE_180)
-        tifi.imwrite(sample, imgt)
-
+    # (n.lower().find("d") >= 0) & (spec.lower().find("h710b") >= 0) or \
 
     # scale = imgt.shape[1]/imgt.shape[0]
     # img = cv2.resize(imgt, (int(1000*scale), 1000))
     img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
 
     # add the sample name to the image (top left corner)
-    cv2.putText(img, spec + "_" + str(n), 
+    '''cv2.putText(img, spec + "_" + str(n), 
         (50, 50), 
         cv2.FONT_HERSHEY_SIMPLEX, 
         1,
         (0, 0, 0),
-        2)
+        2)'''
     # create a temporary jpg image and store the dir
     tempName = dataTemp + spec + '.png'
     cv2.imwrite(tempName, cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    print("Specimen: " + spec + " downsampled")
     # tifi.imwrite(tempName, img)
 
     return(imgt.shape)
@@ -204,8 +200,10 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H653/'
     dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
-    dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
+
 
 
     size = 3
