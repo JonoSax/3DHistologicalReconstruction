@@ -80,8 +80,8 @@ def featFind(dataHome, name, size):
 
     # set the parameters
     gridNo = 6
-    featNo = 4
-    dist = 50
+    featNo = None
+    dist = 30
 
     # get the images
     imgs = sorted(glob(imgsrc + "*.png"))
@@ -90,11 +90,13 @@ def featFind(dataHome, name, size):
     refsrc = imgs[0]
 
     '''
+    # for serialisation
     for tarsrc in imgs[1:]:
         findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featNo, dist)
         refsrc = tarsrc
     '''
-
+    # for parallelisation
+    
     jobs = {}
     for jn, tarsrc in enumerate(imgs[1:]):
         jobs[jn] = Process(target = findFeats, args = (refsrc, tarsrc, dataDest, imgDest, gridNo, featNo, dist))
@@ -103,20 +105,7 @@ def featFind(dataHome, name, size):
 
     for jn in jobs:
         jobs[jn].join()
-
-    '''
-    # for parallelisation
-    jobs = {}
-    for spec in specimens:
-        findFeats(imgsrc, infodest, imgdest, spec)
-        # NOTE some of the sample don't have many therefore shouldn't process
-        # jobs[spec] = Process(target=findFeats, args = (dataSource, spec))
-        # jobs[spec].start()
-    '''
-    '''
-    for spec in specimens:
-        jobs[spec].join()
-    '''
+    
 
 def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist = 50):
 
@@ -235,14 +224,15 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist
                     allsize.append(kp_tar[m.trainIdx].size)
                     alldistance.append(m.distance)
 
+    # if there are more than featNo matches then pick the BEST of all those features
+    if featNo is None or len(alltarpt) > featNo:
+        matchRef, matchTar, matchSize, matchDistance = matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo)
+        print(name_tar + " has " + str(len(matchTar)) + " features")
+
     # if there are less than the specific number of features, create a GUI to perform 
     # manual matching
-    if len(alltarpt) < featNo:
+    elif len(alltarpt) < featNo:
         matchRef, matchTar = featSelectPoint(img_ref, img_tar, [], [], 3)
-
-    # if there are more than featNo matches then pick the BEST of all those features
-    else:
-        matchRef, matchTar, matchSize, matchDistance = matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo)
 
     # ---------- update and save the found features ---------
 
@@ -256,8 +246,8 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist
     # store the positions of the identified features for each image as 
     # BOTH a reference and target image. Include the image size this was 
     # processed at
-    dictToTxt(matchRefDict, dataDest + "/" + name_ref + "ref.feat", shape = str(img_refO.shape))
-    dictToTxt(matchTarDict, dataDest + "/" + name_tar + "tar.feat", shape = str(img_tarO.shape))
+    dictToTxt(matchRefDict, dataDest + "/" + name_ref + ".reffeat", shape = img_refO.shape, fit = False)
+    dictToTxt(matchTarDict, dataDest + "/" + name_tar + ".tarfeat", shape = img_tarO.shape, fit = False)
 
     # ---------- create a combined image of the target and reference image matches ---------
 
@@ -316,7 +306,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist
     cv2.imwrite(imgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_refF, img_tarF]))
 
     print("     Done matching " + name_ref + " to " + name_tar)
-    
+
 def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = None, dist = 50):
 
     # this takes lists of all the information from the sift feature identification 
@@ -399,9 +389,11 @@ def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = None, dist = 
         noFeatFind = 0  # keep track of the number of times a match has not been found
         for r, t, s, d in zip(allrefpt, alltarpt, allsize, alldistance):
             
-            # once the criteria of meeting the number of features is met, break
-            if len(matchTarn) >= featNo:
-                break
+            # if a featNo criteria is set, continue looking until the target number of features is 
+            # met (or if there are no new features found for a duration of the search, bottom break)
+            if featNo is int:
+                if len(matchTarn) >= featNo:
+                    break
 
             # if the difference between the any of the already found feature is less than 100 
             # pixels, don't use it
@@ -481,39 +473,56 @@ def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = None, dist = 
     allsize = list(np.array(allsize)[sort])
     alldistance = list(np.array(alldistance)[sort])
 
-    # get the two best features found
-    matchRef, matchTar, matchSize, matchDistance = findbestfeatures()
-
     # append the next n number of best fit features to the matches but 
     # ONLY if their angle from the two reference features is within a tolerance 
     # range --> this heavily assumes that the two best fits found are actually 
     # good features...
-    while True:
+    # try up to 5 times
+    for fits in range(5):
+        # get the two best features 
+        matchRef, matchTar, matchSize, matchDistance = findbestfeatures()
+
+        # find features which are spatially coherent relative to the best feature for both 
+        # the referenc and target image and with the other constrains
         matchRefn, matchTarn, matchSizen, matchDistancen = findgoodfeatures()
 
         # If no feature number is used, just find as many features as possible with the 
         # "best" features. NOTE if the best features weren't good then all the subsequent features 
         # found won't be good. It is not recommended to use None for featNo
         if featNo is None:
-            break
-
+            if len(matchTarn) >= 10:
+                # there is an expectaion that None will find lots of features... so set the bar kind of high
+                return(matchRefn, matchTarn, matchSizen, matchDistancen)
+                
         # if the required number of features was found then break 
         elif len(matchTarn) >= featNo:
-            break
+            return(matchRefn, matchTarn, matchSizen, matchDistancen)
+
+        # if the number of features found doesn't meet the conditions, then perform 
+        # another fitting procedure (up until 5 iteration) but save the best found features 
+        # so far to be returned at the end
+        if fits == 0: pass
+        elif (len(matchTarn) > len(info['tar'])): pass
+        else: continue
+
+        info = {
+            "ref": matchRefn, 
+            "tar": matchTarn, 
+            "size": matchSizen, 
+            "dist": matchDistancen
+        }
 
         # if insufficient new features were not found then find new "best" features and 
         # begin the process again. NOTE that the chance of actually finding more features
         # is unlikely if these "best" features were actually the best, but there is a chance
         # that the "best" features were not a good match so this process allows the user to 
         # to 
-        else:
-            matchRef, matchTar, matchSize, matchDistance = findbestfeatures()
             
-            # shows what features were found relative to each other
-            # denseMatrixViewer([matchRefn, matchTarn], True)
-    
+        # shows what features were found relative to each other
+        # denseMatrixViewer([matchRefn, matchTarn], True)
 
-    return(matchRefn, matchTarn, matchSizen, matchDistancen)
+    # if multiple rounds of fitting occured, then return the best features found
+    return(info['ref'], info['tar'], info['size'], info['dist'])
 
 
 # ------------ HARD CODED SPECIMEN SPECIFIC FEATURES ------------
