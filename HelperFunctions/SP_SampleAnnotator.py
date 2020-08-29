@@ -25,16 +25,18 @@ import matplotlib.pyplot as plt
 import tifffile as tifi
 from multiprocessing import Process
 if __name__.find("HelperFunctions") == -1:
-    from Utilities import nameFromPath, dirMaker, txtToDict, dictToTxt, hist_match
+    from Utilities import *
 else:
-    from HelperFunctions.Utilities import nameFromPath, dirMaker, txtToDict, dictToTxt, hist_match
+    from HelperFunctions.Utilities import *
 
 
-def featChangePoint(dataSource, ref, tar, ts = 4):
+def featChangePoint(dataSource, ref, tar, nopts = 5, ts = 4):
 
     # this fuction brings up a gui which allows for a user to manually CHANGE
     # features on the images. This modifies the original .feat file
-    # Inputs:   (ref, tar), reference and target name of the samples to change
+    # Inputs:   (dataSource), the directory of where to get the info
+    #           (ref, tar), reference and target name of the samples to change
+    #           (nopts), number of point to change the annotations of, defaults 5
     #           (ts), text size for plots
     # Outputs:  (matchRef, matchTar), updated ref and target features with new points added
     #           (), also saves the new ref and tar positions in the SAME location
@@ -46,13 +48,11 @@ def featChangePoint(dataSource, ref, tar, ts = 4):
     imgrefdir = imgdirs + ref + ".png"
     imgtardir = imgdirs + tar + ".png"
 
-    matchRefdir = infodirs + ref + ".feat"
-    matchTardir = infodirs + tar + ".feat"
+    matchRefdir = infodirs + ref + ".reffeat"
+    matchTardir = infodirs + tar + ".tarfeat"
     
     matchRefO = txtToDict(matchRefdir, float)[0]
     matchTarO = txtToDict(matchTardir, float)[0]
-    matchRef = matchRefO.copy()
-    matchTar = matchTarO.copy()
 
     imgref = cv2.cvtColor(cv2.imread(imgrefdir), cv2.COLOR_BGR2RGB)
     imgtar = cv2.cvtColor(cv2.imread(imgtardir), cv2.COLOR_BGR2RGB)
@@ -60,30 +60,42 @@ def featChangePoint(dataSource, ref, tar, ts = 4):
     # automatically set the text size
     ts = imgref.shape[0]/1000
 
-
-    # get all the features which both slices have
-    refL = list(matchRef.keys())
-    tarL = list(matchTar.keys())
-    feat, c = np.unique(refL + tarL, return_counts=True)
-    commonFeat = feat[np.where(c == 2)]
+    _, commonFeat = uniqueKeys([matchRefO, matchTarO])
 
     # create the dictionary with ONLY the common features and their positions
-    refCommon = {}
-    tarCommon = {}
+    # for the number of features specified by nofts
+    matchRef = {}
+    matchTar = {}
+
+    # select only up to the specified number of points to use
+    if nopts < len(commonFeat):
+        commonFeat = commonFeat[:nopts]
+
+    # if there are less matched points than desired, add some fake ones
+    # to move around later
+    elif nopts > len(commonFeat):
+        for i in range(nopts - len(commonFeat)):
+            pt = "added_" + str(i)
+            commonFeat.append(pt)
+            matchRefO[pt] = np.array([0, 0])
+            matchTarO[pt] = np.array([0, 0])
 
     for cf in commonFeat:
-        refCommon[cf] = matchRef[cf]
-        tarCommon[cf] = matchTar[cf]
+        matchRef[cf] = matchRefO[cf]
+        matchTar[cf] = matchTarO[cf]
 
     # create a standard combined image
     imgs = [imgref, imgtar]
+
     # get the image dimensions
     imgshapes = []
     for img in imgs:
         imgshapes.append(np.array(img.shape))
+
     # create a max size field of all images
     xm, ym, cm = np.max(np.array(imgshapes), axis = 0)
     field = np.zeros((xm, ym, cm)).astype(np.uint8)
+
     # stack the images next to each other to create a combined image
     imgsStand = []
     for img in imgs:
@@ -93,18 +105,19 @@ def featChangePoint(dataSource, ref, tar, ts = 4):
     imgCombine = np.hstack(imgsStand)
 
     featChange = {}
+    cv2.startWindowThread()
     for feat in commonFeat:
 
         # get the pair of features to change
         featChange['ref'] = matchRef[feat]
         featChange['tar'] = matchTar[feat]
-
+        
         for featC in featChange:
 
             featID = featChange[featC]
         
             # draw on the points
-            imgCombineA = annotateImg(imgCombine.copy(), [refCommon, tarCommon], ts)
+            imgCombineA = annotateImg(imgCombine.copy(), [matchRef, matchTar], ts)
 
             if featC == 'tar':
                 featID += np.array([ym, 0])
@@ -114,6 +127,7 @@ def featChangePoint(dataSource, ref, tar, ts = 4):
             
             # get the x and y position from the feature
             y, x = roiselector(imgCombineA)
+
             # if the window is closed to skip selecting a feature, keep the feature
             if np.sum(x) * np.sum(y) == 0:
                 yme = featID[0]
@@ -124,20 +138,15 @@ def featChangePoint(dataSource, ref, tar, ts = 4):
 
             # append reference and target information to the original list
             if featC == 'ref':
-                refCommon[feat] = np.array((yme, xme))
+                matchRef[feat] = np.array((yme, xme))
             elif featC == "tar":
-                tarCommon[feat] = np.array((yme, xme)) - np.array([ym, 0])
+                matchTar[feat] = np.array((yme, xme)) - np.array([ym, 0])
 
-        # reassign the modified features to the master dictionary
-        matchRef[feat] = refCommon[feat]
-        matchTar[feat] = tarCommon[feat] 
-
-    cv2.destroyAllWindows()
 
     # save the new manually added positions to the original location, REPLACING the 
     # information
-    dictToTxt(matchRef, matchRefdir)
-    dictToTxt(matchTar, matchTardir)
+    dictToTxt(matchRef, matchRefdir, fit = False)
+    dictToTxt(matchTar, matchTardir, fit = False)
 
     return(matchRef, matchTar)
 
@@ -288,7 +297,7 @@ def roiselector(img):
     scale = yc / int(size / r)
 
     # perform a search over a reduced size area
-    roi = cv2.selectROI("image", cv2.resize(img, (int(size / r), size)))
+    roi = cv2.selectROI("Matching", cv2.resize(img, (int(size / r), size)), showCrosshair=True)
 
     # get the postions
     y = np.array([roi[1], roi[1] + roi[3]])
