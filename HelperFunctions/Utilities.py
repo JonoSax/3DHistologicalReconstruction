@@ -181,7 +181,7 @@ def dictToTxt(data, path, **kwargs):
         argK.append(k)
 
     for v in kwargs.values():
-        argV.append(v)
+        argV.append(str(v))
 
     # write the arguments at the top of the file
     for i in range(len(kwargs)):
@@ -216,6 +216,18 @@ def txtToDict(path, typeV = int):
         for i in range(argNo):
             arg = f.readline().split("_")
             args[arg[0]] = arg[1].replace("\n", "")
+
+            # create conditions to read in the info correctly
+            # if logical True operator
+            if args[arg[0]].lower().find("true") > -1:
+                args[arg[0]] = True
+            # if logical False operator
+            elif args[arg[0]].lower().find("false") > -1:
+                args[arg[0]] = False
+            # if a tuple
+            elif args[arg[0]].find("(") < args[arg[0]].find(")"):
+                args[arg[0]] = tuple(np.array(args[arg[0]].replace("(", "").replace(")", "").split(",")).astype(int))
+
         # use to verify all the information has been collected
         dictNo = int(f.readline().replace("Entries:", ""))
         for n in range(dictNo):
@@ -225,7 +237,7 @@ def txtToDict(path, typeV = int):
             # save data as a dictionary
             pathinfo[key] = np.array(data.split(" ")[0:-1]).astype(typeV)
 
-        return(pathinfo, args)
+        return([pathinfo, args])
 
     # if a list of paths is provided then create a dictionary containing dictionaries
     # of all the dictionaries of info
@@ -240,7 +252,6 @@ def txtToDict(path, typeV = int):
 
     else:
         sampleDict = []
-
 
     return(sampleDict)
 
@@ -292,7 +303,7 @@ def denseMatrixViewer(coords, plot = True, unique = False):
     sizes = [20, 16, 12, 8]
 
     for coord, col, s in zip(coords, cols, sizes):
-        coord = (coord - [Xmin, Ymin] + pad).astype(int)
+        coord = (np.array(coord) - [Xmin, Ymin] + pad).astype(int)
         coord = list(coord)
         if type(coord[0]) is np.int64:
             coord = [coord]
