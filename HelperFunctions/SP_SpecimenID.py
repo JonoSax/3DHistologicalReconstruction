@@ -8,14 +8,16 @@ import cv2
 from matplotlib import pyplot as plt
 import os 
 from glob import glob
-from PIL import Image
-from multiprocessing import Process, Queue, Manager
+from multiprocessing import Pool
+import multiprocessing
 import tifffile as tifi
-if __name__ == "__main__":
-    from Utilities import nameFromPath, dirMaker, dictToTxt, txtToDict
+from itertools import repeat
+if __name__ != "HelperFunctions.SP_SpecimenID":
+    from Utilities import *
 else:
-    from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt, txtToDict
+    from HelperFunctions.Utilities import *
 
+if __name__ != "__mp_main__": multiprocessing.set_start_method('spawn')
 '''
 
 TO DO:
@@ -41,10 +43,10 @@ def specID(dataHome, name, size):
     
     # imgsrc = '/Volumes/USB/IndividualImages/'
 
-    sectionSelecter(name, datasrc)
+    sectionSelecter(name, datasrc, serialised = False)
 
 
-def sectionSelecter(spec, datasrc):
+def sectionSelecter(spec, datasrc, serialised = True):
 
     # this function creates a mask which is trying to selectively surround
     # ONLY the target tissue
@@ -52,11 +54,11 @@ def sectionSelecter(spec, datasrc):
     #           (datasrc), the location of the jpeg images (as extracted 
     #               by tif2pdf)
 
+    # use only 3/4 the CPU resources availabe
+    cpuCount = int(multiprocessing.cpu_count() * 0.75)
+
     imgsmallsrc = datasrc + "images/"
     imgbigsrc = datasrc + "tifFiles/"
-
-    # imgsrc = '/Volumes/USB/IndividualImages/temporaryH710A/'
-    # datasrc = '/Volumes/USB/IndividualImages/temporaryH710A/'
 
     # create the directory where the masked files will be created
     imgMasked = datasrc + "masked/"
@@ -64,73 +66,58 @@ def sectionSelecter(spec, datasrc):
     dirMaker(imgMasked)
     dirMaker(imgPlots)
 
+    # get all the images 
     imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
     imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
 
 
-    masksStore = {}
-    splitStore = {}
-    get = {}
-    q = {}
-    jobs = {}
+    print("------- SEGMENT OUT EACH IMAGE AND CREATE MASKS -------")
 
-    scale = 0.5
 
-    print("Processing " + spec)
-
-    # Create a mask from a LOWER RESOLUTION IMAGE --> uses less ram
     # serialised
-    for i in imgsmall[:0]:
-        name = nameFromPath(i, 3)
-        img = cv2.imread(i)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) 
+    if serialised:
+        for idir in imgsmall:    
+            maskMaker(idir, imgMasked, True)
 
-        # create the mask for the individual image
-        split = maskMaker(name, img, 30, True, imgMasked, True)
-        splitStore[name] = split
-
-    # parallelised
-    return_dict = Manager().dict()
-    for i in imgsmall[:0]:
-        name = nameFromPath(i, 3)
-        img = cv2.imread(i)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) 
-
-        # create the mask for the individual image
-        split = maskMaker(name, img, 30, True, imgMasked, True)
-
-        # parallelise
-        jobs[name] = Process(target = maskMaker, args = (name, img, 30, True, imgMasked, True, return_dict))
-        jobs[name].start()
-
-    for name in jobs:
-        jobs[name].join()
+    else:
+        # parallelise with n cores
+        with Pool(processes=cpuCount) as pool:
+            pool.starmap(maskMaker, zip(imgsmall[:0], repeat(imgMasked), repeat(True)))
         
-    for name in return_dict.keys():
-        splitStore[name] = return_dict[name]
+        # get the directories of the new masks
+        masks = sorted(glob(imgMasked + "*.pbm"))
 
-    print(spec + "   Masks created")
 
-    # dictToTxt(splitStore, imgMasked + "all.splitstore")
+    print("------- APPLY THE MASKS TO ALL THE IMAGES -------")
 
-    masks = sorted(glob(imgMasked + "*.pbm"))
+    
+    # serialised
+    if serialised:
+        tifShape = {}
+        jpegShape = {}
+        info = []
+        for m, iB, iS in zip(masks, imgbig, imgsmall):
+            name = nameFromPath(iB)
+            info.append(imgStandardiser(m, iB, iS))
 
-    # APPLY THE MASK TO THE LOW AND HIGH RESOLUTION IMAGES
-    # Note this is serialised only because it will destroy my ram.... 
-    # loading tif files is a big no no
-    tifShape = {}
-    jpegShape = {}
-    for iB, iS, m in zip(imgbig, imgsmall, masks):
-        name = nameFromPath(iB)
-        tifShape, jpegShape = imgStandardiser(iB, iS, imgMasked, tifShape, jpegShape, m)
-        print(name + " modified")
+    else:
+        # parallelise with n cores
+        with Pool(processes=cpuCount) as pool:
+            info = pool.starmap(imgStandardiser, zip(masks, imgbig, imgsmall))
+
+        # extract the tif and jpeg info
+        tifShape = {}
+        jpegShape = {}
+        for i in info:
+            tifShape.update(i[0])
+            jpegShape.update(i[1])
 
     # create the all.shape information file
     dictToTxt(tifShape, datasrc + "info/all.tifshape")
     dictToTxt(jpegShape, datasrc + "info/all.jpgshape")
     print('Info Saved')
 
-def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, return_dict = None):     
+def maskMaker(idir, imgMasked = None, plotting = False):     
 
     # this function loads the desired image and processes it as follows:
     #   0 - GrayScale image
@@ -141,9 +128,14 @@ def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, r
     #   5 - binarising funciton, adaptative
     #   6 - single feature identification with flood fill
     # Inputs:   (img), the image to be processed
-    #           (r), cut off frequency for low pass filter
     #           (plotting), boolean whether to show key processing outputs, defaults false
     # Outputs:  (im), mask of the image  
+
+    #     figure.max_open_warning --> fix this to not get plt warnings
+
+    imgO = cv2.cvtColor(cv2.imread(idir), cv2.COLOR_BGR2GRAY) 
+
+    name = nameFromPath(idir)
 
     print(name + " masking")
     rows, cols = imgO.shape
@@ -170,10 +162,17 @@ def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, r
         img[-int(cols*0.05):, :] = np.median(img)
     
         b = np.mean(img)
+
+    if name.find("H710C") >= 0:
+
+        # remove a little bit of the left hand side of the image 
+        img[:, :int(rows*0.08)] = np.median(img)
+        img[:, -int(rows*0.05):] = np.median(img)
     
     # ----------- low pass filter -----------
 
     # low pass filter
+    r = 30
     f = np.fft.fft2(img.copy())
     fshift = np.fft.fftshift(f)
     # magnitude_spectrum = 20*np.log(np.abs(fshift))
@@ -254,7 +253,7 @@ def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, r
 
     # save the mask as a .pbm file
     cv2.imwrite(imgMasked + name + ".pbm", im_id)
-
+    print("     " + name + " Masked")
     # plot the key steps of processing
     if plotting:
         # create sub plotting capabilities
@@ -295,12 +294,6 @@ def maskMaker(name, imgO, r, split = True, imgMasked = None, plotting = False, r
     im = cv2.resize(im, (int(x), int(y)))
     im = np.expand_dims(im, -1)
     '''
-
-    if return_dict is None:
-        return(extract)
-    else:
-        return_dict[name] = extract
-        print("put " + name)
 
 def bounder(im_id):
     
@@ -425,7 +418,7 @@ def masterMaskMaker(name, maskShapes, masksStore):
 
     return(masksStore, maskShapes)
 
-def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, maskdir = None):
+def imgStandardiser(maskpath, imgbigpath, imgsmallpath):
 
     # this gets all the images in a directory and applies a mask to isolate 
     # only the target tissue
@@ -444,11 +437,13 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
     # get info to place all the images into a standard size to process (if there
     # is a mask)
 
-    name = nameFromPath(imgsmallDir, 3)
-    imgsmall = cv2.imread(imgsmallDir)
-    imgbig = cv2.imread(imgbigDir)
-
-    # split = txtToDict(imgMasked + "all.splitstore")[0][name]
+    name = nameFromPath(imgsmallpath, 3)
+    print(name + " modifying")
+    imgsmall = cv2.imread(imgsmallpath)
+    imgbig = cv2.imread(imgbigpath)
+    tifShape = {}
+    jpegShape = {}
+    imgMasked = regionOfPath(maskpath)
 
     ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
 
@@ -456,15 +451,19 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
     # ----------- HARD CODED SPECIMEN SPEICIFIC MODIFICATIONS -----------
 
     # if there are just normal masks, apply them
-    if maskdir is not None:
+    if maskpath is not None:
 
         # read in the raw mask
-        mask = (cv2.imread(maskdir)/255).astype(np.uint8)
+        mask = (cv2.imread(maskpath)/255).astype(np.uint8)
 
         # get the bounding positional information
         extract = bounder(mask[:, :, 0])
 
         for n in extract:
+
+            if mask is None or imgbig is None or imgsmall is None:
+                print("\n\n!!! " + name + " failed!!!\n\n")
+                break
 
             # create a a name
             newid = name + "_" + str(n)
@@ -475,9 +474,9 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
             # extract only the mask containing the sample
             maskE = mask[y[0]:y[1], x[0]:x[1], :]
 
-            # if the mask section is less than 10% of the entire mask area, it probably isn't 
+            # if the mask section is less than 20% of the entire mask area, it probably isn't 
             # a sample and is not useful
-            if maskE.size < mask.size * 0.1:
+            if maskE.size < mask.size * 0.2:
                 continue
 
             # extract only the image which contains the sample
@@ -503,40 +502,9 @@ def imgStandardiser(imgbigDir, imgsmallDir, imgMasked, tifShape, jpegShape, mask
             tifShape[newid] = imgbigsect.shape
             jpegShape[newid] = imgsmallsect.shape
 
-    
-    '''
-    # save the segmented images
-    if len(split) > 0:
-        for n in range(int(len(split)/2)):
-            # get the pairs of start and end points 
-            xo = split[int(2*n)]
-            x1 = split[int(2*n + 1)]
+    print("     " + name + " modified")
 
-            imgSectSmall = imgsmall[:, xo:x1, :]
-            newid = name + "_" + str(n)
-
-            # if more than 90% of the image is black then it is not useful information
-            if np.where(imgSectSmall == 0)[0].size > (imgSectSmall.size) * 0.9:
-                continue
-
-            imgSectBig = imgbig[:, int(xo/ratio):int(x1/ratio), :]
-            
-            cv2.imwrite(imgMasked + newid + ".png", imgSectSmall)
-            tifi.imwrite(imgMasked + newid + ".tif", imgSectBig)
-
-            tifShape[newid] = imgSectBig.shape
-            jpegShape[newid] = imgSectSmall.shape
-
-    # if there are no segmentations, save as is
-    else:
-        cv2.imwrite(imgMasked + name + ".png", imgsmall)
-        tifi.imwrite(imgMasked + name + ".tif", imgbig)
-
-        tifShape[name] = imgsmall.shape
-        jpegShape[name] = imgbig.shape
-    '''
-
-    return(tifShape, jpegShape)
+    return([tifShape, jpegShape])
 
 
 if __name__ == "__main__":
