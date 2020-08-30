@@ -4,22 +4,23 @@ this script takes feat, bound and segsection information and rotates them to min
 the error between slices
 
 '''
-if __name__ == "__main__":
+import numpy as np
+import cv2
+from scipy.optimize import minimize
+from glob import glob
+import multiprocessing
+from multiprocessing import Pool
+from copy import deepcopy
+from itertools import repeat
+if __name__ != "HelperFunctions.SP_AlignSamples":
     from Utilities import *
     from SP_SampleAnnotator import featChangePoint
 else:
     from HelperFunctions.Utilities import *
     from HelperFunctions.SP_SampleAnnotator import featChangePoint
-import numpy as np
-import tifffile as tifi
-import cv2
-from scipy.optimize import minimize
-from random import randint
-from math import ceil
-from glob import glob
-import multiprocessing
-from multiprocessing import Process, Queue
-from copy import deepcopy
+
+# set the multiprocessing type (only do it if it's not spawned)
+if __name__ != "__mp_main__": multiprocessing.set_start_method('spawn')
 
 # object which contains the reference and target positions between a single matching pair
 class sampleFeatures:
@@ -27,20 +28,6 @@ class sampleFeatures:
         self.ref = ref
         self.tar = tar
         self.fit = fit
-
-
-tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
-
-# NOTE this should include a function where if there are args in the .feat and .bound 
-# files (ie the size of the original image it came from) then re-shape to the new size
-
-'''
-
-TODO
-    - make it work as part of the automatic workflow script taking the .feat files
-    outputted from FeatFinder 
-
-'''
 
 def align(data, name = '', size = 0, saving = True):
 
@@ -52,6 +39,10 @@ def align(data, name = '', size = 0, saving = True):
     # Outputs:  (), extracts the tissue sample from the slide and aligns them by 
     #           their identified featues
 
+    # use only 3/4 the CPU resources availabe
+    cpuCount = int(multiprocessing.cpu_count() * 0.75)
+    serialise = False
+
     # get the file of the features information 
     src = data + str(size)
     dataSegmented = src + '/masked/'     
@@ -59,32 +50,31 @@ def align(data, name = '', size = 0, saving = True):
     segInfo = src+ '/info/'
 
     # get the sample slices of the specimen to be processed
-    samples = sorted(nameFromPath(glob(dataSegmented + "*.tif"), 3))
+    samples = sorted(glob(dataSegmented + "*.png"))[50:120]
+    sampleNames = nameFromPath(samples, 3)
 
-    # get affine transformation information of the features for optimal fitting
+    # use the first sample png as the reference image
+    refImg = cv2.imread(samples[6])
+
+    # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential
-    shiftFeatures(samples, segInfo)
-    
-    # serial transformation
-    for spec in samples:
-        transformSamples(dataSegmented, segInfo, alignedSamples, spec, size, saving = False)
+    # shiftFeatures(sampleNames, segInfo, alignedSamples)
 
-    # my attempt at parallelising this part of the process. Unfortunately it doesn't work 
-    # because the cv2.warpAffine function is objectivePolar fails for AN UNKNOWN REASON
-    # when finding the new matrix on the second feature.... unknown specifically but 
-    # issues with opencv and multiprocessing are known. 
-    '''
-    jobs = {}
-    for spec in specimens:
-        jobs[spec] = Process(target=transformSamples, args = (dataSegmented, segInfo, alignedSamples, spec, size, saving)) 
-        jobs[spec].start()
+    # apply the affine transformations to all the images and info
+    if serialise:
+        # serial transformation
+        for spec in sampleNames:
+            transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving = False, refImg = refImg)
 
-    for spec in specimens:
-        jobs[spec].join()
-    '''
+    else:
+        # parallelise with n cores
+        with Pool(processes=cpuCount) as pool:
+            pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(False), repeat(refImg)))
+
+
     print('Alignment complete')
 
-def shiftFeatures(featNames, src):
+def shiftFeatures(featNames, src, alignedSamples):
 
     # Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
     # Inputs:   (featNames), the samples being aligned
@@ -100,8 +90,7 @@ def shiftFeatures(featNames, src):
     featRef = {}
     featTar = {}
     for f in featNames:
-        # featsMaster[f] = txtToDict(src + f + ".feat", float)[0]
-        # feats[f] = txtToDict(src + f + ".feat", float)[0]
+        # load all the features
         try: 
             featTar[f] = txtToDict(src + f + ".tarfeat", float)
         except: pass
@@ -171,6 +160,7 @@ def shiftFeatures(featNames, src):
             refit = False
             manualFit = False
             
+            # mimimise the error per feature of the currently selected feature
             while True:        
 
                 # !! Every time the loop starts here, it is OPTIMISING the fit of the CURRENT features !!
@@ -211,7 +201,7 @@ def shiftFeatures(featNames, src):
                 #   the error of fitting = 0
                 #   a turning point has been detected and error is increasing
                 if errN == 0:
-                    print("     Fitting successful, err/feat = " + str(errN)) 
+                    print("     Fitting successful, err/feat = " + str(int(errN))) 
                     featsMod = feattmp      # this set of feats are the ones to use
 
                 # positions have converged on the optimum and the error is acceptable
@@ -219,14 +209,14 @@ def shiftFeatures(featNames, src):
                     # if the final error is below a threshold, it is complete
                     # but use the previously fit features
                     if errO < 1e2:
-                        print("     Fitting converged, attempt " + str(n) + ", err/feat = " + str(errO))
+                        print("     Fitting converged, attempt " + str(n) + ", err/feat = " + str(int(errO)))
                         break
 
                     # with the current features, if they are not providing a good match
                     # then delet them from the dictionary. The features are ordered by 
                     # the distance of the descriptor with feat_0 the best fit.
                     else:
-                        # print("     Modifying feat, err/feat = " + str(errO))
+                        # print("     Modifying feat, err/feat = " + str(int(errO)))
                         # denseMatrixViewer([featsMod[rF], featsMod[tF], centre[tF]], True)
                         
                         # there have to be at least 3 points left to enable good fitting practice
@@ -254,7 +244,7 @@ def shiftFeatures(featNames, src):
 
                 # if there are only 3 features remaining for the fitting process
                 # then it will require manual fitting
-                elif errCnt > 10 or n > 200:
+                elif errCnt > 10:
                     refit = True
                     break
 
@@ -264,7 +254,7 @@ def shiftFeatures(featNames, src):
                 # count the number of fits done
                 n += 1
                     
-            # -------- PERFORM A NEW FITTING PROCEDURE WITH MODIFIED FEATURES --------
+            # -------- MODIFY THE FEATURES TO PERFORM A NEW FITTING PROCEDURE --------
 
             # if there is no possible combination of features that can fit the samples, 
             # manually annotate new one
@@ -308,20 +298,8 @@ def shiftFeatures(featNames, src):
             elif refit: 
                 continue
 
-            # if a suitable alignment has been found then progress
+            # if a suitable alignment has been found then progress 
             else:
-                # replace the features that were found with the ones that 
-                # allowed for this fitting
-                featRefFinal = deepcopy(featRef[rF][0])
-                featTarFinal = deepcopy(featTar[tF][0])
-                for lF in lastFt:
-                    del featRefFinal[lF]
-                    del featTarFinal[lF]
-
-                # replace the features in the matched folder so that you dont' have to constantly 
-                # refit the features everytime you run this script
-                dictToTxt(featRefFinal, src + rF + ".reffeat", fit = True)
-                dictToTxt(featTarFinal, src + tF + ".tarfeat", fit = True)
                 break
 
         # -------- CREATE THE SINGLE TRANSLATION AND ROTATION FILES --------
@@ -332,6 +310,7 @@ def shiftFeatures(featNames, src):
             translateNet[tF] = np.array([0, 0])
             rotateNet[tF] = [0, 0, 0]
 
+        # if a fitting procedure was performed, save the relevant information
         else:
             # replicate the whole fitting proceduce in a single go to be applied to the 
             # images later on
@@ -375,11 +354,16 @@ def shiftFeatures(featNames, src):
             rotateNet[tF] = [rotateSum, centre[0], centre[1]]  
             # denseMatrixViewer([featsMod.ref, featsMod.tar, centre], True)
 
+            # save the aligned features
+            dictToTxt(featsMod.ref, alignedSamples + rF + ".reffeat", fit = True)
+            dictToTxt(featsMod.tar, alignedSamples + tF + ".tarfeat", fit = True)
+
             # save the tif shapes, translation and rotation information
+            # NOTE this updates every iteration because it is pretty important!!
             dictToTxt(translateNet, src + "all.translated")
             dictToTxt(rotateNet, src + "all.rotated")
 
-def transformSamples(segSamples, segInfo, dest, spec, size, saving):
+def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = None):
     # this function takes the affine transformation information and applies it to the samples
     # Inputs:   (src), directories of the segmented samples
     #           (dest), directories to save the aligned samples
@@ -417,11 +401,10 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
         # save the info
         dictToTxt(infoE, dest + spec + "." + t)     # from the info in the txt file, rename
         return(infoE)
-        
     
     segmentdir = segSamples + spec + ".tif"
-    refdir = segInfo + spec + ".reffeat"
-    tardir = segInfo + spec + ".tarfeat"
+    refdir = dest + spec + ".reffeat"
+    tardir = dest + spec + ".tarfeat"
     tifShapesdir = segInfo + "all.tifshape"
     jpgShapesdir = segInfo + "all.jpgshape"
     translateNetdir = segInfo + "all.translated"
@@ -472,15 +455,18 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
 
     # adjust the translations of each image and save the new images with the adjustment
     # for spec in src:
+    # NOTE the features are already updated in the shiftFeatures function
+    
+    # adjust the points for the tif image
+    for sI in specInfo:
+        for f in specInfo[sI]:
+            specInfo[sI][f] = specInfo[sI][f] * shapeR + np.array(maxPos)
+        # adjust all the points
+        # specInfo[t] = adjustPos(specInfo[t], dest, sample, maxPos, translateNet[sample], w, shapeR, t, centre)
+    
 
     # process for feats, bound and segsections. NOTE segsections not always present so 
     # error handling incorporated
-
-    for t in specInfo:
-        # adjust all the points
-        specInfo[t] = adjustPos(specInfo[t], dest, sample, maxPos, translateNet[sample], w, shapeR, t, centre)
-
-    # translate the image  
     
     # get the maximum dimensions of all the tif images (NOT the jpeg images)
     tsa = dictToArray(tifShapes, int)
@@ -509,6 +495,11 @@ def transformSamples(segSamples, segInfo, dest, spec, size, saving):
 
     rot = cv2.getRotationMatrix2D(tuple(centre), -float(w), 1)
     warped = cv2.warpAffine(newField, rot, (xF, yF))
+
+    # perform a colour nomralisation is a reference image is supplied
+    if refImg is not None:
+        for c in range(warped.shape[2]):
+            warped[:, :, c] = hist_match(warped[:, :, c], refImg[:, :, c])
 
     print("done translation of " + sample)
 
@@ -610,7 +601,7 @@ def plotPoints(dir, imgO, cen, points):
             imgO = cv2.imread(imgO)
 
     img = imgO.copy()
-    colours = [(0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 255, 255)]
+    colours = [(0, 0, 255), (0, 255, 255), (255, 0, 255), (255, 255, 255)]
     sizes = [1, 0.8, 0.6, 0.4]
 
     si = 50
