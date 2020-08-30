@@ -74,12 +74,12 @@ def featFind(dataHome, name, size):
     dirMaker(imgDest)
 
     # set the parameters
-    gridNo = 6
+    gridNo = 8
     featNo = None
     dist = 30
 
     # get the images
-    imgs = sorted(glob(imgsrc + "*.png"))
+    imgs = sorted(glob(imgsrc + "*.png"))[50:120]
 
     if serialise:
         # serialisation (mainly debuggin)
@@ -92,7 +92,7 @@ def featFind(dataHome, name, size):
             pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featNo), repeat(dist)))
         
 
-def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist = 50):
+def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featNo = None, dist = 50):
 
     # This script finds features between two sequential samples (based on their
     # name) that correspond to biologically the same location. 
@@ -142,8 +142,8 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist
         img_tar[:, :, c] = hist_match(img_tar[:, :, c], img_ref[:, :, c])
     
     x, y, c = img_ref.shape
-    pg = int(np.round(y/gridNo, -1))     # pixel grid size
-    sc = 0.2    # the extra 1D length size of the target section
+    pg = int(np.round(x/gridNo))        # create a grid which is pg x pg pixel size
+    sc = 8                          # create an overlap of sc pixels around this grid
 
     matchDistance = []
     matchRef = []
@@ -164,9 +164,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist
     # ---------- identify features on the reference and target image ---------
 
     # iterate through a pixel grid of pg ** 2 x c size
-    # NOTE the target section is (pg + 2sc) ** 2 x c in size --> idea is that the
-        # target secition will have some significant shift therefore should look in
-        # a larger area
+
     # The reason why a scanning method over the images is implemented, rather than
     # just letting sift work across the full images, is because the nature of the 
     # samples (biological tissue) means there are many repeating structures which has
@@ -181,9 +179,15 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist
     for c in range(1, int(np.ceil(x/pg)) - 1):
         for r in range(1, int(np.ceil(y/pg)) - 1):
 
+            # extract a small overlapping grid from both images
+            startX = np.clip(int(c*pg-sc), 0, x)
+            endX = np.clip(int((c+1)*pg-sc), 0, x)
+            startY = np.clip(int(r*pg-sc), 0, y)
+            endY = np.clip(int((r+1)*pg+sc), 0, y)
+
             # extract a small grid from both image
             imgSect_ref = img_ref[c*pg:(c+1)*pg, r*pg:(r+1)*pg, :]
-            imgSect_tar = img_tar[int((c-sc)*pg):int((c+1+sc)*pg), int((r-sc)*pg):int((r+1+sc)*pg), :]  # NOTE target area search is expaneded
+            imgSect_tar = img_tar[startX:endX, startY:endY, :]  # NOTE target area search is expaneded
 
             # if the proporption of information within the slide is black (ie background)
             # is more than a threshold, don't process
@@ -205,7 +209,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist
                 # get all the matches, adjust for the window used 
                 for m in matches:
                     allrefpt.append(kp_ref[m.queryIdx].pt + np.array([r*pg, c*pg]))
-                    alltarpt.append(kp_tar[m.trainIdx].pt + + np.array([(r-sc)*pg, (c-sc)*pg]))
+                    alltarpt.append(kp_tar[m.trainIdx].pt + + np.array([startY, startX]))
                     allsize.append(kp_tar[m.trainIdx].size)
                     alldistance.append(m.distance)
 
