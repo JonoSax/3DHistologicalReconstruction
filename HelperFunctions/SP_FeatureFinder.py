@@ -13,9 +13,10 @@ import cv2
 import matplotlib.pyplot as plt
 from glob import glob
 import os
-from multiprocessing import Process
+from multiprocessing import Pool
 import multiprocessing
-if __name__ == "__main__" or __name__ == "__mp_main__":
+from itertools import repeat
+if __name__ != "HelperFunctions.SP_FeatureFinder":
     from Utilities import *
     from SP_SampleAnnotator import featSelectPoint
 else:
@@ -26,29 +27,12 @@ else:
 if __name__ != "__mp_main__": multiprocessing.set_start_method('spawn')
 
 '''
-
-Parameters:
-
-dist, the error between descriptors. The lower the number the more similar the 
-gradient descriptors for the sift operations between images are
-
-sz, the size of the feature found by the sift operator. The larger the size the 
-more prominent the feature is in the image
-
-no, the number of tiles to make along the horizontal axis (NOTE this uses square tiles
-so will be a different number vertically)
-
-featNo, number of features that are found per image. NOTE more features do not necessarily 
-mean better fitting as the optimising algorithms may find weird local minimas rather than 
-a global minima with fewer features. If the automatic feature detection doesn't find 
-enough features then a GUI will allow the user to select features until the featNo
-is satisfied.
-
+TODO: explanation of what happens here.....
 
 '''
 
 '''
-TO DO:
+TODO:
     - Find a method to pre-process the image to further enhance the sift operator
         UPDATE I think it is unlikely I will find a way to radically improve SIFT. It is 
         easier to just allow it to do the best it can and add manual points on sections which 
@@ -59,12 +43,23 @@ TO DO:
     on a reference image which I have tried and it doesn't work very well
 
     - EXTRA FOR EXPERTS: conver this into C++ for superior speed
+
+    - Make the sift operator work over each image individually and collect all 
+    the key points and descriptors for ONLY sections which contain a threshold level
+    of no black points (ie nothing). All of these descriptors are then combined into
+    a single list and put into the BF matcher where the rest of the script continues etc.
+        The benefit of this is that it will mean that there doesn't need to be any 
+        hard coded gridding 
 '''
 
 
 def featFind(dataHome, name, size):
     
     # this is the function called by main. Organises the inputs for findFeats
+    
+    # use only 3/4 the CPU resources availabe
+    cpuCount = int(multiprocessing.cpu_count() * 0.75)
+    serialise = False
 
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
@@ -86,26 +81,16 @@ def featFind(dataHome, name, size):
     # get the images
     imgs = sorted(glob(imgsrc + "*.png"))
 
-    # assign the first image as the initial reference image
-    refsrc = imgs[0]
+    if serialise:
+        # serialisation (mainly debuggin)
+        for refsrc, tarsrc in zip(imgs[:-1], imgs[1:]):
+            findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featNo, dist)
 
-    '''
-    # for serialisation
-    for tarsrc in imgs[1:]:
-        findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featNo, dist)
-        refsrc = tarsrc
-    '''
-    # for parallelisation
-    
-    jobs = {}
-    for jn, tarsrc in enumerate(imgs[1:]):
-        jobs[jn] = Process(target = findFeats, args = (refsrc, tarsrc, dataDest, imgDest, gridNo, featNo, dist))
-        jobs[jn].start()
-        refsrc = tarsrc
-
-    for jn in jobs:
-        jobs[jn].join()
-    
+    else:
+        # parallelise with n cores
+        with Pool(processes=cpuCount) as pool:
+            pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featNo), repeat(dist)))
+        
 
 def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo = 1, featNo = None, dist = 50):
 
@@ -416,12 +401,12 @@ def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = None, dist = 
             # print("FEAT BEING PROCESSED")
             angdist = []
             ratiodist = []
-            # use, up to, the top 10 best features: this is more useful/only used if finding
+            # use, up to, the top n best features: this is more useful/only used if finding
             # LOTS of features as this fitting procedure has a O(n^2) time complexity 
             # so limiting the search to this sacrifices limited accuracy for significant 
             # speed ups
-            for n1, (m1, t1) in enumerate(zip(matchRefn[:10], matchTarn[:10])):
-                for n2, (m2, t2) in enumerate(zip(matchRefn[:10], matchTarn[:10])):
+            for n1, (m1, t1) in enumerate(zip(matchRefn[:5], matchTarn[:5])):
+                for n2, (m2, t2) in enumerate(zip(matchRefn[:5], matchTarn[:5])):
 
                     # if the features are repeated, don't use it
                     if n1 == n2:
