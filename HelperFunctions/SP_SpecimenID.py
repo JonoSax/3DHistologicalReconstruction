@@ -17,23 +17,15 @@ if __name__ != "HelperFunctions.SP_SpecimenID":
 else:
     from HelperFunctions.Utilities import *
 
-if __name__ != "__mp_main__": multiprocessing.set_start_method('spawn')
 '''
+TODO: explanation of what happens here.....
 
-TO DO:
-
-    - have this file create create multiple .bound files if there are multiple specimens
-
-    - NOTE this fails to be useful for:
-        images with multiple samples in them
-        if the samples are not the correct orientation (masterMask prevent outlier images
-        form being processed)
-
-    - make this work if a single sample within a specimen is selected (ie the spec in 
-    selectionSelection works for a string input as well as a list)
+-  Investigate if this now works for a single sift operator applied over the 
+entire image, rather than segmenting the image into grids
 
 '''
 
+# NOTE can probably depreciate specID and make sectionSelecter the main function
 def specID(dataHome, name, size):
 
     # get the size specific source of information
@@ -56,6 +48,7 @@ def sectionSelecter(spec, datasrc, serialised = True):
 
     # use only 3/4 the CPU resources availabe
     cpuCount = int(multiprocessing.cpu_count() * 0.75)
+    serialised = True
 
     imgsmallsrc = datasrc + "images/"
     imgbigsrc = datasrc + "tifFiles/"
@@ -76,7 +69,7 @@ def sectionSelecter(spec, datasrc, serialised = True):
 
     # serialised
     if serialised:
-        for idir in imgsmall:    
+        for idir in imgbig:    
             maskMaker(idir, imgMasked, True)
 
     else:
@@ -154,15 +147,12 @@ def maskMaker(idir, imgMasked = None, plotting = False):
 
         img[:int(cols * 0.08), :] = 255
         img[-int(cols * 0.05):, :] = 255
-        b = 140
 
     if name.find("H710B") >= 0:
 
         # remove some of the bottom row
         img[-int(cols*0.05):, :] = np.median(img)
     
-        b = np.mean(img)
-
     if name.find("H710C") >= 0:
 
         # remove a little bit of the left hand side of the image 
@@ -188,6 +178,8 @@ def maskMaker(idir, imgMasked = None, plotting = False):
 
     # ----------- background remove filter -----------
 
+    # find the colour between the two peak value distributions 
+    # this is threshold between the background and the foreground
     histinfo = np.histogram(img, 20)
     hist = histinfo[0]
     diffback = np.diff(hist)
@@ -249,6 +241,7 @@ def maskMaker(idir, imgMasked = None, plotting = False):
     # so it causes an accumulation of "fat" at the bottom of the image. this removes it
     im_id = cv2.rotate(cv2.dilate(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 5), cv2.ROTATE_180)
     
+    # segment out the image
     extract = bounder(im_id)
 
     # save the mask as a .pbm file
@@ -508,6 +501,8 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath):
 
 
 if __name__ == "__main__":
+
+    multiprocessing.set_start_method('spawn')
 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/IndividualImages/'
