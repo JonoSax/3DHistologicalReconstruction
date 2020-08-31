@@ -19,9 +19,6 @@ else:
     from HelperFunctions.Utilities import *
     from HelperFunctions.SP_SampleAnnotator import featChangePoint
 
-# set the multiprocessing type (only do it if it's not spawned)
-if __name__ != "__mp_main__": multiprocessing.set_start_method('spawn')
-
 # object which contains the reference and target positions between a single matching pair
 class sampleFeatures:
     def __init__(self, ref = None, tar = None, fit = None, shape = None):
@@ -50,15 +47,15 @@ def align(data, name = '', size = 0, saving = True):
     segInfo = src+ '/info/'
 
     # get the sample slices of the specimen to be processed
-    samples = sorted(glob(dataSegmented + "*.png"))[50:120]
+    samples = sorted(glob(dataSegmented + "*.png"))
     sampleNames = nameFromPath(samples, 3)
 
     # use the first sample png as the reference image
-    refImg = cv2.imread(samples[6])
+    refImg = cv2.imread(samples[1])
 
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential
-    # shiftFeatures(sampleNames, segInfo, alignedSamples)
+    shiftFeatures(sampleNames, segInfo, alignedSamples)
 
     # apply the affine transformations to all the images and info
     if serialise:
@@ -173,15 +170,10 @@ def shiftFeatures(featNames, src, alignedSamples):
                 translation, feattmp, err = translatePoints(featsMod, bestfeatalign = False)
                 
                 # keep track of a temporary translation
-                #print("ts = " + str(translateSum))
                 translateSum += translation
-                #print("te = " + str(translateSum))
-
-                # print(translation[tF]) # --> the last optimal change in location is the WRONG shift
-                # store the accumulative translation vectors 
 
                 # find the optimum rotational adjustment and produce modified feats
-                _, feattmp, errN, centre = rotatePoints(feattmp, bestfeatalign = False, plot = False)
+                _, feattmp, errN, centre, MxErrPnt = rotatePoints(feattmp, bestfeatalign = False, plot = False)
 
                 # print("     Fit " + str(n) + " Error = " + str(errN))
 
@@ -209,12 +201,11 @@ def shiftFeatures(featNames, src, alignedSamples):
                     # if the final error is below a threshold, it is complete
                     # but use the previously fit features
                     if errO < 1e2:
-                        print("     Fitting converged, attempt " + str(n) + ", err/feat = " + str(int(errO)))
+                        print("     Fitting converged, attempt " + str(atmp) + ", err/feat = " + str(int(errO)))
                         break
 
                     # with the current features, if they are not providing a good match
-                    # then delet them from the dictionary. The features are ordered by 
-                    # the distance of the descriptor with feat_0 the best fit.
+                    # then modify which features are being used to fit
                     else:
                         # print("     Modifying feat, err/feat = " + str(int(errO)))
                         # denseMatrixViewer([featsMod[rF], featsMod[tF], centre[tF]], True)
@@ -224,21 +215,13 @@ def shiftFeatures(featNames, src, alignedSamples):
                         if len(featsO.tar) < 3: 
                             manualFit = True
 
-                        # if there are only 3 points left and the fitting hasn't converged, 
-                        # then remove a larger range of points
-                        elif atmp > len(featsO.tar):
-                            atmpR += 1
-                            atmp = 0
-
-                        # modify the availabe features to create a better alignment
-                        featsO.ref = deepcopy(featRef[rF][0])
-                        featsO.tar = deepcopy(featTar[tF][0])
+                        # set refit boolean
                         refit = True
-                        lastFt = np.flip(list(featsO.tar.keys()))[atmp:atmp+atmpR]
-                        # print("         Removed: " + str(lastFt))
-                        for lF in lastFt:
-                            del featsO.tar[lF]
-                            del featsO.ref[lF]
+
+                        # remove the features which have the most error
+                        del featsO.tar[MxErrPnt]
+                        del featsO.ref[MxErrPnt]
+                        print("     Removed " + MxErrPnt)
                         atmp += 1
                         break
 
@@ -250,9 +233,6 @@ def shiftFeatures(featNames, src, alignedSamples):
 
                 # update the current features being modified 
                 featsMod = feattmp
-
-                # count the number of fits done
-                n += 1
                     
             # -------- MODIFY THE FEATURES TO PERFORM A NEW FITTING PROCEDURE --------
 
@@ -291,7 +271,7 @@ def shiftFeatures(featNames, src, alignedSamples):
                 # modified features
                 featsO.ref = annoRef
                 featsO.tar = annoTar
-                atmpe = 1
+                atmp = 0
             
             # if there are enough feature available but alignment didn't converge to 
             # an error low enough, iterate through
@@ -332,14 +312,13 @@ def shiftFeatures(featNames, src, alignedSamples):
             # NOTE add recursive feat updater
             rotated = 10
             rotateSum = 0
-            n = 0
 
             # view the final points before rotating VS the optimised points
             # denseMatrixViewer([dictToArray(featToMatch[tF]), dictToArray(featsMod[tF]), centre[tF]], True)
 
             # continue fitting until convergence with the already fitted results
             while abs(errN) > 1e-8:
-                rotationAdjustment, featToMatch, errN, cent = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre)
+                rotationAdjustment, featToMatch, errN, cent, MxErrPnt = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre)
                 rotated = rotationAdjustment
                 rotateSum += rotationAdjustment
                 # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
@@ -509,7 +488,8 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # this takes a while so optional
     if saving:
         cv2.imwrite(dest + sample + '.tif', warped)                               # saves the adjusted image at full resolution 
-        cv2.imwrite(dest + sample + '.png', cv2.resize(warped, (int(warped.shape[1]*0.2), int(warped.shape[0]*0.2))))
+    
+    cv2.imwrite(dest + sample + '.png', cv2.resize(warped, (int(warped.shape[1]/shareR), int(warped.shape[0]/shapeR))))
 
 def translatePoints(feats, bestfeatalign = False):
 
@@ -577,15 +557,21 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
     tarM = objectivePolar(res.x, centre, False, tar, refP, plot)   # get the transformed features and re-assign as the ref
     rotationStore = float(res.x)
 
+    # errors per point
+    errPnt = np.sum((dictToArray(ref) - dictToArray(tarM))**2, axis = 1)
+
+    # get the feature with the greatest error
+    MxErrPnt = list(tarM.keys())[np.argmax(errPnt)]
+
     # return the average error per point
-    err = res.fun / len(tarP)
+    err = np.mean(errPnt)
 
     # reassign this as the new feature
     featsMod.tar = tarM
     
     if plot: denseMatrixViewer([dictToArray(refN), dictToArray(refP), centre], True)
 
-    return(rotationStore, featsMod, err, centre)
+    return(rotationStore, featsMod, err, centre, MxErrPnt)
 
 def plotPoints(dir, imgO, cen, points):
 
@@ -788,6 +774,8 @@ def findCentre(pos, typeV = float):
     return(centre)
 
 if __name__ == "__main__":
+
+    multiprocessing.set_start_method('spawn')
 
     # dataHome is where all the directories created for information are stored 
     dataSource = '/Volumes/USB/Testing1/'
