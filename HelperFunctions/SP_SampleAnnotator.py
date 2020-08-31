@@ -223,6 +223,7 @@ def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5, ts = 4):
         imgref = cv2.imread(imgref)
         imgtar = cv2.imread(imgtar)
 
+    # text size
     ts = imgref.shape[0]/1000
 
     # add the annotations already on the image
@@ -234,33 +235,31 @@ def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5, ts = 4):
 
         # get the x and y position from the feature
         x, y = roiselector(imgCombine)
-        xme = int(np.mean(x))
-        yme = int(np.mean(y))
+        xme = np.mean(x)
+        yme = np.mean(y)
 
         # add the found points as marks
-        imgCombine = cv2.circle(imgCombine, (xme, yme), int(ts*10), (255, 0, 0), int(ts*5))
+        imgCombine = cv2.circle(imgCombine, (int(xme), int(yme)), int(ts*10), (255, 0, 0), int(ts*5))
 
+        featPos = (xme, yme)
+        featName = "feat_" + str(int(i/2))
         # append reference and target information to the original list
         if i%2 == 0:
             obj = "ref"
-            matchRef.append(np.array((xme, yme)))
-            print("Feat: " + str(matchRef[-1]))
+            matchRef[featName] = np.array(featPos)
         else:
             obj = "tar"
-            matchTar.append(np.array((xme, yme)) - np.array([ym, 0]))
-            print("Feat: " + str(matchTar[-1]))
-
-        print(str(i) + " + " + obj)
+            matchTar[featName] = np.array(featPos - np.array([ym, 0]))
 
         # add info to image
         feat = obj + " feat " + str(int(np.floor(i/2)))
 
         cv2.putText(imgCombine, feat, 
-                tuple([xme, yme] + np.array([20, 0])),
+                tuple([int(xme), int(yme)] + np.array([20, 0])),
                 cv2.FONT_HERSHEY_SIMPLEX, ts, (255, 255, 255), int(ts*5))
 
         cv2.putText(imgCombine, feat, 
-                tuple([xme, yme] + np.array([20, 0])),
+                tuple([int(xme), int(yme)] + np.array([20, 0])),
                 cv2.FONT_HERSHEY_SIMPLEX, ts, (0, 0, 0), int(ts*2.5))
 
     cv2.destroyAllWindows()
