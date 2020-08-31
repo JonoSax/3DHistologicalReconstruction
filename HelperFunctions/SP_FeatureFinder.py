@@ -16,6 +16,7 @@ import os
 from multiprocessing import Pool
 import multiprocessing
 from itertools import repeat
+from copy import copy, deepcopy
 if __name__ != "HelperFunctions.SP_FeatureFinder":
     from Utilities import *
     from SP_SampleAnnotator import featSelectPoint
@@ -25,6 +26,17 @@ else:
 
 # set the multiprocessing type (only do it if it's not spawned)
 if __name__ != "__mp_main__": multiprocessing.set_start_method('spawn')
+
+# for each fitted pair, create an object storing their key information
+class feature:
+    def __init__(self, refP = None, tarP = None, dist = None, size = None):
+        self.refP = refP
+        self.tarP = tarP
+        self.dist = dist
+        self.size = size
+
+    def __repr__(self):
+            return repr((self.refP, self.tarP, self.dist, self.size))
 
 '''
 TODO: explanation of what happens here.....
@@ -49,7 +61,9 @@ TODO:
     of no black points (ie nothing). All of these descriptors are then combined into
     a single list and put into the BF matcher where the rest of the script continues etc.
         The benefit of this is that it will mean that there doesn't need to be any 
-        hard coded gridding 
+        hard coded gridding ---> tried this, doesn't work because the structures in 
+        the tissue are so repetitive that there is almost guaranteed to be a good match 
+        in a non-spatially relevant area of the tissue which causes a false match
 '''
 
 
@@ -75,24 +89,24 @@ def featFind(dataHome, name, size):
 
     # set the parameters
     gridNo = 8
-    featNo = None
+    featMin = 20
     dist = 30
 
     # get the images
-    imgs = sorted(glob(imgsrc + "*.png"))[50:120]
+    imgs = sorted(glob(imgsrc + "*.png"))[:80]
 
     if serialise:
         # serialisation (mainly debuggin)
         for refsrc, tarsrc in zip(imgs[:-1], imgs[1:]):
-            findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featNo, dist)
+            findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featMin, dist)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuCount) as pool:
-            pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featNo), repeat(dist)))
+            pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
         
 
-def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featNo = None, dist = 50):
+def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50):
 
     # This script finds features between two sequential samples (based on their
     # name) that correspond to biologically the same location. 
@@ -104,7 +118,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featNo = None, dist = 5
     #           (dataDest): the location to save the txt files
     #           (imgdest): location to save the images which show the matching process
     #           (gridNo): number of grids (along horizontal axis) to use to analyse images
-    #           (featNo): number of features to apply per image
+    #           (featMin): minimum number of features to apply per image
     #           (dist): the minimum distance between features in pixels
     # Outputs:  (): .feat files for each specimen which correspond to the neighbouring
     #               two slices (one as the reference and one as the target)
@@ -122,279 +136,331 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featNo = None, dist = 5
     print("Matching " + name_tar + " to " + name_ref)
 
     # load in the images
-    img_refO = cv2.imread(refsrc)
-    img_tarO = cv2.imread(tarsrc)
+    img_refMaster = cv2.imread(refsrc)
+    img_tarMaster = cv2.imread(tarsrc)
+
+    # make a copy of the images to modify
+    img_refC = img_refMaster.copy()
+    img_tarC = img_tarMaster.copy()
 
     # get the image dimensions
-    xr, yr, cr = img_refO.shape
-    xt, yt, ct = img_tarO.shape
+    xr, yr, cr = img_refMaster.shape
+    xt, yt, ct = img_tarMaster.shape
     xm, ym, cm = np.max(np.array([(xr, yr, cr), (xt, yt, ct)]), axis = 0)
         
     # create a max size field of both images
     field = np.zeros((xm, ym, cm)).astype(np.uint8)
 
-    # provide specimen specific image placement
-    xrefDif, yrefDif, xtarDif, ytarDif, img_ref, img_tar = imgPlacement(nameFromPath(name_ref, 1), img_refO, img_tarO)
+    # create an object to store all the feature information
+    featureInfo = feature()
 
-    # normalise for all the colour channels
-    # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
-    for c in range(img_tar.shape[2]):
-        img_tar[:, :, c] = hist_match(img_tar[:, :, c], img_ref[:, :, c])
-    
-    x, y, c = img_ref.shape
-    pg = int(np.round(x/gridNo))        # create a grid which is pg x pg pixel size
-    sc = 8                          # create an overlap of sc pixels around this grid
+    # store all feature objects which describe the confirmed matches
+    matchedInfo = []
 
     matchDistance = []
     matchRef = []
     matchTar = []
     matchSize = []
 
-    # perform a sift operation over the entire image and find all the matching 
-    # features --> more for demo purposes on why the below method is implemented
-    '''
-    kp_ref, des_ref = sift.detectAndCompute(img_ref,None)
-    kp_tar, des_tar = sift.detectAndCompute(img_tar,None)
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(des_ref,des_tar, k=2)   
-    # cv2.drawMatchesKnn expects list of lists as matches.
-    img3 = cv2.drawMatchesKnn(img_ref,kp_ref,img_tar,kp_tar,matches, None, flags=2)
-    '''
+    # perform a multi-zoom fitting procedure
+    # It is preferable to use a lower resolution image because it means that features that
+    # are larger on the sample are being found and the speed of processing is significantly faster.
+    # However if there are not enough features per a treshold
+    scale = [0.3, 0.5, 0.8, 1]
+    for scln, scl in enumerate(scale):
 
-    # ---------- identify features on the reference and target image ---------
+        # store the scale specific information
+        resInfo = []
 
-    # iterate through a pixel grid of pg ** 2 x c size
+        # load the image at the specified scale
+        img_refO = cv2.resize(img_refMaster, (int(img_refMaster.shape[1]* scl), int(img_refMaster.shape[0]*scl)))
+        img_tarO = cv2.resize(img_tarMaster, (int(img_tarMaster.shape[1]* scl), int(img_tarMaster.shape[0]*scl)))
 
-    # The reason why a scanning method over the images is implemented, rather than
-    # just letting sift work across the full images, is because the nature of the 
-    # samples (biological tissue) means there are many repeating structures which has
-    # lead to feature matching in non-sensible locations. This scanning method assumes
-    # there is APPROXIMATE sample placement (ie there are samples in the middle of the 
-    # slice)
-    allMatches = []
-    allrefpt = []
-    alltarpt = []
-    alldistance = []
-    allsize = []
-    for c in range(1, int(np.ceil(x/pg)) - 1):
-        for r in range(1, int(np.ceil(y/pg)) - 1):
+        # provide specimen specific image placement
+        xrefDif, yrefDif, xtarDif, ytarDif, img_ref, img_tar = imgPlacement(nameFromPath(name_ref, 1), img_refO, img_tarO)
 
-            # extract a small overlapping grid from both images
-            startX = np.clip(int(c*pg-sc), 0, x)
-            endX = np.clip(int((c+1)*pg-sc), 0, x)
-            startY = np.clip(int(r*pg-sc), 0, y)
-            endY = np.clip(int((r+1)*pg+sc), 0, y)
-
-            # extract a small grid from both image
-            imgSect_ref = img_ref[c*pg:(c+1)*pg, r*pg:(r+1)*pg, :]
-            imgSect_tar = img_tar[startX:endX, startY:endY, :]  # NOTE target area search is expaneded
-
-            # if the proporption of information within the slide is black (ie background)
-            # is more than a threshold, don't process
-            if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.1): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
-                continue
-
-            # plt.imshow(imgSect_ref); plt.show()
-            # get the key points and descriptors of each section
-            kp_ref, des_ref = sift.detectAndCompute(imgSect_ref,None)
-            kp_tar, des_tar = sift.detectAndCompute(imgSect_tar,None)
-
-            # only further process if there are matches found in both samples
-            if (des_ref is not None) and (des_tar is not None):
-                # identify strongly identifiable features in both the target and 
-                # reference tissues
-                matches = bf.match(des_ref, des_tar)
-                allMatches.append(bf.match(des_ref, des_tar))
-
-                # get all the matches, adjust for the window used 
-                for m in matches:
-                    allrefpt.append(kp_ref[m.queryIdx].pt + np.array([r*pg, c*pg]))
-                    alltarpt.append(kp_tar[m.trainIdx].pt + + np.array([startY, startX]))
-                    allsize.append(kp_tar[m.trainIdx].size)
-                    alldistance.append(m.distance)
-
-    # if there are more than featNo matches then pick the BEST of all those features
-    if featNo is None or len(alltarpt) > featNo:
-        matchRef, matchTar, matchSize, matchDistance = matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo)
-        print(name_tar + " has " + str(len(matchTar)) + " features")
-
-    # if there are less than the specific number of features, create a GUI to perform 
-    # manual matching
-    elif len(alltarpt) < featNo:
-        matchRef, matchTar = featSelectPoint(img_ref, img_tar, [], [], 3)
-
-    # ---------- update and save the found features ---------
-
-    # update the dictionaries
-    for fn, (kr, kt) in enumerate(zip(matchRef, matchTar)):
-
-        # add matched feature, adjust for the initial standardisation of the image
-        matchRefDict["feat_" + str(fn)] = kr - np.array([yrefDif, xrefDif])
-        matchTarDict["feat_" + str(fn)] = kt - np.array([ytarDif, xtarDif])
-
-    # store the positions of the identified features for each image as 
-    # BOTH a reference and target image. Include the image size this was 
-    # processed at
-    dictToTxt(matchRefDict, dataDest + "/" + name_ref + ".reffeat", shape = img_refO.shape, fit = False)
-    dictToTxt(matchTarDict, dataDest + "/" + name_tar + ".tarfeat", shape = img_tarO.shape, fit = False)
-
-    # ---------- create a combined image of the target and reference image matches ---------
-
-    # make pictures to show the features found
-    img_refC = img_refO.copy()
-    img_tarC = img_tarO.copy()
-    txtsz = 1
-    for i, nF in enumerate(matchTarDict):
-
-        # if there is no match info just assign it to 0 (ie was a manual annotaiton)
-        try: md = int(matchDistance[i]); ms = np.round(matchSize[i], 2)
-        except: md = np.inf; ms = np.inf
-
-        # mark the feature
-        newref = matchRefDict[nF].astype(int)
-        tar = matchTarDict[nF].astype(int)
-
-        cv2.circle(img_refC, tuple(newref.astype(int)), int(txtsz*10), (255, 0, 0), int(txtsz*6))
-        cv2.circle(img_tarC, tuple(tar.astype(int)), int(txtsz*10), (255, 0, 0), int(txtsz*6))
-
-        # add the feature number onto the image
-        cv2.putText(img_refC, str(nF), 
-        tuple(newref + np.array([-50, 50])),
-        cv2.FONT_HERSHEY_SIMPLEX, int(txtsz), (255, 255, 255), int(txtsz*10))
-        cv2.putText(img_refC, str(nF), 
-        tuple(newref + np.array([-50, 50])),
-        cv2.FONT_HERSHEY_SIMPLEX, int(txtsz), (0, 0, 0), int(txtsz*4))
+        # normalise for all the colour channels
+        # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
+        for c in range(img_tar.shape[2]):
+            img_tar[:, :, c] = hist_match(img_tar[:, :, c], img_ref[:, :, c])
         
-        text = str(nF + ", d: " + str(md) + ", s: " + str(ms))
+        x, y, c = img_ref.shape
+        pg = int(np.round(x/gridNo))        # create a grid which is pg x pg pixel size
+        sc = 8                          # create an overlap of sc pixels around this grid
 
-        cv2.putText(img_tarC, text,
-        tuple(tar + np.array([-200, 50])),
-        cv2.FONT_HERSHEY_SIMPLEX, int(txtsz), (255, 255, 255), int(txtsz*10))
-        cv2.putText(img_tarC, text, 
-        tuple(tar + np.array([-200, 50])),
-        cv2.FONT_HERSHEY_SIMPLEX, int(txtsz), (0, 0, 0), int(txtsz*4))
+        # perform a sift operation over the entire image and find all the matching 
+        # features --> more for demo purposes on why the below method is implemented
+        '''
+        kp_ref, des_ref = sift.detectAndCompute(img_ref,None)
+        kp_tar, des_tar = sift.detectAndCompute(img_tar,None)
+        bf = cv2.BFMatcher()
+        matches = bf.knnMatch(des_ref,des_tar, k=2)   
+        # cv2.drawMatchesKnn expects list of lists as matches.
+        img3 = cv2.drawMatchesKnn(img_ref,kp_ref,img_tar,kp_tar,matches, None, flags=2)
+        '''
+
+        # ---------- identify features on the reference and target image ---------
+
+        # iterate through a pixel grid of pg ** 2 x c size
+
+        # The reason why a scanning method over the images is implemented, rather than
+        # just letting sift work across the full images, is because the nature of the 
+        # samples (biological tissue) means there are many repeating structures which has
+        # lead to feature matching in non-sensible locations. This scanning method assumes
+        # there is APPROXIMATE sample placement (ie there are samples in the middle of the 
+        # slice)
+        for c in range(1, int(np.ceil(x/pg)) - 1):
+            for r in range(1, int(np.ceil(y/pg)) - 1):
+
+                # extract a small overlapping grid from both images
+                startX = np.clip(int(c*pg-sc), 0, x)
+                endX = np.clip(int((c+1)*pg-sc), 0, x)
+                startY = np.clip(int(r*pg-sc), 0, y)
+                endY = np.clip(int((r+1)*pg+sc), 0, y)
+
+                # extract a small grid from both image
+                imgSect_ref = img_ref[c*pg:(c+1)*pg, r*pg:(r+1)*pg, :]
+                imgSect_tar = img_tar[startX:endX, startY:endY, :]  # NOTE target area search is expaneded
+
+                # if the proporption of information within the slide is black (ie background)
+                # is more than a threshold, don't process
+                if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.1): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
+                    continue
+
+                # plt.imshow(imgSect_ref); plt.show()
+                # get the key points and descriptors of each section
+                kp_ref, des_ref = sift.detectAndCompute(imgSect_ref,None)
+                kp_tar, des_tar = sift.detectAndCompute(imgSect_tar,None)
+
+                # only further process if there are matches found in both samples
+                if (des_ref is not None) and (des_tar is not None):
+                    # identify strongly identifiable features in both the target and 
+                    # reference tissues
+                    matches = bf.match(des_ref, des_tar)
+
+                    # get all the matches, adjust for the window used 
+                    for m in matches:
+
+                        # store the feature information as it appears on the original sized image
+                        featureInfo.refP = (kp_ref[m.queryIdx].pt + np.array([r*pg, c*pg])) / scl
+                        featureInfo.tarP = (kp_tar[m.trainIdx].pt + + np.array([startY, startX])) / scl
+                        featureInfo.dist = m.distance
+                        featureInfo.size = kp_tar[m.trainIdx].size
+                        
+                        # store the information specific to this resolution
+                        resInfo.append(deepcopy(featureInfo))
+
+        # if there are more than featNo matches then pick the BEST of all those features
+        if len(resInfo) > 0:
+            matchedInfo = matchMakerN(matchedInfo, resInfo, dist)
+
+            # plotting all the features found for this specific resoltuion
+            '''
+            ir = img_ref.copy()
+            it = img_tar.copy()
+            for i in resInfo:
+                cv2.circle(ir, tuple((i.refP*scl).astype(int)), 3, (255, 0, 0))
+                cv2.circle(it, tuple((i.tarP*scl).astype(int)), 3, (255, 0, 0))
+
+            plt.imshow(np.hstack([ir, it])); plt.show()
+            '''
+        
+        # if there are not features found, iterate to the next highest resolution
+        else:
+            break
+
+        # ---------- update and save the found features ---------
+
+        # update the dictionaries
+        names = []
+        for fn, kp in enumerate(matchedInfo):
+
+            # add matched feature, adjust for the initial standardisation of the image
+            # and for the scale of the image
+            name = "feat_" + str(fn) + "_scl_" + str(scl)
+            names.append(name)
+            matchRefDict[name] = (kp.refP - np.array([yrefDif, xrefDif]) / scl)
+            matchTarDict[name] = (kp.tarP - np.array([ytarDif, xtarDif]) / scl) 
+
+            matchedInfo[fn].dist = fn * 0.01 + scln # preserve the order of the features
+                                                    # fit but ensure that it is very low to 
+                                                    # indicate that it is a "confirmed" fit
+            matchedInfo[fn].size = 100
+
+        # store the positions of the identified features for each image as 
+        # BOTH a reference and target image. Include the image size this was 
+        # processed at
+
+        # ---------- create a combined image of the target and reference image matches ---------
+
+        # make pictures to show the features found
+        txtsz = 0.5
+        colours = [(255, 0, 0), (255, 0, 255), (0, 255, 0)]
+        # img_refC = cv2.resize(img_refO, (yr, xr))
+        # img_tarC = cv2.resize(img_tarO, (yt, xt))
+        for i, nF in enumerate(names):
+
+            # if there is no match info just assign it to 0 (ie was a manual annotaiton)
+            try: md = int(matchDistance[i]); ms = np.round(matchSize[i], 2)
+            except: md = np.inf; ms = np.inf
+
+            # mark the feature
+            newref = matchRefDict[nF].astype(int)
+            newtar = matchTarDict[nF].astype(int)
+
+            cv2.circle(img_refC, tuple(newref.astype(int)), int(txtsz*10), colours[scln], int(txtsz*6))
+            cv2.circle(img_tarC, tuple(newtar.astype(int)), int(txtsz*10), colours[scln], int(txtsz*6))
+
+            # add the feature number onto the reference image
+            cv2.putText(img = img_refC, text = str(nF), 
+            org = tuple(newref + np.array([-50, 15])),
+            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
+
+            cv2.putText(img = img_refC, text = str(nF), 
+            org = tuple(newref + np.array([-50, 15])),
+            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
+            
+            # add the feature number and dist + size info
+            text = str(nF + ", d: " + str(md) + ", s: " + str(ms))
+            text = str(nF)
+
+            cv2.putText(img = img_tarC, text = text, 
+            org = tuple(newtar + np.array([-50, 15])),
+            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
+
+            cv2.putText(img = img_tarC, text = text, 
+            org = tuple(newtar + np.array([-50, 15])),
+            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
+
+
+        # plot the features found per resolution
+        '''
+        img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
+        img_tarF = field.copy(); img_tarF[:xt, :yt] = img_tarC
+        plt.imshow(np.hstack([img_refF, img_tarF])); plt.show()
+        '''
+
+        # once the threshold number of features is found, return.
+
+        if len(matchedInfo) >= featMin:
+            break
+
+    # If after searching through up until the full resolution image there is not a 
+    # threshold number of features found provide manual annotations up until that featMin
+    # NOTE this is not working atm beause it takes dictionaries not objects....
+    if len(matchedInfo) < featMin:
+        matchRef, matchTar = featSelectPoint(img_ref, img_tar, [], [], featMin)
+        print("\n\n!!!" + name_tar + " has not been fitted !!!!\n\n")
+
 
     # draw the grid lines on the images
-    for r in range(0, y, pg):
+    for r in range(0, ym, int(np.round(xm/gridNo))):
         # horizontal line
-        cv2.line(img_refC, (r, 0), (r, x), (255, 255, 255), 4, 1)
-        cv2.line(img_refC, (r, 0), (r, x), (0, 0, 0), 2, 1)
-        cv2.line(img_tarC, (r, 0), (r, x), (255, 255, 255), 4, 1)
-        cv2.line(img_tarC, (r, 0), (r, x), (0, 0, 0), 2, 1)
+        cv2.line(img_refC, (r, 0), (r, xm), (255, 255, 255), 4, 1)
+        cv2.line(img_refC, (r, 0), (r, xm), (0, 0, 0), 2, 1)
+        cv2.line(img_tarC, (r, 0), (r, xm), (255, 255, 255), 4, 1)
+        cv2.line(img_tarC, (r, 0), (r, xm), (0, 0, 0), 2, 1)
     
-    for c in range(0, x, pg):
+    for c in range(0, xm, int(np.round(ym/gridNo))):
         # vertical line
-        cv2.line(img_refC, (0, c), (y, c), (255, 255, 255), 4, 1)
-        cv2.line(img_refC, (0, c), (y, c), (0, 0, 0), 2, 1)
-        cv2.line(img_tarC, (0, c), (y, c), (255, 255, 255), 4, 1)
-        cv2.line(img_tarC, (0, c), (y, c), (0, 0, 0), 2, 1)
+        cv2.line(img_refC, (0, c), (ym, c), (255, 255, 255), 4, 1)
+        cv2.line(img_refC, (0, c), (ym, c), (0, 0, 0), 2, 1)
+        cv2.line(img_tarC, (0, c), (ym, c), (255, 255, 255), 4, 1)
+        cv2.line(img_tarC, (0, c), (ym, c), (0, 0, 0), 2, 1)
+
+    print(name_tar + " has " + str(len(matchRefDict)) + " features")
 
     # print a combined image showing the matches
     img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
     img_tarF = field.copy(); img_tarF[:xt, :yt] = img_tarC
+    # plt.imshow(np.hstack([img_refF, img_tarF])); plt.show()
     cv2.imwrite(imgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_refF, img_tarF]))
+
+    dictToTxt(matchRefDict, dataDest + "/" + name_ref + ".reffeat", shape = img_refO.shape, fit = False)
+    dictToTxt(matchTarDict, dataDest + "/" + name_tar + ".tarfeat", shape = img_tarO.shape, fit = False)
 
     print("     Done matching " + name_ref + " to " + name_tar)
 
-def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = None, dist = 50):
+def matchMakerN(matchedInfo, resInfo,  dist = 50, featNo = None):
 
-    # this takes lists of all the information from the sift feature identification 
+    # ---------- NOTE the theory underpinning this function ----------
+    # The combination of individual features which produces the most matched features 
+    # due to being the most spatially coherent with each other, most likely contain 
+    # the features that represent actual biological structures becasue biological 
+    # structures between individual samples which are physically close to each other 
+    # are also spatailly coherent
+    
+    # this takes lists of all the information from the SIFT feature identification 
     # and bf matching and returns only n number of points which match the criteria
-    # Inputs:   (all*), all the information returned by the sift operator after being
-    #               brute forced matched
-    #           (featNo), the number of features to find on the samples. If None then 
-    #               this will return as many features as it can. 
-    #               NOTE THIS IS NOT RECOMMENDED because if the initial features found which 
-    #               are used to find all the other features aren't good, then this will return
-    #               only bad features. It is recommended to use a threshold featNo. A samples 
-    #               should be able to return a lot of features with this function IF the 
-    #               sample is in good condition and the features being found are useful. 
-    #               Setting featNo to None means shit features can be used. 
+    # Inputs:   (matchInfo*), points that have already been found
+    #           (resInfo), all the information returned by the sift operator after being
+    #               brute forced matched for that specific resolution
     #           (dist), sets the minimium distance between each feature. A larger distance 
     #               reduces the number of features that can be found but will also ensure 
     #               that features are  better spread across the sample, rather than being pack 
     #               arond a single strong feature
-    # Outputs:  (match*), all the features and corresponding information that have been 
-    #               found to be a good match
+    # Outputs:  (infoStore), the set of features and corresponding information that have been 
+    #               found to have the most spatial coherence
 
     def findbestfeatures():
-
-        matchRef = []
-        matchTar = []
-        matchSize = []
-        matchDistance = []
 
         # find the two best features ensuring that they are located 
         # a reasonable distane away
 
         # get the best features and remove from the list of sorted features
-        matchRef.append(allrefpt[0]); del allrefpt[0]
-        matchTar.append(alltarpt[0]); del alltarpt[0]
-        matchSize.append(allsize[0]); del allsize[0]
-        matchDistance.append(alldistance[0]); del alldistance[0]
-
+        matchInfo = []
+        matchInfo.append(allInfo[0]); del allInfo[0]
+        
         # get the second best feature, ensuring that it is an acceptable distance away from 
         # the best feature (sometimes two really good matches are found pretty much next
         # to each other which isn't useful for fitting)
-        for n, (r, t, s, d) in enumerate(zip(allrefpt, alltarpt, allsize, alldistance)):
+        for n, i in enumerate(allInfo):
 
             # if the distance between the next best feature is less than 100 
             # pixels, don't use it
-            if np.sqrt(np.sum(matchRef - r)**2) < d and np.sqrt(np.sum(matchTar - t)**2) < d:
+            if (np.sqrt(np.sum((matchInfo[0].refP - i.refP)**2)) < dist) or (np.sqrt(np.sum((matchInfo[0].tarP - i.tarP)**2)) < dist):
                 continue
             
             # if the 2nd best feature found meets the criteria append and move on
             else:
-                matchRef.append(r); del allrefpt[n]
-                matchTar.append(t); del alltarpt[n]
-                matchSize.append(s); del allsize[n]
-                matchDistance.append(d); del alldistance[n]
+                matchInfo.append(i); del allInfo[n]
                 break
 
-        return(matchRef, matchTar, matchSize, matchDistance)
+        return(matchInfo)
 
     def findgoodfeatures():
 
         # find new features in the ref and target tissue which are positioned 
         # in approximately the same location RELATIVE to the best features found already
 
-        matchRefn = []
-        matchTarn = []
-        matchSizen = []
-        matchDistancen = []
+        matchInfoN = []
 
-        # apped the best matches to the new matches:
-        for r, t, s, d in zip(matchRef, matchTar, matchSize, matchDistance):
-
-            matchRefn.append(r)
-            matchTarn.append(t)
-            matchSizen.append(s)
-            matchDistancen.append(d)
+        # append the already found matching info
+        matchInfoN += matchInfo
 
         # from all the remaining features, find the ones that meet the characteristics:
         #   - The new feature is a distance away from all previous features
         #   - The new features on each sample are within a threshold angle and distance
         #   difference relative to the best features found 
         noFeatFind = 0  # keep track of the number of times a match has not been found
-        for r, t, s, d in zip(allrefpt, alltarpt, allsize, alldistance):
+        for i in allInfo:
             
             # if a featNo criteria is set, continue looking until the target number of features is 
             # met (or if there are no new features found for a duration of the search, bottom break)
             if featNo is int:
-                if len(matchTarn) >= featNo:
+                if len(allInfo) >= featNo:
                     break
 
-            # if the difference between the any of the already found feature is less than 100 
+            # if the difference between the any of the already found feature is less than dist 
             # pixels, don't use it
             repeated = False
-            for mr, tr in zip(matchRefn, matchTarn):
-                if np.sqrt(np.sum(mr - r)**2) < dist or np.sqrt(np.sum(tr - t)**2) < dist:
+
+            for mi in matchInfoN:
+                if (np.sqrt(np.sum((mi.refP - i.refP)**2)) < dist) or (np.sqrt(np.sum((mi.tarP - i.tarP)**2)) < dist):
                     repeated = True
-                    # print('new')
-                    break
+                    break           
 
             if repeated:
-                # print('repeated')
                 continue
 
             # get the relative angles of the new features compared to the best features 
@@ -409,24 +475,28 @@ def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = None, dist = 
             # LOTS of features as this fitting procedure has a O(n^2) time complexity 
             # so limiting the search to this sacrifices limited accuracy for significant 
             # speed ups
-            for n1, (m1, t1) in enumerate(zip(matchRefn[:5], matchTarn[:5])):
-                for n2, (m2, t2) in enumerate(zip(matchRefn[:5], matchTarn[:5])):
+            for n1, mi1 in enumerate(matchInfoN[:5]):
+                for n2, mi2 in enumerate(matchInfoN[:5]):
 
                     # if the features are repeated, don't use it
                     if n1 == n2:
                         continue
 
+                    if (mi1.tarP == mi2.tarP).all():
+                        print("WAIT")
                     # find the angle for the new point and all the previously found point
-                    newrefang = findangle(m1, m2, r)
-                    newtarang = findangle(m1, m2, t)
+                    newrefang = findangle(mi1.refP, mi2.refP, i.refP)
+                    newtarang = findangle(mi1.tarP, mi2.tarP, i.tarP)
 
                     # store the difference of this new point relative to all the ponts
                     # previously found
                     angdist.append(abs(newrefang - newtarang))
 
+
+
                 # get the distances of the new points to the best feature
-                newrefdist = np.sqrt(np.sum((m1 - r)**2))
-                newtardist = np.sqrt(np.sum((t1 - t)**2))
+                newrefdist = np.sqrt(np.sum((mi1.refP - i.refP)**2))
+                newtardist = np.sqrt(np.sum((mi1.tarP - i.tarP)**2))
 
                 # finds how much larger the largest distance is compared to the smallest distance
                 ratiodist.append((newtardist/newrefdist)**(1-((newrefdist>newtardist)*2)) - 1)
@@ -438,99 +508,75 @@ def matchMakerN(allrefpt, alltarpt, allsize, alldistance, featNo = None, dist = 
             # but the standard of these new features is not as high
             # if np.median(angdist) < 180/180*np.pi and np.median(ratiodist) < 1:
                 # add the features
-                matchRefn.append(r)
-                matchTarn.append(t)
-                matchSizen.append(s)
-                matchDistancen.append(d)
+                matchInfoN.append(i)
                 noFeatFind = 0
             else:
                 # if more than 2% of all the features are investigated and there are no
                 # new features found, break the matching process (unlikely to find anymore
                 # good features)
                 noFeatFind += 1
-                if noFeatFind > int(len(alltarpt) * 0.05):
+                if noFeatFind > int(len(allInfo) * 0.02):
                     break
 
-        return(matchRefn, matchTarn, matchSizen, matchDistancen)
+        return(matchInfoN)
 
-    # sort the features based on distance
-    sort = np.argsort(np.array(alldistance))
+    # create a list containing all the confirmed matched points and current ponts of interest
+    allInfo = matchedInfo + resInfo
 
-    # sort the information by ascending distance value
-    allrefpt = list(np.array(allrefpt)[sort])
-    alltarpt = list(np.array(alltarpt)[sort])
-    allsize = list(np.array(allsize)[sort])
-    alldistance = list(np.array(alldistance)[sort])
+    # sort the information based on the distance
+    allInfo = sorted(allInfo, key=lambda allInfo: allInfo.dist)
 
     # append the next n number of best fit features to the matches but 
     # ONLY if their angle from the two reference features is within a tolerance 
     # range --> this heavily assumes that the two best fits found are actually 
     # good features...
-    # try up to 5 times
-    for fits in range(5):
+    # try up to 10 times: NOTE this is important because it reduces the reliance on the assumption 
+    # that feature with lowest distance score is in fact and actual feature. This instead allows
+    # for the feature finding process to rely more on the coherence of all the other 
+    # features relative to each other
+    for fits in range(10):
         # get the two best features 
-        matchRef, matchTar, matchSize, matchDistance = findbestfeatures()
+        matchInfo = findbestfeatures()
 
         # find features which are spatially coherent relative to the best feature for both 
         # the referenc and target image and with the other constrains
-        matchRefn, matchTarn, matchSizen, matchDistancen = findgoodfeatures()
+        matchInfoN = findgoodfeatures()
 
-        # If no feature number is used, just find as many features as possible with the 
-        # "best" features. NOTE if the best features weren't good then all the subsequent features 
-        # found won't be good. It is not recommended to use None for featNo
-        if featNo is None:
-            if len(matchTarn) >= 10:
-                # there is an expectaion that None will find lots of features... so set the bar kind of high
-                return(matchRefn, matchTarn, matchSizen, matchDistancen)
-                
-        # if the required number of features was found then break 
-        elif len(matchTarn) >= featNo:
-            return(matchRefn, matchTarn, matchSizen, matchDistancen)
+        # Store the features found and if more features are found with a different combination
+        # of features then save that instead
+        if (fits == 0) or (len(matchInfoN) > len(infoStore)): 
+            # re-initialise the matches found
+            infoStore = matchInfoN
 
-        # if the number of features found doesn't meet the conditions, then perform 
-        # another fitting procedure (up until 5 iteration) but save the best found features 
-        # so far to be returned at the end
-        if fits == 0: pass
-        elif (len(matchTarn) > len(info['tar'])): pass
-        else: continue
-
-        info = {
-            "ref": matchRefn, 
-            "tar": matchTarn, 
-            "size": matchSizen, 
-            "dist": matchDistancen
-        }
-
-        # if insufficient new features were not found then find new "best" features and 
-        # begin the process again. NOTE that the chance of actually finding more features
-        # is unlikely if these "best" features were actually the best, but there is a chance
-        # that the "best" features were not a good match so this process allows the user to 
-        # to 
+        # if there are no more features to search through, break
+        if len(allInfo) == 0: 
+            break
+              
+        # print(str(fits) + " = " + str(len(matchInfoN)) + "/" + str(len(resInfo)))
             
-        # shows what features were found relative to each other
-        # denseMatrixViewer([matchRefn, matchTarn], True)
+    # NOTE this isn't wokring because it doesn't access objects...
+    # denseMatrixViewer([infoStore.refP, infoStore.tarP], True)
 
-    # if multiple rounds of fitting occured, then return the best features found
-    return(info['ref'], info['tar'], info['size'], info['dist'])
+    return(infoStore)
 
 
 # ------------ HARD CODED SPECIMEN SPECIFIC FEATURES ------------
 
-def imgPlacement(name_spec, img_refO, img_tarO):
+def imgPlacement(name_spec, img_ref, img_tar):
 
     # this function takes the name of the specimen (target just because...) and 
     # performs hardcoded placements of the images within the field. This is okay because
     # each sample has its own processing quirks and it's definitely easier to do 
     # it like this than work it out properly
     # Inputs:   (name_tar), name of the specimen
-    #           (img_refO, img_tarO), images to place
+    #           (img_ref, img_tar), images to place
     # Outputs:  (x/y ref/tar Dif), the shifts used to place the images
     #           (img_ref, img_tar), adjusted images
 
     # get the image dimensions, NOTE this is done in the main function but I 
     # didn't want to feed all those variables into this function... seems very messy
-    xr, yr, cr = img_refO.shape
-    xt, yt, ct = img_tarO.shape
+    xr, yr, cr = img_ref.shape
+    xt, yt, ct = img_tar.shape
     xm, ym, cm = np.max(np.array([(xr, yr, cr), (xt, yt, ct)]), axis = 0)
     
     # create a max size field of both images
@@ -546,23 +592,23 @@ def imgPlacement(name_spec, img_refO, img_tarO):
 
         # re-assign the images to the left of the image (NOTE this is for H563A which has
         # been segmented and the samples are very commonly best aligned on the left side)
-        img_ref = field.copy(); img_ref[-xr:, -yr:] = img_refO
-        img_tar = field.copy(); img_tar[-xt:, -yt:, :] = img_tarO
+        img_refF = field.copy(); img_refF[-xr:, -yr:] = img_ref
+        img_tarF = field.copy(); img_tarF[-xt:, -yt:, :] = img_tar
     
     # specific H1029A positioning
     elif name_spec == 'H1029A':
         # position the further right, lowest point of the each of the target and 
         # reference images at the bottom right positions of the fields
-        pos = np.where(img_tarO != 0)
+        pos = np.where(img_tar != 0)
         xmaxt = np.max(pos[1])
         ymaxt = pos[0][np.where(pos[1] == xmaxt)[0]][-1]
 
-        pos = np.where(img_refO != 0)
+        pos = np.where(img_ref != 0)
         xmaxr = np.max(pos[1])
         ymaxr = pos[0][np.where(pos[1] == xmaxr)[0]][-1]
 
-        img_tarp = img_tarO[:ymaxt, :xmaxt]
-        img_refp = img_refO[:ymaxr, :xmaxr]
+        img_tarp = img_tar[:ymaxt, :xmaxt]
+        img_refp = img_ref[:ymaxr, :xmaxr]
 
         xrp, yrp, c = img_refp.shape
         xtp, ytp, c = img_tarp.shape
@@ -575,8 +621,8 @@ def imgPlacement(name_spec, img_refO, img_tarO):
         xtarDif = xm-xtp
         ytarDif = ym-ytp
 
-        img_ref = fieldp.copy(); img_ref[-xrp:, -yrp:, :] = img_refp
-        img_tar = fieldp.copy(); img_tar[-xtp:, -ytp:, :] = img_tarp
+        img_refF = fieldp.copy(); img_refF[-xrp:, -yrp:, :] = img_refp
+        img_tarF = fieldp.copy(); img_tarF[-xtp:, -ytp:, :] = img_tarp
         
     elif name_spec == 'H710C':
         # put the image in the middle of the field
@@ -585,8 +631,8 @@ def imgPlacement(name_spec, img_refO, img_tarO):
         xtarDif = int((xm-xt) / 2)
         ytarDif = int((ym-yt) / 2)
 
-        img_ref = field.copy(); img_ref[xrefDif:xrefDif+xr, yrefDif:yrefDif+yr, :] = img_refO
-        img_tar = field.copy(); img_tar[xtarDif:xtarDif+xt, ytarDif:ytarDif+yt, :] = img_tarO
+        img_refF = field.copy(); img_refF[xrefDif:xrefDif+xr, yrefDif:yrefDif+yr, :] = img_ref
+        img_tarF = field.copy(); img_tarF[xtarDif:xtarDif+xt, ytarDif:ytarDif+yt, :] = img_tar
 
 
     # if not specifically hardcoded, just place in the top left
@@ -596,10 +642,10 @@ def imgPlacement(name_spec, img_refO, img_tarO):
         xtarDif = 0
         ytarDif = 0
 
-        img_ref = field.copy(); img_ref[:xr, :yr, :] = img_refO
-        img_tar = field.copy(); img_tar[:xt, :yt, :] = img_tarO
+        img_refF = field.copy(); img_ref[:xr, :yr, :] = img_ref
+        img_tarF = field.copy(); img_tar[:xt, :yt, :] = img_tar
         
-    return(xrefDif, yrefDif, xtarDif, ytarDif, img_ref, img_tar)
+    return(xrefDif, yrefDif, xtarDif, ytarDif, img_refF, img_tarF)
 
 if __name__ == "__main__":
 
