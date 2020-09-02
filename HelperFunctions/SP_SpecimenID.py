@@ -48,7 +48,7 @@ def sectionSelecter(spec, datasrc, serialised = True):
 
     # use only 3/4 the CPU resources availabe
     cpuCount = int(multiprocessing.cpu_count() * 0.75)
-    serialised = True
+    serialised = False
 
     imgsmallsrc = datasrc + "images/"
     imgbigsrc = datasrc + "tifFiles/"
@@ -75,14 +75,14 @@ def sectionSelecter(spec, datasrc, serialised = True):
     else:
         # parallelise with n cores
         with Pool(processes=cpuCount) as pool:
-            pool.starmap(maskMaker, zip(imgsmall[:0], repeat(imgMasked), repeat(True)))
+            pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasked), repeat(True)))
         
-        # get the directories of the new masks
-        masks = sorted(glob(imgMasked + "*.pbm"))
 
 
     print("------- APPLY THE MASKS TO ALL THE IMAGES -------")
 
+    # get the directories of the new masks
+    masks = sorted(glob(imgMasked + "*.pbm"))
     
     # serialised
     if serialised:
@@ -145,19 +145,26 @@ def maskMaker(idir, imgMasked = None, plotting = False):
         issue 
         '''
 
-        img[:int(cols * 0.08), :] = 255
-        img[-int(cols * 0.05):, :] = 255
+        img[:int(cols * 0.08), :] = np.median(img)
+        img[-int(cols * 0.05):, :] = np.median(img)
 
     if name.find("H710B") >= 0:
-
         # remove some of the bottom row
         img[-int(cols*0.05):, :] = np.median(img)
     
     if name.find("H710C") >= 0:
-
         # remove a little bit of the left hand side of the image 
-        img[:, :int(rows*0.08)] = np.median(img)
         img[:, -int(rows*0.05):] = np.median(img)
+
+    if name.find("H673A") >= 0:
+        # remove some of the bottome
+        img[-int(cols * 0.08):, :] = np.median(img)
+
+    if name.find("H671A") >= 0:
+        # remove some of the top and bottom
+        img[:int(cols*0.05), :] = np.median(img)
+        img[-int(cols*0.05):, :] = np.median(img)
+
     
     # ----------- low pass filter -----------
 
@@ -188,9 +195,7 @@ def maskMaker(idir, imgMasked = None, plotting = False):
     # accentuate the colour
     im_accentuate = img_lowPassFilter.copy()
     a = 127.5           # this sets the tanh to plateau at 0 and 255 (pixel intensity range)
-    b = a - background                                    # NOTE this method is just based on observation, no 
-                                        # actual theory... seems to work. Key is that it is 
-                                        # sample specific
+    b = a - background  # this moves the threshold point to where the background is found
     im_accentuate = (a * np.tanh((im_accentuate - a + b) * 3) + a).astype(np.uint8)
     im_accentuate = (im_accentuate - np.min(im_accentuate)) / (np.max(im_accentuate) - np.min(im_accentuate)) * 255
 
@@ -437,7 +442,6 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath):
     tifShape = {}
     jpegShape = {}
     imgMasked = regionOfPath(maskpath)
-
     ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
 
 
@@ -467,9 +471,9 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath):
             # extract only the mask containing the sample
             maskE = mask[y[0]:y[1], x[0]:x[1], :]
 
-            # if the mask section is less than 20% of the entire mask area, it probably isn't 
-            # a sample and is not useful
-            if maskE.size < mask.size * 0.2:
+            # if each of the mask section is less than 20% of the entire mask 
+            # area, it probably isn't a sample and is not useful
+            if maskE.size < mask.size * 0.2 / len(extract):
                 continue
 
             # extract only the image which contains the sample
@@ -495,7 +499,7 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath):
             tifShape[newid] = imgbigsect.shape
             jpegShape[newid] = imgsmallsect.shape
 
-    print("     " + name + " modified")
+            print("     " + newid + " made")
 
     return([tifShape, jpegShape])
 
@@ -507,14 +511,14 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/IndividualImages/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671B_18.5/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/USB/H671A_18.5/'
 
     name = ''
     size = 3
         
     specID(dataSource, name, size)
-    # iterate through each specimen and perform feature mapping between each sample
-    # NOTE tried to parallelise but once again cv2 is a huge hang up.....
