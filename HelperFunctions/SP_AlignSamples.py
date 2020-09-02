@@ -36,8 +36,9 @@ def align(data, name = '', size = 0, saving = True):
     # Outputs:  (), extracts the tissue sample from the slide and aligns them by 
     #           their identified featues
 
-    # use only 3/4 the CPU resources availabe
-    cpuCount = int(multiprocessing.cpu_count() * 0.75)
+    # use only 0.5 the CPU resources availabe, this is more to preserve
+    # the ram available
+    cpuCount = int(multiprocessing.cpu_count() * 0.5)
     serialise = False
 
     # get the file of the features information 
@@ -61,12 +62,12 @@ def align(data, name = '', size = 0, saving = True):
     if serialise:
         # serial transformation
         for spec in sampleNames:
-            transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving = False, refImg = refImg)
+            transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving, refImg = refImg)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuCount) as pool:
-            pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(False), repeat(refImg)))
+            pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(saving), repeat(refImg)))
 
 
     print('Alignment complete')
@@ -81,8 +82,6 @@ def shiftFeatures(featNames, src, alignedSamples):
     #           (rotateNet), the rotation information to be applied per image
 
     # load the identified features
-    # NOTE it is loaded twice because the dictionary memories are way to linked and 
-    # they keep getting altered somewhere?!?!
     feats = {}
     featRef = {}
     featTar = {}
@@ -212,16 +211,17 @@ def shiftFeatures(featNames, src, alignedSamples):
                         
                         # there have to be at least 3 points left to enable good fitting practice
                         # if there aren't going to be 3 left do a manual fitting process
-                        if len(featsO.tar) < 3: 
+                        if len(featsMod.tar) < 3: 
                             manualFit = True
 
                         # set refit boolean
                         refit = True
 
                         # remove the features which have the most error
-                        del featsO.tar[MxErrPnt]
-                        del featsO.ref[MxErrPnt]
-                        print("     Removed " + MxErrPnt)
+                        for m in MxErrPnt:
+                            del featsO.tar[m]
+                            del featsO.ref[m]
+                        print("     " + str(len(featsMod.tar)) + "/" + str(len(featTar[tF][0])) + "feats left @ err = " + str(int(errN)))
                         atmp += 1
                         break
 
@@ -309,8 +309,6 @@ def shiftFeatures(featNames, src, alignedSamples):
             translateNet[tF] = translateSum
 
             # perform a single rotational fitting procedure
-            # NOTE add recursive feat updater
-            rotated = 10
             rotateSum = 0
 
             # view the final points before rotating VS the optimised points
@@ -344,43 +342,15 @@ def shiftFeatures(featNames, src, alignedSamples):
 
 def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = None):
     # this function takes the affine transformation information and applies it to the samples
-    # Inputs:   (src), directories of the segmented samples
+    # Inputs:   (spec), sample being processed
+    #           (segSamples), directory of the segmented samples
+    #           (segInfo), directory of the feature information
     #           (dest), directories to save the aligned samples
-    #           (spec), sample being processed
     #           (saving), boolean whether to save new info
     # Outputs   (), saves an image of the tissue with the necessary padding to ensure all images are the same size and roughly aligned if saving is True
 
-    def adjustPos(infoE, dest, spec, maxPos, translateNet, w, shapeR, t, centre = None):
+    print(spec + " transforming")
 
-        # this funciton adjusts the position of features in the txt files and resaves them
-        # in the destination location
-        # Inputs:   (s), directory of the specimens features to adjust
-        #           (dest), directory to save new text file
-        #           (spec), sample name
-        #           (maxPos), field adjustment size
-        #           (translateNet), translations of the sample
-        #           (rotateNet), rotations of the sample
-        #           (shapeR), the scale factor for the modified images
-        #           (t), type of file
-        #           (centre), position of the centre, if not given will be calculated from input features
-        # Outputs:  (), saves the positions with the transformation 
-        #           (centre), if the centre is not given then it is to be found from these calculations
-
-
-        # adjust the positions based on the fitting process
-        for f in infoE:
-            infoE[f] = (infoE[f] - translateNet) * shapeR
-        infoE = objectivePolar(w, centre, False, infoE) 
-
-        # adjust the positions based on the whole image adjustment
-        
-        for f in infoE:
-            infoE[f] += np.array(maxPos)  
-        
-        # save the info
-        dictToTxt(infoE, dest + spec + "." + t)     # from the info in the txt file, rename
-        return(infoE)
-    
     segmentdir = segSamples + spec + ".tif"
     refdir = dest + spec + ".reffeat"
     tardir = dest + spec + ".tarfeat"
@@ -392,7 +362,8 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # load the whole specimen info
     translateNet = txtToDict(translateNetdir, float)[0]
     tifShapes = txtToDict(tifShapesdir, int)[0]
-    jpgShapes = txtToDict(jpgShapesdir, int)[0]
+    try:    jpgShapes = txtToDict(jpgShapesdir, int)[0]
+    except: jpgShapes = tifShapes   # if not jpgShapes then use the tifShapes
     rotateNet = txtToDict(rotateNetdir, float)[0]
     specInfo = {}
 
@@ -426,26 +397,15 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # get the anlge and centre of rotation used to align the samples
     w = -rotateNet[sample][0]
     centre = rotateNet[sample][1:] * shapeR
-
     # make destinate directory
     dirMaker(dest)
 
     # ---------- apply the transformations onto the images ----------
-
-    # adjust the translations of each image and save the new images with the adjustment
-    # for spec in src:
-    # NOTE the features are already updated in the shiftFeatures function
     
     # adjust the points for the tif image
     for sI in specInfo:
         for f in specInfo[sI]:
             specInfo[sI][f] = specInfo[sI][f] * shapeR + np.array(maxPos)
-        # adjust all the points
-        # specInfo[t] = adjustPos(specInfo[t], dest, sample, maxPos, translateNet[sample], w, shapeR, t, centre)
-    
-
-    # process for feats, bound and segsections. NOTE segsections not always present so 
-    # error handling incorporated
     
     # get the maximum dimensions of all the tif images (NOT the jpeg images)
     tsa = dictToArray(tifShapes, int)
@@ -468,28 +428,28 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     newField = np.zeros([yF, xF, cF]).astype(np.uint8)      # empty matrix for ALL the images
     newField[yp:(yp+fy), xp:(xp+fx), :] += field
 
-
     # apply the rotational transformation to the image
     centre = centre + maxPos
 
     rot = cv2.getRotationMatrix2D(tuple(centre), -float(w), 1)
     warped = cv2.warpAffine(newField, rot, (xF, yF))
-
+    # NOTE this is very memory intense so probably should reduce the CPU
+    # count so that more of the RAM is being used rather than swap
     # perform a colour nomralisation is a reference image is supplied
     if refImg is not None:
         for c in range(warped.shape[2]):
             warped[:, :, c] = hist_match(warped[:, :, c], refImg[:, :, c])
 
-    print("done translation of " + sample)
+    print("     done translation of " + sample)
 
-    # NOTE change the inputs to a single large dictionary
+    # create a low resolution image which contains the adjust features
     plotPoints(dest + sample + '_alignedAnnotatedUpdated.jpg', warped, centre, specInfo)
 
     # this takes a while so optional
     if saving:
         cv2.imwrite(dest + sample + '.tif', warped)                               # saves the adjusted image at full resolution 
     
-    cv2.imwrite(dest + sample + '.png', cv2.resize(warped, (int(warped.shape[1]/shareR), int(warped.shape[0]/shapeR))))
+    cv2.imwrite(dest + sample + '.png', cv2.resize(warped, (int(warped.shape[1]/shapeR), int(warped.shape[0]/shapeR))))
 
 def translatePoints(feats, bestfeatalign = False):
 
@@ -552,8 +512,8 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
         else:
             centre = findCentre(tarP)
     
-    # get the shift needed and store
-    res = minimize(objectivePolar, -5.0, args=(centre, True, tarP, refP), method = 'Nelder-Mead', tol = tol) # NOTE create bounds on the rotation
+    # get the optimal rotation to minimise errors and store
+    res = minimize(objectivePolar, -5.0, args=(centre, True, tarP, refP), method = 'Nelder-Mead', tol = tol) 
     tarM = objectivePolar(res.x, centre, False, tar, refP, plot)   # get the transformed features and re-assign as the ref
     rotationStore = float(res.x)
 
@@ -561,7 +521,13 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
     errPnt = np.sum((dictToArray(ref) - dictToArray(tarM))**2, axis = 1)
 
     # get the feature with the greatest error
-    MxErrPnt = list(tarM.keys())[np.argmax(errPnt)]
+    # for every 50 features, remove a feature (ie if there are 199 fts, remove 3
+    # if 201 remove 4)
+    MxErrPnt = []
+    ftPos = np.argsort(-errPnt)[:int(np.floor(len(errPnt)/50+1))]
+    for f in ftPos:
+
+        MxErrPnt.append(list(tarM.keys())[f])
 
     # return the average error per point
     err = np.mean(errPnt)
@@ -667,12 +633,6 @@ def objectivePolar(w, centre, *args):
     
     tarN = {}
 
-    # this will shrink the matrices made and all the feature co-ordinates by this 
-    # factor in order to reduce the time taken to compute
-    # NOTE the more it is scaled the more innacuracies are created, however appears 
-    # that it is pretty accurate with a 10 scaling but is also acceptably fast
-    scale = 1
-
     tarA = dictToArray(tar, float)
     
     # if the centre is not specified, find it from the target points
@@ -680,8 +640,8 @@ def objectivePolar(w, centre, *args):
         centre = findCentre(tarA)       # this is the mean of all the features
 
     # find the centre of the target from the annotated points
-    tarA = (tarA/scale).astype(float)
-    centre = (centre/scale).astype(float)
+    tarA = (tarA).astype(float)
+    centre = (centre).astype(float)
 
     Xmax = int(tarA[:, 0].max())
     Xmin = int(tarA[:, 0].min())
@@ -702,10 +662,6 @@ def objectivePolar(w, centre, *args):
     tarNames = list(tar)
 
     # adjust the position of the features by w degrees
-    # NOTE this is being processed per point instead of all at once because of the fact that rotating points causes
-    # a 'blurring' of the new point and to identify what the new point is from this 'blur', we have to be able 
-    # to recognise each point. I have decided it is simpler to identify each point by processing each one individually, 
-    # rather than doing some kind of k-means clustering rubbish etc. 
     for n in range(len(tarNames)):
 
         feat = tarNames[n]
@@ -730,7 +686,7 @@ def objectivePolar(w, centre, *args):
         opp = hyp * np.sin(anglen)
         adj = hyp * np.cos(anglen)
 
-        newfeatPos = np.array([opp, adj] * scale).astype(float) + centre
+        newfeatPos = np.array([opp, adj]).astype(float) + centre
 
         # if the features were inversed, un-inverse
 
@@ -774,17 +730,17 @@ def findCentre(pos, typeV = float):
     return(centre)
 
 if __name__ == "__main__":
-
     multiprocessing.set_start_method('spawn')
 
     # dataHome is where all the directories created for information are stored 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
-    dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H671A_18.5/'
 
 
     # dataTrain = dataHome + 'FeatureID/'
