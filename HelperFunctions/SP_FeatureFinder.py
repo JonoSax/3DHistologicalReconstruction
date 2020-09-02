@@ -19,24 +19,31 @@ from itertools import repeat
 from copy import copy, deepcopy
 if __name__ != "HelperFunctions.SP_FeatureFinder":
     from Utilities import *
-    from SP_SampleAnnotator import featSelectPoint
+    from SP_SampleAnnotator import featChangePoint
 else:
     from HelperFunctions.Utilities import *
-    from HelperFunctions.SP_SampleAnnotator import featSelectPoint
-
-# set the multiprocessing type (only do it if it's not spawned)
-if __name__ != "__mp_main__": multiprocessing.set_start_method('spawn')
+    from HelperFunctions.SP_SampleAnnotator import featChangePoint
 
 # for each fitted pair, create an object storing their key information
 class feature:
-    def __init__(self, refP = None, tarP = None, dist = None, size = None):
+    def __init__(self, refP = None, tarP = None, dist = None, size = None, res = None):
+        # the position of the match on the reference image
         self.refP = refP
+
+        # the position of the match on the target image
         self.tarP = tarP
+
+        # eucledian error of the difference in gradient fields
         self.dist = dist
+
+        # the size of the feature
         self.size = size
 
+        # the resolution index of the image that was processed
+        self.res = res
+
     def __repr__(self):
-            return repr((self.refP, self.tarP, self.dist, self.size))
+            return repr((self.dist, self.refP, self.tarP, self.size, self.res))
 
 '''
 TODO: explanation of what happens here.....
@@ -93,7 +100,7 @@ def featFind(dataHome, name, size):
     dist = 30
 
     # get the images
-    imgs = sorted(glob(imgsrc + "*.png"))[:80]
+    imgs = sorted(glob(imgsrc + "*.png"))[-2: ]
 
     if serialise:
         # serialisation (mainly debuggin)
@@ -105,7 +112,6 @@ def featFind(dataHome, name, size):
         with Pool(processes=cpuCount) as pool:
             pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
         
-
 def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50):
 
     # This script finds features between two sequential samples (based on their
@@ -166,7 +172,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     # It is preferable to use a lower resolution image because it means that features that
     # are larger on the sample are being found and the speed of processing is significantly faster.
     # However if there are not enough features per a treshold
-    scale = [0.3, 0.5, 0.8, 1]
+    scale = [0.1, 0.2, 0.5, 0.8, 1]
     for scln, scl in enumerate(scale):
 
         # store the scale specific information
@@ -209,8 +215,8 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
         # lead to feature matching in non-sensible locations. This scanning method assumes
         # there is APPROXIMATE sample placement (ie there are samples in the middle of the 
         # slice)
-        for c in range(1, int(np.ceil(x/pg)) - 1):
-            for r in range(1, int(np.ceil(y/pg)) - 1):
+        for c in range(int(np.ceil(x/pg))+1):
+            for r in range(int(np.ceil(y/pg))+1):
 
                 # extract a small overlapping grid from both images
                 startX = np.clip(int(c*pg-sc), 0, x)
@@ -224,7 +230,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
                 # if the proporption of information within the slide is black (ie background)
                 # is more than a threshold, don't process
-                if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.1): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
+                if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.5): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
                     continue
 
                 # plt.imshow(imgSect_ref); plt.show()
@@ -246,6 +252,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
                         featureInfo.tarP = (kp_tar[m.trainIdx].pt + + np.array([startY, startX])) / scl
                         featureInfo.dist = m.distance
                         featureInfo.size = kp_tar[m.trainIdx].size
+                        featureInfo.res = scln
                         
                         # store the information specific to this resolution
                         resInfo.append(deepcopy(featureInfo))
@@ -253,6 +260,13 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
         # if there are more than featNo matches then pick the BEST of all those features
         if len(resInfo) > 0:
             matchedInfo = matchMakerN(matchedInfo, resInfo, dist)
+
+            for n, m in enumerate(matchedInfo):
+                matchedInfo[n].dist = 0.01 * n # preserve the order of the features
+                                                        # fit but ensure that it is very low to 
+                                                        # indicate that it is a "confirmed" fit
+                matchedInfo[n].size = 100
+
 
             # plotting all the features found for this specific resoltuion
             '''
@@ -264,105 +278,104 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
             plt.imshow(np.hstack([ir, it])); plt.show()
             '''
-        
-        # if there are not features found, iterate to the next highest resolution
-        else:
-            break
 
-        # ---------- update and save the found features ---------
-
-        # update the dictionaries
-        names = []
-        for fn, kp in enumerate(matchedInfo):
-
-            # add matched feature, adjust for the initial standardisation of the image
-            # and for the scale of the image
-            name = "feat_" + str(fn) + "_scl_" + str(scl)
-            names.append(name)
-            matchRefDict[name] = (kp.refP - np.array([yrefDif, xrefDif]) / scl)
-            matchTarDict[name] = (kp.tarP - np.array([ytarDif, xtarDif]) / scl) 
-
-            matchedInfo[fn].dist = fn * 0.01 + scln # preserve the order of the features
-                                                    # fit but ensure that it is very low to 
-                                                    # indicate that it is a "confirmed" fit
-            matchedInfo[fn].size = 100
-
-        # store the positions of the identified features for each image as 
-        # BOTH a reference and target image. Include the image size this was 
-        # processed at
-
-        # ---------- create a combined image of the target and reference image matches ---------
-
-        # make pictures to show the features found
-        txtsz = 0.5
-        colours = [(255, 0, 0), (255, 0, 255), (0, 255, 0)]
-        # img_refC = cv2.resize(img_refO, (yr, xr))
-        # img_tarC = cv2.resize(img_tarO, (yt, xt))
-        for i, nF in enumerate(names):
-
-            # if there is no match info just assign it to 0 (ie was a manual annotaiton)
-            try: md = int(matchDistance[i]); ms = np.round(matchSize[i], 2)
-            except: md = np.inf; ms = np.inf
-
-            # mark the feature
-            newref = matchRefDict[nF].astype(int)
-            newtar = matchTarDict[nF].astype(int)
-
-            cv2.circle(img_refC, tuple(newref.astype(int)), int(txtsz*10), colours[scln], int(txtsz*6))
-            cv2.circle(img_tarC, tuple(newtar.astype(int)), int(txtsz*10), colours[scln], int(txtsz*6))
-
-            # add the feature number onto the reference image
-            cv2.putText(img = img_refC, text = str(nF), 
-            org = tuple(newref + np.array([-50, 15])),
-            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
-
-            cv2.putText(img = img_refC, text = str(nF), 
-            org = tuple(newref + np.array([-50, 15])),
-            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
-            
-            # add the feature number and dist + size info
-            text = str(nF + ", d: " + str(md) + ", s: " + str(ms))
-            text = str(nF)
-
-            cv2.putText(img = img_tarC, text = text, 
-            org = tuple(newtar + np.array([-50, 15])),
-            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
-
-            cv2.putText(img = img_tarC, text = text, 
-            org = tuple(newtar + np.array([-50, 15])),
-            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
-
-
-        # plot the features found per resolution
-        '''
-        img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
-        img_tarF = field.copy(); img_tarF[:xt, :yt] = img_tarC
-        plt.imshow(np.hstack([img_refF, img_tarF])); plt.show()
-        '''
-
-        # once the threshold number of features is found, return.
-
+        # if the number of features founds exceeds the minimum then break
         if len(matchedInfo) >= featMin:
             break
 
+    # ---------- update and save the found features ---------
+
     # If after searching through up until the full resolution image there is not a 
     # threshold number of features found provide manual annotations up until that featMin
-    # NOTE this is not working atm beause it takes dictionaries not objects....
     if len(matchedInfo) < featMin:
-        matchRef, matchTar = featSelectPoint(img_ref, img_tar, [], [], featMin)
+        matchedInfo = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo)
         print("\n\n!!!" + name_tar + " has not been fitted !!!!\n\n")
 
+    # if the sift search worked then update the dictionary
+    # update the dictionaries
+    names = []
+    for fn, kp in enumerate(matchedInfo):
+
+        # add matched feature, adjust for the initial standardisation of the image
+        # and for the scale of the image
+        name = "feat_" + str(fn) + "_scl_" + str(kp.res)
+        names.append(name)
+        matchRefDict[name] = (kp.refP - np.array([yrefDif, xrefDif]) / scl)
+        matchTarDict[name] = (kp.tarP - np.array([ytarDif, xtarDif]) / scl) 
+
+    # store the positions of the identified features for each image as 
+    # BOTH a reference and target image. Include the image size this was 
+    # processed at
+
+    # ---------- create a combined image of the target and reference image matches ---------
+
+    # make pictures to show the features found
+    txtsz = 0.5
+    colours = [(255, 0, 0), (255, 0, 255), (0, 255, 0), (0, 255, 255), (255, 255, 255)]
+    # img_refC = cv2.resize(img_refO, (yr, xr))
+    # img_tarC = cv2.resize(img_tarO, (yt, xt))
+    for i, nF in enumerate(matchedInfo):
+
+        # if there is no match info just assign it to 0 (ie was a manual annotaiton)
+        try: md = int(nF.dist); ms = np.round(nF.size, 2)
+        except: md = np.inf; ms = np.inf
+        
+        name = names[i]
+
+        # mark the feature
+        newref = nF.refP.astype(int)
+        newtar = nF.tarP.astype(int)
+
+        cv2.circle(img_refC, tuple(newref.astype(int)), int(txtsz*10), colours[nF.res], int(txtsz*6))
+        cv2.circle(img_tarC, tuple(newtar.astype(int)), int(txtsz*10), colours[nF.res], int(txtsz*6))
+
+        # add the feature number onto the reference image
+        cv2.putText(img = img_refC, text = str(name), 
+        org = tuple(newref + np.array([-50, 15])),
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
+
+        cv2.putText(img = img_refC, text = str(name), 
+        org = tuple(newref + np.array([-50, 15])),
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
+        
+        # add the feature number and dist + size info
+        text = str(name + ", d: " + str(md) + ", s: " + str(ms))
+        text = str(name)
+
+        cv2.putText(img = img_tarC, text = text, 
+        org = tuple(newtar + np.array([-50, 15])),
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
+
+        cv2.putText(img = img_tarC, text = text, 
+        org = tuple(newtar + np.array([-50, 15])),
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
+
+    # put text for the number of features
+    cv2.putText(img = img_refC, text = str("Feats found = " + str(len(matchTarDict))), 
+        org = (50, 50),
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (255, 255, 255), thickness = int(txtsz*10))
+    cv2.putText(img = img_refC, text = str("Feats found = " + str(len(matchTarDict))), 
+    org = (50, 50),
+    fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (0, 0, 0), thickness = int(txtsz*6))
+    # plot the features found per resolution
+    '''
+    img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
+    img_tarF = field.copy(); img_tarF[:xt, :yt] = img_tarC
+    plt.imshow(np.hstack([img_refF, img_tarF])); plt.show()
+    '''
 
     # draw the grid lines on the images
-    for r in range(0, ym, int(np.round(xm/gridNo))):
+    for rp in range(int(np.ceil(y/pg))):
         # horizontal line
+        r = int(rp * pg / scl)
         cv2.line(img_refC, (r, 0), (r, xm), (255, 255, 255), 4, 1)
         cv2.line(img_refC, (r, 0), (r, xm), (0, 0, 0), 2, 1)
         cv2.line(img_tarC, (r, 0), (r, xm), (255, 255, 255), 4, 1)
         cv2.line(img_tarC, (r, 0), (r, xm), (0, 0, 0), 2, 1)
     
-    for c in range(0, xm, int(np.round(ym/gridNo))):
+    for cp in range(int(np.ceil(x/pg))):
         # vertical line
+        c = int(cp * pg / scl)
         cv2.line(img_refC, (0, c), (ym, c), (255, 255, 255), 4, 1)
         cv2.line(img_refC, (0, c), (ym, c), (0, 0, 0), 2, 1)
         cv2.line(img_tarC, (0, c), (ym, c), (255, 255, 255), 4, 1)
@@ -376,8 +389,8 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     # plt.imshow(np.hstack([img_refF, img_tarF])); plt.show()
     cv2.imwrite(imgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_refF, img_tarF]))
 
-    dictToTxt(matchRefDict, dataDest + "/" + name_ref + ".reffeat", shape = img_refO.shape, fit = False)
-    dictToTxt(matchTarDict, dataDest + "/" + name_tar + ".tarfeat", shape = img_tarO.shape, fit = False)
+    dictToTxt(matchRefDict, dataDest + name_ref + ".reffeat", shape = img_refO.shape, fit = False)
+    dictToTxt(matchTarDict, dataDest + name_tar + ".tarfeat", shape = img_tarO.shape, fit = False)
 
     print("     Done matching " + name_ref + " to " + name_tar)
 
@@ -554,7 +567,6 @@ def matchMakerN(matchedInfo, resInfo,  dist = 50, featNo = None):
               
         # print(str(fits) + " = " + str(len(matchInfoN)) + "/" + str(len(resInfo)))
             
-    # NOTE this isn't wokring because it doesn't access objects...
     # denseMatrixViewer([infoStore.refP, infoStore.tarP], True)
 
     return(infoStore)
@@ -583,7 +595,7 @@ def imgPlacement(name_spec, img_ref, img_tar):
     field = np.zeros((xm, ym, cm)).astype(np.uint8)
 
     # something for the bottom right
-    if name_spec == 'H653A' or name_spec == 'H710B':
+    if name_spec == 'H653A' or name_spec == 'H710C':
         # these are the origin shifts to adapt each image
         xrefDif = xm-xr
         yrefDif = ym-yr
@@ -595,7 +607,7 @@ def imgPlacement(name_spec, img_ref, img_tar):
         img_refF = field.copy(); img_refF[-xr:, -yr:] = img_ref
         img_tarF = field.copy(); img_tarF[-xt:, -yt:, :] = img_tar
     
-    # specific H1029A positioning
+    # something in the middle
     elif name_spec == 'H1029A':
         # position the further right, lowest point of the each of the target and 
         # reference images at the bottom right positions of the fields
@@ -624,7 +636,7 @@ def imgPlacement(name_spec, img_ref, img_tar):
         img_refF = fieldp.copy(); img_refF[-xrp:, -yrp:, :] = img_refp
         img_tarF = fieldp.copy(); img_tarF[-xtp:, -ytp:, :] = img_tarp
         
-    elif name_spec == 'H710C':
+    elif name_spec == 'H710B':
         # put the image in the middle of the field
         xrefDif = int((xm-xr) / 2)
         yrefDif = int((ym-yr) / 2)
@@ -642,21 +654,23 @@ def imgPlacement(name_spec, img_ref, img_tar):
         xtarDif = 0
         ytarDif = 0
 
-        img_refF = field.copy(); img_ref[:xr, :yr, :] = img_ref
-        img_tarF = field.copy(); img_tar[:xt, :yt, :] = img_tar
+        img_refF = field.copy(); img_refF[:xr, :yr, :] = img_ref
+        img_tarF = field.copy(); img_tarF[:xt, :yt, :] = img_tar
         
     return(xrefDif, yrefDif, xtarDif, ytarDif, img_refF, img_tarF)
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn')
 
     dataSource = '/Volumes/USB/Testing1/'
-    dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H671B_18.5/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/USB/H671A_18.5/'
 
-    
 
     name = ''
     size = 3
