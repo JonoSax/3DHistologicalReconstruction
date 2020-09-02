@@ -23,14 +23,37 @@ import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 import tifffile as tifi
-from multiprocessing import Process
+from multiprocessing import Pool, cpu_count
+from copy import deepcopy
+from itertools import repeat
 if __name__.find("HelperFunctions") == -1:
     from Utilities import *
 else:
     from HelperFunctions.Utilities import *
 
 
-def featChangePoint(dataSource, ref, tar, nopts = 5, ts = 4):
+# for each fitted pair, create an object storing their key information
+class feature:
+    def __init__(self, refP = None, tarP = None, dist = None, size = None, res = None):
+        # the position of the match on the reference image
+        self.refP = refP
+
+        # the position of the match on the target image
+        self.tarP = tarP
+
+        # eucledian error of the difference in gradient fields
+        self.dist = dist
+
+        # the size of the feature
+        self.size = size
+
+        # the resolution index of the image that was processed
+        self.res = res
+
+    def __repr__(self):
+        return repr((self.dist, self.refP, self.tarP, self.size, self.res))
+
+def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4):
 
     # this fuction brings up a gui which allows for a user to manually CHANGE
     # features on the images. This modifies the original .feat file
@@ -41,21 +64,36 @@ def featChangePoint(dataSource, ref, tar, nopts = 5, ts = 4):
     # Outputs:  (matchRef, matchTar), updated ref and target features with new points added
     #           (), also saves the new ref and tar positions in the SAME location
 
-    # get the dirs of the info
-    imgdirs = dataSource + 'masked/'
-    infodirs = dataSource + 'info/'
+    # if modifying files
+    if dataSource is None:
+        imgref = ref
+        imgtar = tar
 
-    imgrefdir = imgdirs + ref + ".png"
-    imgtardir = imgdirs + tar + ".png"
+        matchRefO = {}
+        matchTarO = {}
+        for n, f in enumerate(featureInfo):
+            matchRefO[n] = f.refP
+            matchTarO[n] = f.tarP
 
-    matchRefdir = infodirs + ref + ".reffeat"
-    matchTardir = infodirs + tar + ".tarfeat"
-    
-    matchRefO = txtToDict(matchRefdir, float)[0]
-    matchTarO = txtToDict(matchTardir, float)[0]
+    # if modifying arrays
+    else: 
+        # get the dirs of the info
+        imgdirs = dataSource + 'masked/'
+        infodirs = dataSource + 'info/'
 
-    imgref = cv2.cvtColor(cv2.imread(imgrefdir), cv2.COLOR_BGR2RGB)
-    imgtar = cv2.cvtColor(cv2.imread(imgtardir), cv2.COLOR_BGR2RGB)
+        imgrefdir = imgdirs + ref + ".png"
+        imgtardir = imgdirs + tar + ".png"
+
+        imgref = cv2.cvtColor(cv2.imread(imgrefdir), cv2.COLOR_BGR2RGB)
+        imgtar = cv2.cvtColor(cv2.imread(imgtardir), cv2.COLOR_BGR2RGB)
+
+        matchRefdir = infodirs + ref + ".reffeat"
+        matchTardir = infodirs + tar + ".tarfeat"
+
+        matchRefO = txtToDict(matchRefdir, float)[0]
+        matchTarO = txtToDict(matchTardir, float)[0]
+
+
 
     # automatically set the text size
     ts = imgref.shape[0]/1000
@@ -145,17 +183,26 @@ def featChangePoint(dataSource, ref, tar, nopts = 5, ts = 4):
 
     # save the new manually added positions to the original location, REPLACING the 
     # information
-    dictToTxt(matchRef, matchRefdir, fit = False)
-    dictToTxt(matchTar, matchTardir, fit = False)
+    if ref is str:
+        dictToTxt(matchRef, matchRefdir, fit = False)
+        dictToTxt(matchTar, matchTardir, fit = False)
+    
+    # convert the dictionaries into a feature object
+    featInfos = []
+    for f in matchRef:
+        featInfos.append(feature(refP = matchRef[f], tarP = matchTar[f], dist = 0, size = 100, res = -1))
 
-    return(matchRef, matchTar)
+    return(featInfos)
 
 def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
 
     # this function brings up a gui which allows user to manually selection a 
     # roi on the image. This extracts samples from the aligned tissues and saves them
 
+    cpuCount = int(cpu_count() * 0.75)
     segSections = datahome + str(size) + "/segSections/"
+
+    serialised = False
 
     for f in range(feats):
         dirMaker(segSections + "seg" + str(f) + "/")
@@ -163,7 +210,7 @@ def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
     alignedSamples = datahome + str(size) + "/alignedSamples/"
 
     # get all the samples to be processed
-    samples = glob(alignedSamples + "*.tif")
+    samples = glob(alignedSamples + "*.tif")[:5]
 
     # get the image to be used as the reference
     if type(sample) == int:
@@ -189,25 +236,29 @@ def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
         cv2.rectangle(img, (int(x[f][0]), int(y[f][0])), (int(x[f][1]), int(y[f][1])), (255, 255, 255), 40)
         cv2.rectangle(img, (int(x[f][0]), int(y[f][0])), (int(x[f][1]), int(y[f][1])), (0, 0, 0), 20)
 
+    shapes = {}
+    if serialised:
+        for s in samples:
+            name = nameFromPath(s)
+            shapes[name] = sectionExtract(s, segSections, feats, x, y, imgref)
 
-    for s in samples:
-        sectionExtract(segSections, feats, s, x, y, imgref)
+    else:
+        with Pool(processes=cpuCount) as pool:
+            shapes = pool.starmap(sectionExtract, zip(samples, repeat(segSections), repeat(feats), repeat(x), repeat(y), repeat(imgref)))
 
-    # NOTE only parallelise on the HPC
-    '''
-    # extract from all the samples the features
-    jobs = {}
-    for s in samples:
-        name = nameFromPath(s)
-    
-        jobs[name] = Process(target = sectionExtract, args = (segSections, feats, s, x, y))
-        jobs[name].start()
 
-    for n in jobs:
-        jobs[n].join()
-    '''
+    # create a dictionary of all the tif shapes. they're all the same size, 
+    # its just about ensuring the input into align is consistent
+    for i in range(feats):
+        imgShapes = {}
+        for n, s in enumerate(samples):
+            name = nameFromPath(s, 3)
+            imgShapes[name] = shapes[n][i]
 
-def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5, ts = 4):
+        dictToTxt(imgShapes, segSections + "seg" + str(i) + "/info/all.tifshape")
+
+
+def featSelectPoint(imgref, imgtar, matchRef = {}, matchTar = {}, feats = 5, ts = 4):
 
     # this fuction brings up a gui which allows for a user to manually select
     # features on the images. This contributes to making a .feat file
@@ -225,6 +276,14 @@ def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5, ts = 4):
 
     # text size
     ts = imgref.shape[0]/1000
+
+    if type(matchRef) is not dict:
+        matchObj = deepcopy(matchRef)
+        matchRef = []
+        matchTar = []
+        for mO in matchObj:
+            matchRef.append(mO.refP)
+            matchTar.append(mO.tarP)
 
     # add the annotations already on the image
     imgCombine = annotateImg([imgref, imgtar], [matchRef, matchTar], ts)
@@ -266,12 +325,13 @@ def featSelectPoint(imgref, imgtar, matchRef, matchTar, feats = 5, ts = 4):
 
     return(matchRef, matchTar)
 
-def sectionExtract(segSections, feats, s, x, y, ref = None):
+def sectionExtract(path, segSections, feats, x, y, ref = None):
 
-    img = tifi.imread(s)
-    name = nameFromPath(s, 3)
+    img = tifi.imread(path)
+    name = nameFromPath(path, 3)
     sections = []
 
+    segShapes = {}
     # if a reference image is being used to normalise the images
     if (type(ref) is list) or (type(ref) is np.ndarray):
         img = hist_match(img, ref)
@@ -282,6 +342,9 @@ def sectionExtract(segSections, feats, s, x, y, ref = None):
         segdir = segSections + "seg" + str(f) + "/"
         section = img[int(y[f][0]):int(y[f][1]), int(x[f][0]):int(x[f][1]), :]
         tifi.imwrite(segdir + name + ".tif", section)
+        segShapes[f] = section.shape
+
+    return(segShapes)
 
 def roiselector(img):
 
@@ -398,12 +461,13 @@ if __name__ == "__main__":
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/USB/H671A_18.5/'
 
 
 
     size = 3
 
-    featSelectArea(dataSource, size, 5, 0, False)
+    featSelectArea(dataSource, size, 2, 0, False)
 
     '''
     'H710C_289A+B_0',
