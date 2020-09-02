@@ -9,12 +9,14 @@ import numpy as np
 from glob import glob
 import os
 import img2pdf as i2p
-from multiprocessing import Process
+from multiprocessing import Pool
+import multiprocessing
+from itertools import repeat
 from time import perf_counter as clock
-if __name__ == "__main__":
-    from Utilities import nameFromPath, dirMaker, dictToTxt, dictOfDirs
+if __name__ != "HelperFunctions.SP_tif2pdf":
+    from Utilities import *
 else:
-    from HelperFunctions.Utilities import nameFromPath, dirMaker, dictToTxt, dictOfDirs
+    from HelperFunctions.Utilities import *
 
 def smallerTif(dataHome, name, size, scale = 0.3):
 
@@ -44,6 +46,10 @@ def pdfCreator(specificSample, spec, path, scale, remove = False):
     # Outputs:  (), creates a pdf per sample, also has to create a temporary folder
     #               for jpeg images but that is deleted at the end
 
+    serialised = False
+
+    cpuCount = int(multiprocessing.cpu_count() * 0.75)
+
     # create a temporary folder for the jpeg images per sample
     dataTemp = path + 'temporary' + spec + '/'
     dataTemp = path + "images/"
@@ -65,11 +71,14 @@ def pdfCreator(specificSample, spec, path, scale, remove = False):
     # create an ordered list of the sample directories
     c = 0   # count for user to observe progress
     tifShape = {}
-    
-    # NOTE creating the jpeg files should be very parallelised and at the end
-    # the order of the files shoudl be sorted out and the pdf created
-    for n, name in zip(order, nameFromPath(specificSample)):
-        tifShape[name] = miniSample(dataTemp, specificSample[n], scale, n)
+
+    if serialised:
+        for n, name in zip(order, nameFromPath(specificSample)):
+            tifShape[name] = miniSample(specificSample[n], dataTemp, scale, n)
+        
+    else:
+        with Pool(processes=cpuCount) as pool:
+            info = pool.starmap(miniSample, zip(list(specificSample.values()), repeat(dataTemp), repeat(scale)))
 
     # NOTE the order should be the same as the tif files because it is collected 
     # with glob in the same way and the sample name is preserved (?? verify...)
@@ -101,7 +110,7 @@ def pdfCreator(specificSample, spec, path, scale, remove = False):
 
     # research drive access via VPN
 
-def miniSample(dataTemp, sample, scale, n):
+def miniSample(sample, dataTemp, scale, n = None):
 
     # this function loads a single image, downsizes it and annotates it 
     # Inputs:   (dataTemp), directory to store the images in
@@ -116,13 +125,13 @@ def miniSample(dataTemp, sample, scale, n):
 
     spec = nameFromPath(sample) 
     try:
-        imgt = cv2.imread(sample)
+        imgt = cv2.imread(sample)       # NOTE the tif files being read in aren't too big anymore...
     except:
         print(spec + " failed")
         return([])
 
     if imgt is None:
-        print(spec + " failed")
+        print(sample)
         return([])
 
     # (n.lower().find("d") >= 0) & (spec.lower().find("h710b") >= 0) or \
@@ -132,15 +141,16 @@ def miniSample(dataTemp, sample, scale, n):
     img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
 
     # add the sample name to the image (top left corner)
-    '''cv2.putText(img, spec + "_" + str(n), 
-        (50, 50), 
-        cv2.FONT_HERSHEY_SIMPLEX, 
-        1,
-        (0, 0, 0),
-        2)'''
+    if n is not None:
+        cv2.putText(img, spec + "_" + str(n), 
+            (50, 50), 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            1,
+            (0, 0, 0),
+            2)
     # create a temporary jpg image and store the dir
     tempName = dataTemp + spec + '.png'
-    cv2.imwrite(tempName, cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    cv2.imwrite(tempName, img)
     print("Specimen: " + spec + " downsampled")
     # tifi.imwrite(tempName, img)
 
@@ -176,7 +186,7 @@ def sampleCollector(dataHome, size):
             while (len(no) < 3):
                 no = "0" + no
         except:
-            # NOTE create a txt file of these files
+            # create a txt file of these files
             print("sample " + specID + no + " is not processed")
             continue
 
@@ -192,18 +202,18 @@ def sampleCollector(dataHome, size):
 
 if __name__ == "__main__":
 
-    # NOTE I wonder if this works better with higher resolution images as a rule 
-    # or just as an observation?
+    multiprocessing.set_start_method('spawn')
 
     # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/ConvertedNDPI/'
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671B_18.5/'
-    dataSource = '/Volumes/Storage/H653A_11.3new/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710B_6.1/'
-
+    dataSource = '/Volumes/USB/H671A_18.5/'
 
 
     size = 3
