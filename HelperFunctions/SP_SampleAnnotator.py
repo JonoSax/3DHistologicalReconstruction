@@ -71,29 +71,46 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4)
 
         matchRefO = {}
         matchTarO = {}
-        for n, f in enumerate(featureInfo):
-            matchRefO[n] = f.refP
-            matchTarO[n] = f.tarP
+        if type(featureInfo[0]) is dict:
+            # if dictionaries are passed in as a list
+            matchRefO = featureInfo[0]
+            matchTarO = featureInfo[1]
+
+        else:
+            # if the info is in a list of objects
+            for n, f in enumerate(featureInfo):
+                matchRefO[n] = f.refP
+                matchTarO[n] = f.tarP
 
     # if modifying arrays
     else: 
+
         # get the dirs of the info
-        imgdirs = dataSource + 'masked/'
         infodirs = dataSource + 'info/'
 
-        imgrefdir = imgdirs + ref + ".png"
-        imgtardir = imgdirs + tar + ".png"
+        # if doing it for the main images
+        try:    
+            imgdirs = dataSource + 'masked/'
+            imgrefdir = imgdirs + ref + ".png"
+            imgtardir = imgdirs + tar + ".png"
 
-        imgref = cv2.cvtColor(cv2.imread(imgrefdir), cv2.COLOR_BGR2RGB)
-        imgtar = cv2.cvtColor(cv2.imread(imgtardir), cv2.COLOR_BGR2RGB)
+            imgref = cv2.cvtColor(cv2.imread(imgrefdir), cv2.COLOR_BGR2RGB)
+            imgtar = cv2.cvtColor(cv2.imread(imgtardir), cv2.COLOR_BGR2RGB)
+
+        # if doing it for the segSections
+        except: 
+            imgdirs = dataSource
+            imgrefdir = imgdirs + ref + ".png"
+            imgtardir = imgdirs + tar + ".png"
+
+            imgref = cv2.cvtColor(cv2.imread(imgrefdir), cv2.COLOR_BGR2RGB)
+            imgtar = cv2.cvtColor(cv2.imread(imgtardir), cv2.COLOR_BGR2RGB)
 
         matchRefdir = infodirs + ref + ".reffeat"
         matchTardir = infodirs + tar + ".tarfeat"
 
         matchRefO = txtToDict(matchRefdir, float)[0]
         matchTarO = txtToDict(matchTardir, float)[0]
-
-
 
     # automatically set the text size
     ts = imgref.shape[0]/1000
@@ -187,10 +204,15 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4)
         dictToTxt(matchRef, matchRefdir, fit = False)
         dictToTxt(matchTar, matchTardir, fit = False)
     
-    # convert the dictionaries into a feature object
-    featInfos = []
-    for f in matchRef:
-        featInfos.append(feature(refP = matchRef[f], tarP = matchTar[f], dist = 0, size = 100, res = -1))
+    if type(featureInfo[0]) is dict:
+        # if the input was a list of dictionaries, return a list of dictionaries
+        featInfos = [matchRef, matchTar]
+
+    else:
+        # if the input was an object, return an object
+        featInfos = []
+        for f in matchRef:
+            featInfos.append(feature(refP = matchRef[f], tarP = matchTar[f], dist = -1, size = 100, res = -1))
 
     return(featInfos)
 
@@ -210,7 +232,7 @@ def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
     alignedSamples = datahome + str(size) + "/alignedSamples/"
 
     # get all the samples to be processed
-    samples = glob(alignedSamples + "*.tif")[:5]
+    samples = sorted(glob(alignedSamples + "*.tif"))
 
     # get the image to be used as the reference
     if type(sample) == int:
@@ -256,7 +278,6 @@ def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
             imgShapes[name] = shapes[n][i]
 
         dictToTxt(imgShapes, segSections + "seg" + str(i) + "/info/all.tifshape")
-
 
 def featSelectPoint(imgref, imgtar, matchRef = {}, matchTar = {}, feats = 5, ts = 4):
 
@@ -355,11 +376,22 @@ def roiselector(img):
     
     xc, yc, c = img.shape
     r = xc/yc
-    size = 700
-    scale = yc / int(size / r)
+    # if the height is larger than the width
+    if xc > yc:
+        size = 800
+        sizeY = int(size / r)
+        sizeX = int(size)
+
+    # if the width is larger than the height
+    else:
+        size = 1400
+        sizeY = int(size) 
+        sizeX = int(size * r)
+
+    scale = yc / sizeY
 
     # perform a search over a reduced size area
-    roi = cv2.selectROI("Matching", cv2.resize(img, (int(size / r), size)), showCrosshair=True)
+    roi = cv2.selectROI("Matching", cv2.resize(img, (sizeY, sizeX)), showCrosshair=True)
 
     # get the postions
     y = np.array([roi[1], roi[1] + roi[3]])
