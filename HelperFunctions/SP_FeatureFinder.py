@@ -96,11 +96,11 @@ def featFind(dataHome, name, size):
 
     # set the parameters
     gridNo = 8
-    featMin = 20
+    featMin = 50
     dist = 30
 
     # get the images
-    imgs = sorted(glob(imgsrc + "*.png"))[-2: ]
+    imgs = sorted(glob(imgsrc + "*.png"))
 
     if serialise:
         # serialisation (mainly debuggin)
@@ -139,8 +139,6 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     name_ref = nameFromPath(refsrc, 3)
     name_tar = nameFromPath(tarsrc, 3)
 
-    print("Matching " + name_tar + " to " + name_ref)
-
     # load in the images
     img_refMaster = cv2.imread(refsrc)
     img_tarMaster = cv2.imread(tarsrc)
@@ -164,7 +162,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     matchedInfo = []
 
     # specify these are automatic annotations
-    manualAnno = False
+    manualAnno = 0
 
     # perform a multi-zoom fitting procedure
     # It is preferable to use a lower resolution image because it means that features that
@@ -267,7 +265,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
             # find the spatially cohesive features
             if len(resInfo) > 0:
                 matchedInfo += deepcopy(manualPoints)
-                matchedInfo = matchMaker(matchedInfo, resInfo, manualAnno, dist)
+                matchedInfo = matchMaker(matchedInfo, resInfo, manualAnno > 0, dist)
 
                 for n, m in enumerate(matchedInfo):
                     matchedInfo[n].dist = 0.01 * n # preserve the order of the features
@@ -296,13 +294,21 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
         # threshold number of features found provide manual annotations up until that featMin
         if len(matchedInfo) < featMin:
 
-            # NOTE use these to then perform another round of fitting. These essentially 
-            # become the manual "anchor" points for the spatial coherence to work with. 
-            manualPoints = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 2)
-            manualAnno = True
-            matchedInfo = []
-            print("\n\n!!!" + name_tar + " has not been fitted !!!!\n\n")
+            if manualAnno < 2:
+                # NOTE use these to then perform another round of fitting. These essentially 
+                # become the manual "anchor" points for the spatial coherence to work with. 
+                print("\n\n!!!" + name_tar + " has not been fitted !!!!\n\n")
+                manualPoints = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 2)
+                manualAnno += 1
+                matchedInfo = []
 
+            else:
+                # if automatic process is still not working, just do 
+                # the whole thing manually
+                print("\n\n------- Manually annotating " + name_tar + " -------\n\n")
+                matchedInfo = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 8)
+                searching = False
+                
     # ---------- update and save the found features ---------
 
     # if the sift search worked then update the dictionary
@@ -367,7 +373,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     # put text for the number of features
     cv2.putText(img = img_refC, text = str("Feats found = " + str(len(matchTarDict))), 
         org = (50, 50),
-        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (255, 255, 255), thickness = int(txtsz*10))
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (255, 255, 255), thickness = int(txtsz*12))
     cv2.putText(img = img_refC, text = str("Feats found = " + str(len(matchTarDict))), 
     org = (50, 50),
     fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (0, 0, 0), thickness = int(txtsz*6))
@@ -397,7 +403,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
     imgName = name_ref + " <-- " + name_tar
 
-    print(imgName + " has " + str(len(matchRefDict)) + " features, scale = " + str())
+    print(imgName + " has " + str(len(matchRefDict)) + " features, scale = " + str(scl))
 
     # print a combined image showing the matches
     img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
@@ -560,7 +566,6 @@ def matchMaker(matchedInfo, resInfo, manual, dist = 50, featNo = None):
                 continue
 
             if (mi1.tarP == mi2.tarP).all() or (mi1.refP == mi2.refP).all():
-                print("WAIT")
                 del matchedInfo[n2]
 
     infoStore = matchedInfo
@@ -598,7 +603,7 @@ def matchMaker(matchedInfo, resInfo, manual, dist = 50, featNo = None):
             infoStore = matchInfoN
 
         # if there are no more features to search through, break
-        if (len(allInfo) == 0): # or (len(infoStore) > 200): 
+        if (len(allInfo) < 3): # or (len(infoStore) > 200): 
             break
               
         # print(str(fits) + " = " + str(len(matchInfoN)) + "/" + str(len(resInfo)))
@@ -699,13 +704,15 @@ if __name__ == "__main__":
     multiprocessing.set_start_method('spawn')
 
     dataSource = '/Volumes/USB/Testing1/'
-    dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
-    dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/USB/H1029A_8.4/'
+
 
 
     name = ''
