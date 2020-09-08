@@ -167,7 +167,6 @@ def dictToTxt(data, path, **kwargs):
     # ensure that the exact directory being specified exists, if not create it
     dirMaker(path)
 
-
     f = open(path, 'w')
 
     # declar
@@ -266,7 +265,6 @@ def denseMatrixViewer(coords, plot = True, unique = False):
     #           (area), the array 
 
     # if unique, then only show the features which are unique
-    # NOTE this only works with a dictionary but at the end of the 
     if unique:
         coordsmatch = []
         for c in coords:
@@ -570,8 +568,7 @@ def extractFeatureInfo(featInfo, feat):
 def hist_match(source, template):
     """
     Courtesy of https://stackoverflow.com/questions/31490167/how-can-i-transform-the-histograms-of-grayscale-images-to-enforce-a-particular-r/31493356#31493356
-    Adjust the pixel values of a grayscale image such that its histogram
-    matches that of a target image
+    Adjust the pixel values of a layer of image
 
     Arguments:
     -----------
@@ -585,9 +582,6 @@ def hist_match(source, template):
         matched: np.ndarray
             The transformed output image
     """
-
-    # NOTE this is done here rather than in SpecimenID because it only works well
-    # when the sample is very well identified
 
     oldshape = source.shape
     source = source.ravel()
@@ -639,6 +633,8 @@ def findangle(point1, point2, point3 = None):
             unit_vector_1 = vector1 / np.linalg.norm(vector1)
             unit_vector_2 = vector2 / np.linalg.norm(vector2)
             dot_product = np.dot(unit_vector_1, unit_vector_2)
+            if dot_product * 1 != dot_product:
+                print("WHOA")
 
             return dot_product
 
@@ -667,7 +663,6 @@ def findangle(point1, point2, point3 = None):
         
         angle = abs(angle1 - angle3)
         
-
         return(angle)
 
 def uniqueKeys(dictL):
