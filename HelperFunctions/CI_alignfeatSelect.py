@@ -14,7 +14,7 @@ from glob import glob
 from multiprocessing import Pool
 import multiprocessing
 
-if __name__ != "HelperFunctions.SP_AlignSamples":
+if __name__ != "HelperFunctions.CI_alignfeatSelect":
     from Utilities import *
     from SP_SampleAnnotator import featSelectArea, featChangePoint
     from SP_SpecimenID import maskMaker, imgStandardiser
@@ -37,13 +37,20 @@ TODO:   make the alignment process parallel by instead of aligning each image
 '''
 
 
-def fullMatchingSpec(datasrc, size):
+def fullMatchingSpec(datasrc, size, segSections = 1):
 
     # this function acesses each segsection that was created and initiates the 
     # full feature identification and alignment process
     # Inputs:   (datasrc), dir of the specimen
     #           (resolution), size of sample 
+    #           (segSections), the number of segemented sections to extract
     # Outputs:  (), aligned samples of the seg sections
+
+    # select the features within the aligned samples
+    featSelectArea(datasrc, size, segSections, 0, False)
+
+    print("\n\nReview the segSections and remove any bad samples\nThen press any key\n\n")
+    # cv2.waitKey(0)
 
     dataSegSections = datasrc + str(size) + "/segSections/"
 
@@ -51,8 +58,7 @@ def fullMatchingSpec(datasrc, size):
 
     # take a single segment section and perform a complete feature 
     # matching and alignment
-    for s in segdirs[:1]:
-
+    for s in segdirs:
         fullMatching(s + "/")
 
 
@@ -62,16 +68,17 @@ def fullMatching(sectiondir):
     # and performas a complete feature and alignment
 
     # get the seg section images
-    imgs = sorted(glob(sectiondir + "*.tif"))[46:]
+    imgs = sorted(glob(sectiondir + "*.tif"))
+    print(str(len(imgs)) + " images found")
 
     # parallelisation info
     cpuCount = int(multiprocessing.cpu_count() * 0.75)
     serialised = False 
 
     # featfind parameters
-    gridNo = 2
+    gridNo = 1
     featMin = 20
-    dist = 3
+    dist = 50
 
     # boolean to save tif after alignment
     saving = False
@@ -84,7 +91,7 @@ def fullMatching(sectiondir):
     dirMaker(imgDest)
     
     # perform features matching
-    '''
+    
     if serialised: 
         for refsrc, tarsrc in zip(imgs[:-1], imgs[1:]):
             findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featMin, dist)
@@ -93,13 +100,12 @@ def fullMatching(sectiondir):
         # parallelise with n cores
         with Pool(processes=cpuCount) as pool:
             pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
-
+    
     # perform alignment of the segsections based on the features
-    '''
-
     sampleNames = sorted(nameFromPath(imgs, 3))
     shiftFeatures(sampleNames, dataDest, alignedimgDest)
-    # trans form the samples
+
+    # transform the samples
     if serialised:
         # serial transformation
         for spec in sampleNames:
@@ -130,8 +136,10 @@ def featChangeSegPoint(segsrc, img, nopts = 5):
     featP = np.where(np.array([i.find(img) for i in imgs]) >= 0)[0][0]
 
     # get the specific reference and target features
-    refPath = refFeatInfo[featP]
-    tarPath = tarFeatInfo[featP]
+    # NOTE it is -1 because the images are "one ahead" because they include the 
+    # initial reference image
+    refPath = refFeatInfo[featP - 1]
+    tarPath = tarFeatInfo[featP - 1]
 
     # load the info
     refInfo = txtToDict(refPath, float)[0]
@@ -151,16 +159,16 @@ if __name__ == "__main__":
 
     # datasrc = '/Volumes/USB/H671A_18.5/'
     datasrc = '/Volumes/Storage/H653A_11.3/'
+    datasrc = '/Volumes/USB/H671B_18.5/'
+
     size = 3
 
-    # featSelectArea(datasrc, size, 2, 0, False)
-
-    fullMatchingSpec(datasrc, size)
+    fullMatchingSpec(datasrc, size, 3)
 
     segsrc = datasrc + str(size) + '/segSections/seg0/'
 
     # this is the target image to be modified
-    img = '051_0'
+    img = '054_0'
 
     # featChangeSegPoint(segsrc, img, 8)
     
