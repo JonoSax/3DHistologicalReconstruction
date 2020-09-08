@@ -55,8 +55,9 @@ def align(data, name = '', size = 0, saving = True):
     refImg = cv2.imread(samples[1])
 
     # find the affine transformation necessary to fit the samples
-    # NOTE this has to be sequential
-    shiftFeatures(sampleNames, segInfo, alignedSamples)
+    # NOTE this has to be sequential because the centre of rotation changes for each image
+    # so the angles of rotation dont add up
+    # shiftFeatures(sampleNames, segInfo, alignedSamples)
 
     # apply the affine transformations to all the images and info
     if serialise:
@@ -124,7 +125,8 @@ def shiftFeatures(featNames, src, alignedSamples):
         # so they both become changed but ONLY the first one..... ?????
         featsO.ref = deepcopy(featRef[rF][0])
         featsO.tar = deepcopy(featTar[tF][0])
-        featsO.fit = featTar[tF][1]['fit']
+        try:    featsO.fit = featTar[tF][1]['fit']
+        except: featsO.fit = False
 
         # set the initial attempt positional ranges to remove features in the case of 
         # refitting attempts
@@ -322,7 +324,8 @@ def shiftFeatures(featNames, src, alignedSamples):
                 # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
                 n += 1
 
-            # rotate the same transofmratino to the next set of reference features
+            # rotate the same transformation to the next set of reference features
+            
             for f in featRef[tF][0]: 
                 featRef[tF][0][f] -= translateSum      
             featRef[tF][0] = objectivePolar(rotateSum, centre, False, featRef[tF][0]) 
@@ -330,6 +333,7 @@ def shiftFeatures(featNames, src, alignedSamples):
             # pass the rotational degree and the centre of rotations
             rotateNet[tF] = [rotateSum, centre[0], centre[1]]  
             # denseMatrixViewer([featsMod.ref, featsMod.tar, centre], True)
+            
 
             # save the aligned features
             dictToTxt(featsMod.ref, alignedSamples + rF + ".reffeat", fit = True)
@@ -348,8 +352,6 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     #           (dest), directories to save the aligned samples
     #           (saving), boolean whether to save new info
     # Outputs   (), saves an image of the tissue with the necessary padding to ensure all images are the same size and roughly aligned if saving is True
-
-    print(spec + " transforming")
 
     segmentdir = segSamples + spec + ".tif"
     refdir = dest + spec + ".reffeat"
@@ -416,8 +418,8 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     yF, xF, cF = (my + maxSy - minSy, mx + maxSx - minSx, 3)       # NOTE this will always be slightly larger than necessary because to work it    
                                                                     # out precisely I would have to know what the max displacement + size of the img
                                                                     # is... this is over-estimating the size needed but is much simpler
-    xp = int(maxSx - np.floor(translateNet[sample][0]) * shapeR)
-    yp = int(maxSy - np.floor(translateNet[sample][1]) * shapeR)
+    xp = np.clip(int(maxSx - np.ceil(translateNet[sample][0]) * shapeR), 0, mx)
+    yp = np.clip(int(maxSy - np.ceil(translateNet[sample][1]) * shapeR), 0, my)
 
     # Load the entire image
     field = cv2.imread(segmentdir)
@@ -440,7 +442,7 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
         for c in range(warped.shape[2]):
             warped[:, :, c] = hist_match(warped[:, :, c], refImg[:, :, c])
 
-    print("     done translation of " + sample)
+    print("Done translation of " + sample)
 
     # create a low resolution image which contains the adjust features
     plotPoints(dest + sample + '_alignedAnnotatedUpdated.jpg', warped, centre, specInfo)
@@ -738,9 +740,10 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
-    dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
+    dataSource = '/Volumes/USB/H671B_18.5/'
 
 
     # dataTrain = dataHome + 'FeatureID/'
