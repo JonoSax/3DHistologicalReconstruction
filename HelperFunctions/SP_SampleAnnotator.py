@@ -197,7 +197,6 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4)
             elif featC == "tar":
                 matchTar[feat] = np.array((yme, xme)) - np.array([ym, 0])
 
-
     # save the new manually added positions to the original location, REPLACING the 
     # information
     if ref is str:
@@ -242,7 +241,7 @@ def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
     
     # load the image
     try:
-        img = tifi.imread(refpath)
+        img = cv2.cvtColor(tifi.imread(refpath), cv2.COLOR_BGR2RGB)
     except:
         img = cv2.imread(refpath)
 
@@ -348,7 +347,7 @@ def featSelectPoint(imgref, imgtar, matchRef = {}, matchTar = {}, feats = 5, ts 
 
 def sectionExtract(path, segSections, feats, x, y, ref = None):
 
-    img = tifi.imread(path)
+    img = cv2.imread(path)
     name = nameFromPath(path, 3)
     sections = []
 
@@ -362,7 +361,7 @@ def sectionExtract(path, segSections, feats, x, y, ref = None):
         print(name + " section " + str(f))
         segdir = segSections + "seg" + str(f) + "/"
         section = img[int(y[f][0]):int(y[f][1]), int(x[f][0]):int(x[f][1]), :]
-        tifi.imwrite(segdir + name + ".tif", section)
+        cv2.imwrite(segdir + name + ".tif", section)
         segShapes[f] = section.shape
 
     return(segShapes)
@@ -377,21 +376,22 @@ def roiselector(img):
     xc, yc, c = img.shape
     r = xc/yc
     # if the height is larger than the width
-    if xc > yc:
-        size = 800
+    if xc > yc/2:
+        size = 700
         sizeY = int(size / r)
         sizeX = int(size)
 
     # if the width is larger than the height
     else:
-        size = 1400
+        size = 1200
         sizeY = int(size) 
         sizeX = int(size * r)
 
     scale = yc / sizeY
 
     # perform a search over a reduced size area
-    roi = cv2.selectROI("Matching", cv2.resize(img, (sizeY, sizeX)), showCrosshair=True)
+    imgr = cv2.resize(img, (sizeY, sizeX))
+    roi = cv2.selectROI("Matching", imgr, showCrosshair=True)
 
     # get the postions
     y = np.array([roi[1], roi[1] + roi[3]])
