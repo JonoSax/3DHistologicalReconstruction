@@ -12,13 +12,13 @@ import img2pdf as i2p
 from multiprocessing import Pool
 import multiprocessing
 from itertools import repeat
-from time import perf_counter as clock
 if __name__ != "HelperFunctions.SP_tif2pdf":
     from Utilities import *
 else:
     from HelperFunctions.Utilities import *
 
-def smallerTif(dataHome, name, size, scale = 0.3):
+
+def smallerTif(dataHome, name, size, scale = 0.3, cpuNo = False):
 
     # from ndpi files, extract lower resolution images storing them and then 
     # create a pdf file from all of them
@@ -37,26 +37,22 @@ def smallerTif(dataHome, name, size, scale = 0.3):
     # allSpecimens = sampleCollector(dataHome, size)
 
     for spec in allSpecimens:
-        pdfCreator(allSpecimens[spec], spec, path, scale, False)
+        pdfCreator(allSpecimens[spec], spec, path, scale, cpuNo, False)
 
-def pdfCreator(specificSample, spec, path, scale, remove = False):
+def pdfCreator(specificSample, spec, path, scale, cpuNo, remove = False):
     # this function takes the directory names and creates a pdf of each sample 
     # Inputs:   (sampleCollections), dictionary containing all the dir names of the imgs
     #           (spec), specimen of interest
     # Outputs:  (), creates a pdf per sample, also has to create a temporary folder
     #               for jpeg images but that is deleted at the end
 
-    serialised = False
-
     cpuCount = int(multiprocessing.cpu_count() * 0.75)
 
     # create a temporary folder for the jpeg images per sample
     dataTemp = path + 'temporary' + spec + '/'
     dataTemp = path + "images/"
-    dataPDF = path + "pdfStore/"
 
     dirMaker(dataTemp)
-    dirMaker(dataPDF)
 
 
     # order the dictionary values 
@@ -72,12 +68,12 @@ def pdfCreator(specificSample, spec, path, scale, remove = False):
     c = 0   # count for user to observe progress
     tifShape = {}
 
-    if serialised:
+    if cpuNo is False:
         for n, name in zip(order, nameFromPath(specificSample)):
             tifShape[name] = miniSample(specificSample[n], dataTemp, scale, n)
         
     else:
-        with Pool(processes=cpuCount) as pool:
+        with Pool(processes=cpuNo) as pool:
             info = pool.starmap(miniSample, zip(list(specificSample.values()), repeat(dataTemp), repeat(scale)))
 
     # NOTE the order should be the same as the tif files because it is collected 
@@ -98,6 +94,9 @@ def pdfCreator(specificSample, spec, path, scale, remove = False):
     with open(dataPDF + spec + "NotScaled.pdf","wb") as f:
         pass
         # f.write(i2p.convert(dirStore))
+    '''
+    dataPDF = path + "pdfStore/"
+    dirMaker(dataPDF)
     print("PDF writing complete for " + spec + "!\n")
     # remove the temporary jpg files
     if remove:
@@ -107,8 +106,7 @@ def pdfCreator(specificSample, spec, path, scale, remove = False):
         # remove the temporary dir
         os.rmdir(dataTemp)
         print("Removing " + dataTemp)
-
-    # research drive access via VPN
+    '''
 
 def miniSample(sample, dataTemp, scale, n = None):
 
@@ -133,11 +131,8 @@ def miniSample(sample, dataTemp, scale, n = None):
     if imgt is None:
         print(sample)
         return([])
-
     # (n.lower().find("d") >= 0) & (spec.lower().find("h710b") >= 0) or \
 
-    # scale = imgt.shape[1]/imgt.shape[0]
-    # img = cv2.resize(imgt, (int(1000*scale), 1000))
     img = cv2.resize(imgt, (int(imgt.shape[1] * scale),  int(imgt.shape[0] * scale)))
 
     # add the sample name to the image (top left corner)
@@ -208,19 +203,21 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H671B_18.5/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
-    dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
-    dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/USB/H1029A_8.4/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
 
 
     size = 3
     name = ''
     scale = 0.2
+    serialised = False
 
-    smallerTif(dataSource, name, size, scale)
+    smallerTif(dataSource, name, size, scale, serialised)
     
     
     
