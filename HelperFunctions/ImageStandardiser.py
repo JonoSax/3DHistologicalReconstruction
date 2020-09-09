@@ -5,56 +5,38 @@ This function standardises the size of all the images in a directory
 import numpy as np
 import cv2
 from glob import glob
-from Utilities import nameFromPath, dirMaker
+from Utilities import nameFromPath, dirMaker, txtToDict, dictToArray
 import os
+import tifffile as tifi
 from multiprocessing import Process
 
-def imgStandardiser(dataDestination, dataSource, sample):
+dataSource = '/Volumes/USB/H673A_7.6/3/'
+dataMasked = dataSource + "masked/"
+dataMoved = dataSource + 'moved/'
 
-    dirMaker(dataDestination + sample + "/")
+dirMaker(dataMoved)
 
-    imgDirs = glob(dataSource + sample + "/*.jpg")
+imgShapes = dictToArray(txtToDict('/Volumes/USB/H673A_7.6/3/info/all.tifshape')[0])
 
-    img = []
-    for i in imgDirs:
-        img.append(cv2.imread(i))
+imgShape = np.array(imgShapes)
+yM, xM, zM = np.max(imgShape, axis = 0).astype(int)
 
-    imgShape = []
-    for i in img:
-        imgShape.append(i.shape)
+fieldO = np.zeros([yM, xM, zM]).astype(np.uint8)
 
-    imgShape = np.array(imgShape)
+imgDirs = glob(dataMasked + "*.tif")
 
-    yM, xM, zM = np.max(imgShape, axis = 0)
+for i in imgDirs:
 
-    fieldO = np.zeros([yM, xM, zM]).astype(np.uint8)
+    name = nameFromPath(i)
+    img = tifi.imread(i)
 
-    for i, idir in zip(img, imgDirs):
+    field = fieldO.copy()
 
-        name = nameFromPath(idir)
+    y, x, z = img.shape
 
-        field = fieldO.copy()
+    # place the image to the right of the new field
+    field[-y:, -x:, :] = img
 
-        y, x, z = i.shape
+    tifi.imwrite(dataMoved + name + ".tif", field)
 
-        ym0 = int((yM - y) / 2)
-        xm0 = int((xM - x) / 2)
-
-        # place the image in the middle of the new field
-        field[ym0:(ym0 + y), xm0:(xm0 + x), :z] = i
-
-        cv2.imwrite(dataDestination + sample + "/" + name + ".jpg", field)
-
-        print(name + " saved")
-
-dataSource = '/Volumes/Storage/SegmentPDF/InvididualImages/'
-dataDestination = '/Volumes/USB/InvididualImagesMod/'
-
-specimens = os.listdir(dataSource)
-
-for sample in specimens:
-
-    imgStandardiser(dataDestination, dataSource, sample)
-
-    # NOTE this crashes my computer....
-    # Process(target = imgStandardiser, args = (dataDestination, dataSource, sample)).start()
+    print(name + " saved")

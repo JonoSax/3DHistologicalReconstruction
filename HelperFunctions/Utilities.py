@@ -373,10 +373,7 @@ def maskCover(dir, dirTarget, masks, small = True):
     if (hO * wO >= 100 * 10 ** 6) & small:
         size = 2000
         aspectRatio = hO/wO
-        imgR = Image.fromarray(imgR)
-        imgR = imgR.resize((size, int(size*aspectRatio)))
-        imgR = np.array(imgR)
-        # imgR = cv2.resize(imgO, (size, int(size*aspectRatio)))
+        imgR = cv2.resize(imgO, (size, int(size*aspectRatio)))
 
     h, w, c = imgR.shape
 
@@ -609,9 +606,11 @@ def hist_match(source, template):
     # that correspond most closely to the quantiles in the source image
     interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
 
+    normChannel = (interp_t_values[bin_idx].reshape(oldshape)).astype(np.uint8)
+
     # return the image with normalised distribtution of pixel values and 
     # in the same data type as np.uin8
-    return (interp_t_values[bin_idx].reshape(oldshape)).astype(np.uint8)
+    return normChannel
 
 def findangle(point1, point2, point3 = None):
 
