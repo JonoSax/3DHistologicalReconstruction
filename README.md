@@ -7,17 +7,21 @@ Full workflow of registeration of histological data into training/testing data f
 This has been tested on MacOS 10.15.6
 NOTE recomend using pyenv to manage python versions: https://github.com/pyenv/pyenv
 
-pyenv install 3.6.9                 # optional
-pip install pip --upgrade           # ensure latest pip version installed
-pip install -r requirements.txt
+
+    pyenv install 3.6.9                 # optional
+    pip install pip --upgrade           # ensure latest pip version installed
+    pip install -r requirements.txt
+
 
 1 - open the main_automaticAnnotations script
+
 2 - Set the following variables
     - dataHome: to the directory contain the ndpi files
     - size: the resolution to extract from the ndpi files
     - res: the resolution of the downsampled image to use
     - cpuNo: number of cores to use (set to False for serialisation + debugging)
     - features: from aligned images, the number of features you with to manually extract and align in the highest resoltuion 
+
 3 - Through the featureFinding, aligning and segmentExtraction there are some manual steps (selecting ROI and if the feature finding doesn't work then manual annotations)
 
 # Outputs are saved as following:
