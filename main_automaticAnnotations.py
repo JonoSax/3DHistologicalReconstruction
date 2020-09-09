@@ -7,81 +7,67 @@ Processing includes:
     - Extracting the sample from the ndpi file at the given zoom
     - Creating features for each tissue sample 
     - Aligning the tissue
-    - Extracting any particular features as defined by segSection (or )
+    - Allowwing for manual extracting of any structures in the samples
 
 '''
 
+import multiprocessing
 from HelperFunctions import *
 
-# dataHome is where all the directories created for information are stored 
+# dataHome is where the ndpi files are stored
 dataHome = '/Volumes/USB/H1029a/'
-dataHome = '/Volumes/USB/H653A_11.3/'
 dataHome = '/Volumes/USB/H673A_7.6/'
 dataHome = '/Volumes/USB/H710C_6.1/'
+dataHome = '/Volumes/Storage/H653A_11.3new/'
 dataHome = '/Volumes/USB/H710B_6.1/'
+dataHome = '/Volumes/USB/Test/'
+
 
 # research drive access via VPN
 # dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/Boyd collection/H1029A_8.4/'
 
-
+# resolution scale to use (0 is full resolution, 1 is half etc.)
 size = 3
-kernel = 50
+
+# resolution of the smaller image to be extratcted from the full scale image
+res = 0.2
+
+# NOTE depreceated, needs to be removed
 name = ''
-portion = 0.2
 
-print("\n----------- WSILoad -----------")
-# extract the tif file of the specified size
-# WSILoad(dataHome, name, size)
+# number of cores to use. If set to False then will serialise and allow
+# for debugging (if 1 is used it still processes with the multiprocessing
+# functions)
+cpuNo = 6
 
-print("\n----------- smallerTif -----------")
-# create jpeg images of all the tifs and a single collated pdf
-# smallerTif(dataHome, name, size, 0.2)
+# number of features to extract from the aligned samples for higher
+# resolution analysis
+features = 5
 
-print("\n----------- specID -----------")
-# identifies the sample within the slide from the jpegs created
-specID(dataHome, name, size)
+if __name__ == "__main__":
 
-print("\n----------- featFind -----------")
-# identifies corresponding features per samples 
-featFind(dataHome, name, size)
+    multiprocessing.get_start_method('spawn')
 
-print("\n----------- AignSegments -----------") # --> NOTE add size of all the shapes and make these functions adjust the size of the files for this image size
-# align all the specimens 
-align(dataHome, name, size, True)
+    print("\n----------- WSILoad -----------")
+    # extract the tif file of the specified size
+    WSILoad(dataHome, name, size)
 
-fd
-print("\n----------- FixPoint -----------")
-for imgref, imgtar in zip(imgrefs, imgtars):
-    pass
+    print("\n----------- smallerTif -----------")
+    # create jpeg images of all the tifs and a single collated pdf
+    # smallerTif(dataHome, name, size, res, cpuNo)
 
-# if there are any images which weren't annotated correct change their features manually
-featChangePoint(imgref, imgtar, matchRef, matchTar, ts = 4)
+    print("\n----------- specID -----------")
+    # extract the invidiual sample from within the slide
+    # specID(dataHome, name, size, cpuNo)
 
-print("\n----------- FeatureExtraction -----------")
-# propogate an annotated feature through the aligned tissue and extract
-# featSelectArea(dataHome, size, 3)
+    print("\n----------- featFind -----------")
+    # identify corresponding features between samples 
+    featFind(dataHome, name, size, cpuNo)
 
-# NOTE run the results of the feat extraction THROUGH the align function again to 
-# provide the fine scale alignment for the tissue segment
-'''
+    print("\n----------- AignSegments -----------") 
+    # align all the samples 
+    align(dataHome, name, size, cpuNo)
 
-How this will work is for the first slice where the feature is chosen, in the next slice
-a slightly larger area is selected to perform feature mapping from the original tissue. 
-
-    NOTE I think it would be ideal for the section selected if you can go and essentailly 
-    outline EXACTLY what the issue is, rather than just using a block of tissue, so that 
-    subsequent feature matching is on the actual target tissue rather than just noise as well
-
-Once this new image is found the amount it has shift from the ORIGINAL image is used to expaned
-the search area and this new feature is identifed. 
-
-In the next slice the NEW feature is used to identify the NEXT translation of the slice to find 
-the next expanded search area. 
-
-This will involve performing a sift operation on each area and performing a translation (probably 
-not rotation.... ) of the tissue and using this translation to expand the search area AND align 
-the current tissue sample
-
-THIS ASSUMES THAT THE Z-SHIFT IS REASONABLY CONSISTENT BETWEEN SLICES
-
-'''
+    print("\n----------- FeatureExtraction -----------")
+    # from the whole sample, select features and create a propogated stack 
+    fullMatchingSpec(dataHome, size, features, cpuNo)
