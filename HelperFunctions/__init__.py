@@ -9,3 +9,4 @@ from .SP_SpecimenID import specID
 from .SP_FeatureFinder import featFind
 from .SP_SampleAnnotator import featSelectArea, featChangePoint
 from .CI_WSIExtract import WSIExtract
+from . CI_alignfeatSelect import fullMatchingSpec   
