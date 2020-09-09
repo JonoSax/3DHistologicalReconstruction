@@ -11,6 +11,7 @@ from glob import glob
 from multiprocessing import Pool
 import multiprocessing
 import tifffile as tifi
+from PIL import Image
 from itertools import repeat
 if __name__ != "HelperFunctions.SP_SpecimenID":
     from Utilities import *
@@ -26,29 +27,22 @@ entire image, rather than segmenting the image into grids
 '''
 
 # NOTE can probably depreciate specID and make sectionSelecter the main function
-def specID(dataHome, name, size):
+def specID(dataHome, name, size, serialised = True):
 
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
 
     # gets the images for processing
-    
-    # imgsrc = '/Volumes/USB/IndividualImages/'
-
-    sectionSelecter(name, datasrc, serialised = False)
+    sectionSelecter(name, datasrc, serialised)
 
 
-def sectionSelecter(spec, datasrc, serialised = True):
+def sectionSelecter(spec, datasrc, cpuNo = False):
 
     # this function creates a mask which is trying to selectively surround
     # ONLY the target tissue
     # Inputs:   (spec), the specific sample being processed
     #           (datasrc), the location of the jpeg images (as extracted 
     #               by tif2pdf)
-
-    # use only 3/4 the CPU resources availabe
-    cpuCount = int(multiprocessing.cpu_count() * 0.75)
-    serialised = False
 
     imgsmallsrc = datasrc + "images/"
     imgbigsrc = datasrc + "tifFiles/"
@@ -63,40 +57,42 @@ def sectionSelecter(spec, datasrc, serialised = True):
     imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
     imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
 
-
+    
     print("------- SEGMENT OUT EACH IMAGE AND CREATE MASKS -------")
-
-
+    
     # serialised
-    if serialised:
-        for idir in imgbig:    
+    if cpuNo is False:
+        for idir in imgsmall:    
             maskMaker(idir, imgMasked, True)
 
     else:
         # parallelise with n cores
-        with Pool(processes=cpuCount) as pool:
+        with Pool(processes=cpuNo) as pool:
             pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasked), repeat(True)))
-        
-
-
+    
     print("------- APPLY THE MASKS TO ALL THE IMAGES -------")
 
     # get the directories of the new masks
     masks = sorted(glob(imgMasked + "*.pbm"))
+
+    # use the first image as the reference for colour normalisation
+    # NOTE use the small image as it is faster but pretty much the 
+    # same results
+    imgref = cv2.imread(imgsmall[0])
     
     # serialised
-    if serialised:
+    if cpuNo is False:
         tifShape = {}
         jpegShape = {}
         info = []
         for m, iB, iS in zip(masks, imgbig, imgsmall):
             name = nameFromPath(iB)
-            info.append(imgStandardiser(m, iB, iS))
+            info.append(imgStandardiser(m, iB, iS, imgref))
 
     else:
         # parallelise with n cores
-        with Pool(processes=cpuCount) as pool:
-            info = pool.starmap(imgStandardiser, zip(masks, imgbig, imgsmall))
+        with Pool(processes=cpuNo) as pool:
+            info = pool.starmap(imgStandardiser, zip(masks, imgbig, imgsmall, repeat(imgref)))
 
         # extract the tif and jpeg info
         tifShape = {}
@@ -126,7 +122,9 @@ def maskMaker(idir, imgMasked = None, plotting = False):
 
     #     figure.max_open_warning --> fix this to not get plt warnings
 
-    imgO = cv2.cvtColor(cv2.imread(idir), cv2.COLOR_BGR2GRAY) 
+    # use numpy to allow for parallelisation
+    imgO = np.mean(cv2.imread(idir), 2)
+    # imgO = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY) 
 
     name = nameFromPath(idir)
 
@@ -286,12 +284,6 @@ def maskMaker(idir, imgMasked = None, plotting = False):
         ax4.set_title("masked image")
         # plt.show()
         fig.savefig(imgMasked + 'plot/' + name + ".jpg")
-    
-    '''
-    # convert mask into 3D array and rescale for the original image
-    im = cv2.resize(im, (int(x), int(y)))
-    im = np.expand_dims(im, -1)
-    '''
 
 def bounder(im_id):
     
@@ -351,12 +343,14 @@ def bounder(im_id):
     
     # flatten the mask and use this to figure out how many samples there 
     # are and where to split them
-    resize = cv2.erode(cv2.resize(im_id, (100, 100)), (3, 3), iterations=5)
+    imgr = cv2.resize(im_id, (100, 100))
+    resized = cv2.erode(imgr, (3, 3), iterations=5)
+
     # plt.imshow(resize); plt.show()
     # resize = cv2.erode(im_id, (3, 3), iterations = 5)
-    x, y = resize.shape
+    x, y = resized.shape
 
-    start, end = edgefinder(resize)
+    start, end = edgefinder(resized)
 
     extractA = {}
     extractS = {}
@@ -371,7 +365,7 @@ def bounder(im_id):
     # find the vertical stop an start positions of each sample
     for ext in extractS:
         x0, x1 = extractS[ext][0]
-        imgsect = resize[:, x0:x1]
+        imgsect = resized[:, x0:x1]
         bottom, top = edgefinder(cv2.rotate(imgsect, cv2.ROTATE_90_COUNTERCLOCKWISE), True)
         sampV = np.clip(np.array([bottom-5, top+1]).astype(int), 0, x)   # +- 3 to compensate for erosion (approx)
         extractA[ext].append((sampV * rows / x).astype(int))
@@ -416,21 +410,17 @@ def masterMaskMaker(name, maskShapes, masksStore):
 
     return(masksStore, maskShapes)
 
-def imgStandardiser(maskpath, imgbigpath, imgsmallpath):
+def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
 
-    # this gets all the images in a directory and applies a mask to isolate 
-    # only the target tissue
+    # this applies the mask created to the lower resolution and full 
+    # resolution images and creates information needed for the alignment
     # an area of the largest possible dimension of all the images
-    # Inputs:   (dest), destination directory for all the info
-    #           (imgsrc), directory containg the images
-    #           (split), the positions to split the images if there are multiple samples
-    #           (jpgShapes), dictionary to store all the jpg image shapes that are segemented out, it is recursive
-    #           (src), source destination for all the info
-    #           (mask), masks to apply to the image. 
-    #               If NOT inputted then the image saved is just resized
-    #               If inputted then it should be a dictionary and mask is applied
+    # Inputs:   (maskPath), path of the sample mask
+    #           (imgbigpath), path of the tif image of the samples
+    #           (imgsmallpath), path of the reduced sized image
+    #           (imgref), reference image for colour normalisation
     # Outputs:  (), saves image at destination with standard size and mask if inputted
-    #           (jpgShapes), jpeg image shapes 
+    #           (jpgShapes, tifShapes), image shapes of the small and large images
 
     # get info to place all the images into a standard size to process (if there
     # is a mask)
@@ -444,8 +434,12 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath):
     imgMasked = regionOfPath(maskpath)
     ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
 
+    # normalise the colours of the images
+    for c in range(3):
+        imgbig[:, :, c] = hist_match(imgbig[:, :, c], imgref[:, :, c])
+        imgsmall[:, :, c] = hist_match(imgsmall[:, :, c], imgref[:, :, c])
 
-    # ----------- HARD CODED SPECIMEN SPEICIFIC MODIFICATIONS -----------
+    # ----------- HARD CODED SPECIMEN SPECIFIC MODIFICATIONS -----------
 
     # if there are just normal masks, apply them
     if maskpath is not None:
@@ -511,14 +505,19 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/IndividualImages/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H671B_18.5/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
-    dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/USB/H1029A_8.4/'
+    dataSource = '/Volumes/USB/Test/'
+
+
 
     name = ''
     size = 3
+    serialised = False
         
-    specID(dataSource, name, size)
+    specID(dataSource, name, size, serialised)
