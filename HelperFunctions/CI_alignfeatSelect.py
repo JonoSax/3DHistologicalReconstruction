@@ -37,7 +37,7 @@ TODO:   make the alignment process parallel by instead of aligning each image
 '''
 
 
-def fullMatchingSpec(datasrc, size, segSections = 1):
+def fullMatchingSpec(datasrc, size, segSections = 1, cpuNo = False):
 
     # this function acesses each segsection that was created and initiates the 
     # full feature identification and alignment process
@@ -59,10 +59,10 @@ def fullMatchingSpec(datasrc, size, segSections = 1):
     # take a single segment section and perform a complete feature 
     # matching and alignment
     for s in segdirs:
-        fullMatching(s + "/")
+        fullMatching(s + "/", serialised, cpuNo)
 
 
-def fullMatching(sectiondir):
+def fullMatching(sectiondir, cpuNo):
     
     # this function takes the images from the directories it is pointed to
     # and performas a complete feature and alignment
@@ -70,10 +70,6 @@ def fullMatching(sectiondir):
     # get the seg section images
     imgs = sorted(glob(sectiondir + "*.tif"))
     print(str(len(imgs)) + " images found")
-
-    # parallelisation info
-    cpuCount = int(multiprocessing.cpu_count() * 0.75)
-    serialised = False 
 
     # featfind parameters
     gridNo = 1
@@ -92,13 +88,13 @@ def fullMatching(sectiondir):
     
     # perform features matching
     
-    if serialised: 
+    if cpuNo is False: 
         for refsrc, tarsrc in zip(imgs[:-1], imgs[1:]):
             findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featMin, dist)
 
     else:   
         # parallelise with n cores
-        with Pool(processes=cpuCount) as pool:
+        with Pool(processes=cpuNo) as pool:
             pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
     
     # perform alignment of the segsections based on the features
@@ -106,14 +102,14 @@ def fullMatching(sectiondir):
     shiftFeatures(sampleNames, dataDest, alignedimgDest)
 
     # transform the samples
-    if serialised:
+    if cpuNo is False:
         # serial transformation
         for spec in sampleNames:
             transformSamples(spec, sectiondir, dataDest, alignedimgDest, saving, refImg = None)
         
     else:
         # parallelise with n cores
-        with Pool(processes=cpuCount) as pool:
+        with Pool(processes=cpuNo) as pool:
             pool.starmap(transformSamples, zip(sampleNames, repeat(sectiondir), repeat(dataDest), repeat(alignedimgDest), repeat(saving), repeat(None)))
 
     # NOTE have some kind of command to cause the operations to come back in sync here
@@ -155,7 +151,7 @@ def featChangeSegPoint(segsrc, img, nopts = 5):
 
 if __name__ == "__main__":
 
-    multiprocessing.set_start_method('spawn')
+    # multiprocessing.set_start_method('spawn')
 
     # datasrc = '/Volumes/USB/H671A_18.5/'
     datasrc = '/Volumes/Storage/H653A_11.3/'
