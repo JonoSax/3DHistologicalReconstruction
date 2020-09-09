@@ -60,4 +60,7 @@ NOTE recomend using pyenv to manage python versions: https://github.com/pyenv/py
 
 * matched: shows the corresponding features found between the reference and target images
 
+* segSections: after the whole specimen alignment, high resolutions samples from within the entire specimen can be extracted. The above directory organisation is repeated for each of the samples selected
+
 * tifFiles: high resolution images extracted from the ndpi files
+
