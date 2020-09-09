@@ -74,13 +74,9 @@ TODO:
 '''
 
 
-def featFind(dataHome, name, size):
+def featFind(dataHome, name, size, cpuNo = False):
     
     # this is the function called by main. Organises the inputs for findFeats
-    
-    # use only 3/4 the CPU resources availabe
-    cpuCount = int(multiprocessing.cpu_count() * 0.75)
-    serialise = False
 
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
@@ -96,20 +92,20 @@ def featFind(dataHome, name, size):
 
     # set the parameters
     gridNo = 8
-    featMin = 50
+    featMin = 20
     dist = 30
 
     # get the images
     imgs = sorted(glob(imgsrc + "*.png"))
 
-    if serialise:
+    if cpuNo is False:
         # serialisation (mainly debuggin)
         for refsrc, tarsrc in zip(imgs[:-1], imgs[1:]):
             findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featMin, dist)
 
     else:
         # parallelise with n cores
-        with Pool(processes=cpuCount) as pool:
+        with Pool(processes=cpuNo) as pool:
             pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
         
 def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50):
@@ -138,6 +134,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
     name_ref = nameFromPath(refsrc, 3)
     name_tar = nameFromPath(tarsrc, 3)
+    print("Matching " + name_tar + " to " + name_ref)
 
     # load in the images
     img_refMaster = cv2.imread(refsrc)
@@ -194,9 +191,10 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
             # normalise for all the colour channels
             # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
+            '''
             for c in range(img_tar.shape[2]):
                 img_tar[:, :, c] = hist_match(img_tar[:, :, c], img_ref[:, :, c])
-            
+            '''
             x, y, c = img_ref.shape
             pg = int(np.round(x/gridNo))        # create a grid which is pg x pg pixel size
             sc = 20                          # create an overlap of sc pixels around this grid
@@ -699,9 +697,10 @@ def imgPlacement(name_spec, img_ref, img_tar):
         img_tarF = field.copy(); img_tarF[:xt, :yt, :] = img_tar
         
     return(xrefDif, yrefDif, xtarDif, ytarDif, img_refF, img_tarF)
+    
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method('spawn')
+    
 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H710C_6.1/'
