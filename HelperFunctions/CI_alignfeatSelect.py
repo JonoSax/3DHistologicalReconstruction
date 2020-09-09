@@ -59,7 +59,7 @@ def fullMatchingSpec(datasrc, size, segSections = 1, cpuNo = False):
     # take a single segment section and perform a complete feature 
     # matching and alignment
     for s in segdirs:
-        fullMatching(s + "/", serialised, cpuNo)
+        fullMatching(s + "/", cpuNo)
 
 
 def fullMatching(sectiondir, cpuNo):

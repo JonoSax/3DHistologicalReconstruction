@@ -46,8 +46,6 @@ def pdfCreator(specificSample, spec, path, scale, cpuNo, remove = False):
     # Outputs:  (), creates a pdf per sample, also has to create a temporary folder
     #               for jpeg images but that is deleted at the end
 
-    cpuCount = int(multiprocessing.cpu_count() * 0.75)
-
     # create a temporary folder for the jpeg images per sample
     dataTemp = path + 'temporary' + spec + '/'
     dataTemp = path + "images/"
@@ -90,11 +88,11 @@ def pdfCreator(specificSample, spec, path, scale, cpuNo, remove = False):
     for n in order:
         dirStore.append(allsmallSamples[n])
 
+    '''
     # combine all the sample images to create a single pdf 
     with open(dataPDF + spec + "NotScaled.pdf","wb") as f:
         pass
         # f.write(i2p.convert(dirStore))
-    '''
     dataPDF = path + "pdfStore/"
     dirMaker(dataPDF)
     print("PDF writing complete for " + spec + "!\n")
@@ -210,14 +208,16 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
     dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/USB/Test/'
+
 
 
     size = 3
     name = ''
     scale = 0.2
-    serialised = False
+    cpuNo = 6
 
-    smallerTif(dataSource, name, size, scale, serialised)
+    smallerTif(dataSource, name, size, scale, cpuNo)
     
     
     

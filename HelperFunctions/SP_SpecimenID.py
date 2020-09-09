@@ -58,7 +58,7 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
 
     
-    print("------- SEGMENT OUT EACH IMAGE AND CREATE MASKS -------")
+    print("\n------- SEGMENT OUT EACH IMAGE AND CREATE MASKS -------")
     
     # serialised
     if cpuNo is False:
@@ -70,7 +70,7 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
         with Pool(processes=cpuNo) as pool:
             pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasked), repeat(True)))
     
-    print("------- APPLY THE MASKS TO ALL THE IMAGES -------")
+    print("\n------- APPLY MASKS AND NORMALISE COLOURS -------")
 
     # get the directories of the new masks
     masks = sorted(glob(imgMasked + "*.pbm"))

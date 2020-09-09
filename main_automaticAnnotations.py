@@ -46,7 +46,7 @@ features = 5
 
 if __name__ == "__main__":
 
-    multiprocessing.get_start_method('spawn')
+    multiprocessing.set_start_method('spawn')
 
     print("\n----------- WSILoad -----------")
     # extract the tif file of the specified size

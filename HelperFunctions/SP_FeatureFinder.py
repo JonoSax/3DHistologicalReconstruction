@@ -91,8 +91,8 @@ def featFind(dataHome, name, size, cpuNo = False):
     dirMaker(imgDest)
 
     # set the parameters
-    gridNo = 8
-    featMin = 20
+    gridNo = 6
+    featMin = 10
     dist = 30
 
     # get the images
@@ -134,6 +134,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
     name_ref = nameFromPath(refsrc, 3)
     name_tar = nameFromPath(tarsrc, 3)
+    imgName = name_ref + " <-- " + name_tar
     print("Matching " + name_tar + " to " + name_ref)
 
     # load in the images
@@ -165,7 +166,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     # It is preferable to use a lower resolution image because it means that features that
     # are larger on the sample are being found and the speed of processing is significantly faster.
     # However if there are not enough features per a treshold
-    scale = [0.1, 0.2, 0.5, 0.8, 1]
+    scales = [0.1, 0.2, 0.3, 0.5, 0.8, 1]
     searching = True
     manualPoints = []
     
@@ -177,7 +178,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
         # features which can be used to find more robust spatially cohesive features at
         # higher resoltions, and to speed up the operations if the min features to be found
         # are met in the low resolution images
-        for scln, scl in enumerate(scale):
+        for scln, scl in enumerate(scales):
 
             # store the scale specific information
             resInfo = []
@@ -295,7 +296,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
             if manualAnno < 2:
                 # NOTE use these to then perform another round of fitting. These essentially 
                 # become the manual "anchor" points for the spatial coherence to work with. 
-                print("\n\n!!!" + name_tar + " has not been fitted !!!!\n\n")
+                print("\n\n!!!" + imgName + " doesn't have enought matches!!!!\n\n")
                 manualPoints = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 2)
                 manualAnno += 1
                 matchedInfo = []
@@ -314,12 +315,19 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     names = []
     for fn, kp in enumerate(matchedInfo):
 
-        # add matched feature, adjust for the initial standardisation of the image
+        # adjust for the initial standardisation of the image
         # and for the scale of the image
+        refAdj = kp.refP - np.array([yrefDif, xrefDif]) / scl
+        tarAdj = kp.tarP - np.array([ytarDif, xtarDif]) / scl
+
+        matchedInfo[fn].refP = refAdj
+        matchedInfo[fn].tarP = tarAdj
+        
+        # add matched feature,
         name = "feat_" + str(fn) + "_scl_" + str(kp.res)
         names.append(name)
-        matchRefDict[name] = (kp.refP - np.array([yrefDif, xrefDif]) / scl)
-        matchTarDict[name] = (kp.tarP - np.array([ytarDif, xtarDif]) / scl) 
+        matchRefDict[name] = refAdj
+        matchTarDict[name] = tarAdj
 
     # store the positions of the identified features for each image as 
     # BOTH a reference and target image. Include the image size this was 
@@ -329,7 +337,10 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
     # make pictures to show the features found
     txtsz = 0.5
-    colours = [(255, 0, 0), (255, 0, 255), (0, 255, 0), (0, 255, 255), (255, 255, 255)]
+
+    # different colour for each resolution used to find features
+    colours = [(255, 0, 0), (255, 0, 255), (255, 255, 0), (0, 255, 0), (0, 255, 255), (255, 255, 255)]
+    
     # img_refC = cv2.resize(img_refO, (yr, xr))
     # img_tarC = cv2.resize(img_tarO, (yt, xt))
     for i, nF in enumerate(matchedInfo):
@@ -398,8 +409,6 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
         cv2.line(img_refC, (0, c), (ym, c), (0, 0, 0), 2, 1)
         cv2.line(img_tarC, (0, c), (ym, c), (255, 255, 255), 4, 1)
         cv2.line(img_tarC, (0, c), (ym, c), (0, 0, 0), 2, 1)
-
-    imgName = name_ref + " <-- " + name_tar
 
     print(imgName + " has " + str(len(matchRefDict)) + " features, scale = " + str(scl))
 
@@ -701,6 +710,7 @@ def imgPlacement(name_spec, img_ref, img_tar):
 
 if __name__ == "__main__":
     
+    multiprocessing.set_start_method('spawn')
 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H710C_6.1/'
@@ -711,10 +721,10 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
-
-
+    dataSource = '/Volumes/USB/Test/'
 
     name = ''
     size = 3
+    cpuNo = 6
 
-    featFind(dataSource, name, size)
+    featFind(dataSource, name, size, cpuNo)
