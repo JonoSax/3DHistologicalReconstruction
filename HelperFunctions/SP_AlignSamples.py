@@ -12,6 +12,7 @@ import multiprocessing
 from multiprocessing import Pool
 from copy import deepcopy
 from itertools import repeat
+from PIL import Image
 if __name__ != "HelperFunctions.SP_AlignSamples":
     from Utilities import *
     from SP_SampleAnnotator import featChangePoint
@@ -26,7 +27,7 @@ class sampleFeatures:
         self.tar = tar
         self.fit = fit
 
-def align(data, name = '', size = 0, saving = True):
+def align(data, name = '', size = 0, cpuNo = False, saving = True):
 
     # This function will take the extracted sample tif file at the set resolution and 
     # translate and rotate them to minimise the error between slices
@@ -39,7 +40,6 @@ def align(data, name = '', size = 0, saving = True):
     # use only 0.5 the CPU resources availabe, this is more to preserve
     # the ram available
     cpuCount = int(multiprocessing.cpu_count() * 0.5)
-    serialise = False
 
     # get the file of the features information 
     src = data + str(size)
@@ -57,10 +57,10 @@ def align(data, name = '', size = 0, saving = True):
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    # shiftFeatures(sampleNames, segInfo, alignedSamples)
+    shiftFeatures(sampleNames, segInfo, alignedSamples)
 
     # apply the affine transformations to all the images and info
-    if serialise:
+    if cpuNo is False:
         # serial transformation
         for spec in sampleNames:
             transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving, refImg = refImg)
@@ -732,18 +732,18 @@ def findCentre(pos, typeV = float):
     return(centre)
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method('spawn')
+    # multiprocessing.set_start_method('spawn')
 
     # dataHome is where all the directories created for information are stored 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
 
 
     # dataTrain = dataHome + 'FeatureID/'
