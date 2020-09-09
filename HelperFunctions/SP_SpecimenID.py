@@ -58,7 +58,7 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
 
     
-    print("\n------- SEGMENT OUT EACH IMAGE AND CREATE MASKS -------")
+    print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
     
     # serialised
     if cpuNo is False:
@@ -70,15 +70,15 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
         with Pool(processes=cpuNo) as pool:
             pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasked), repeat(True)))
     
-    print("\n------- APPLY MASKS AND NORMALISE COLOURS -------")
-
+    print("\n   #--- APPLY MASKS ---#")
+    
     # get the directories of the new masks
     masks = sorted(glob(imgMasked + "*.pbm"))
 
     # use the first image as the reference for colour normalisation
     # NOTE use the small image as it is faster but pretty much the 
     # same results
-    imgref = cv2.imread(imgsmall[0])
+    imgref = cv2.imread(imgsmall[1])
     
     # serialised
     if cpuNo is False:
@@ -100,6 +100,24 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
         for i in info:
             tifShape.update(i[0])
             jpegShape.update(i[1])
+    
+    print("\n   #--- NORMALISE COLOURS ---#")
+    # NOTE this is done seperately from the masking so that the colour 
+    # normalisation is done on masked images, rather than images on slides
+
+    # get all the masked images 
+    imgsmallmasked = sorted(glob(imgMasked + "*png"))
+    imgbigmasked = sorted(glob(imgMasked + "*tif")) 
+
+    imgref = cv2.imread(imgsmallmasked[2])
+
+    if cpuNo is False:
+        # normalise the colours of the images
+        for imgtar in imgsmallmasked + imgbigmasked:
+            imgNormColour(imgtar, imgref)
+    else:
+        with Pool(processes=cpuNo) as pool: 
+            pool.starmap(imgNormColour, zip(imgbigmasked, repeat(imgref)))
 
     # create the all.shape information file
     dictToTxt(tifShape, datasrc + "info/all.tifshape")
@@ -162,6 +180,13 @@ def maskMaker(idir, imgMasked = None, plotting = False):
         # remove some of the top and bottom
         img[:int(cols*0.05), :] = np.median(img)
         img[-int(cols*0.05):, :] = np.median(img)
+
+    if name.find("H750") >= 0:
+
+        # remove some of the top and bottom
+        img[:int(cols*0.07), :] = np.median(img)
+        img[-int(cols*0.1):, :] = np.median(img)
+
 
     
     # ----------- low pass filter -----------
@@ -434,11 +459,6 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
     imgMasked = regionOfPath(maskpath)
     ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
 
-    # normalise the colours of the images
-    for c in range(3):
-        imgbig[:, :, c] = hist_match(imgbig[:, :, c], imgref[:, :, c])
-        imgsmall[:, :, c] = hist_match(imgsmall[:, :, c], imgref[:, :, c])
-
     # ----------- HARD CODED SPECIMEN SPECIFIC MODIFICATIONS -----------
 
     # if there are just normal masks, apply them
@@ -497,6 +517,21 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
 
     return([tifShape, jpegShape])
 
+def imgNormColour(imgtarpath, imgref):
+
+    # normalises all the colour channels of an image
+    # Inputs:   (imgtarpath), image path to change
+    #           (imgref), image as array which has the colour properties to match
+    # Outputs:  (), re-saves the image
+
+    print("Normalising " + imgtarpath.split("/")[-1])
+    imgtar = cv2.imread(imgtarpath)
+
+    for c in range(3):
+        imgtar[:, :, c] = hist_match(imgtar[:, :, c], imgref[:, :, c])
+
+    cv2.imwrite(imgtarpath, imgtar)
+
 
 if __name__ == "__main__":
 
@@ -513,11 +548,10 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
     dataSource = '/Volumes/USB/Test/'
-
-
+    dataSource = '/Volumes/USB/H750A_7.0/'
 
     name = ''
     size = 3
-    serialised = False
+    cpuNo = 7
         
-    specID(dataSource, name, size, serialised)
+    specID(dataSource, name, size, cpuNo)
