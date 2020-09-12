@@ -16,11 +16,13 @@ from HelperFunctions import *
 
 # dataHome is where the ndpi files are stored
 dataHome = '/Volumes/USB/H1029a/'
-dataHome = '/Volumes/USB/H673A_7.6/'
 dataHome = '/Volumes/USB/H710C_6.1/'
 dataHome = '/Volumes/Storage/H653A_11.3new/'
 dataHome = '/Volumes/USB/H710B_6.1/'
+dataHome = '/Volumes/USB/H750A_7.0/'
+dataHome = '/Volumes/USB/H673A_7.6/'
 dataHome = '/Volumes/USB/Test/'
+
 
 
 # research drive access via VPN
@@ -37,12 +39,12 @@ name = ''
 
 # number of cores to use. If set to False then will serialise and allow
 # for debugging (if 1 is used it still processes with the multiprocessing
-# functions)
+# functions) 
 cpuNo = 6
 
 # number of features to extract from the aligned samples for higher
 # resolution analysis
-features = 5
+features = 2
 
 if __name__ == "__main__":
 
@@ -50,15 +52,15 @@ if __name__ == "__main__":
 
     print("\n----------- WSILoad -----------")
     # extract the tif file of the specified size
-    WSILoad(dataHome, name, size)
+    # WSILoad(dataHome, name, size)
 
     print("\n----------- smallerTif -----------")
     # create jpeg images of all the tifs and a single collated pdf
-    # smallerTif(dataHome, name, size, res, cpuNo)
+    smallerTif(dataHome, name, size, res, cpuNo)
 
     print("\n----------- specID -----------")
     # extract the invidiual sample from within the slide
-    # specID(dataHome, name, size, cpuNo)
+    specID(dataHome, name, size, cpuNo)
 
     print("\n----------- featFind -----------")
     # identify corresponding features between samples 

@@ -63,12 +63,12 @@ def align(data, name = '', size = 0, cpuNo = False, saving = True):
     if cpuNo is False:
         # serial transformation
         for spec in sampleNames:
-            transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving, refImg = refImg)
+            transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuCount) as pool:
-            pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(saving), repeat(refImg)))
+            pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(saving)))
 
 
     print('Alignment complete')
@@ -438,20 +438,31 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # NOTE this is very memory intense so probably should reduce the CPU
     # count so that more of the RAM is being used rather than swap
     # perform a colour nomralisation is a reference image is supplied
-    if refImg is not None:
-        for c in range(warped.shape[2]):
-            warped[:, :, c] = hist_match(warped[:, :, c], refImg[:, :, c])
 
-    print("Done translation of " + sample)
 
     # create a low resolution image which contains the adjust features
     plotPoints(dest + sample + '_alignedAnnotatedUpdated.jpg', warped, centre, specInfo)
 
     # this takes a while so optional
     if saving:
+        if refImg is not None:
+            for c in range(warped.shape[2]):
+                warped[:, :, c] = hist_match(warped[:, :, c], refImg[:, :, c])
+
         cv2.imwrite(dest + sample + '.tif', warped)                               # saves the adjusted image at full resolution 
     
-    cv2.imwrite(dest + sample + '.png', cv2.resize(warped, (int(warped.shape[1]/shapeR), int(warped.shape[0]/shapeR))))
+    # create a condensed image version
+    imgr = cv2.resize(warped, (int(warped.shape[1]/shapeR), int(warped.shape[0]/shapeR)))
+    
+    # normalise the image ONLY if there is a reference image and the full scale
+    # image hasn't already been normalised
+    if refImg is not None and saving is False:
+        for c in range(warped.shape[2]):
+            imgr[:, :, c] = hist_match(imgr[:, :, c], refImg[:, :, c])   
+
+        cv2.imwrite(dest + sample + '.png', imgr)
+
+    print("Done translation of " + sample)
 
 def translatePoints(feats, bestfeatalign = False):
 
@@ -732,22 +743,24 @@ def findCentre(pos, typeV = float):
     return(centre)
 
 if __name__ == "__main__":
-    # multiprocessing.set_start_method('spawn')
+    multiprocessing.set_start_method('spawn')
 
     # dataHome is where all the directories created for information are stored 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
-    dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/USB/H671B_18.5/'
+    dataSource = '/Volumes/USB/H750A_7.0/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
 
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
     size = 3
+    cpuNo = 7
 
-    align(dataSource, name, size, True)
+    align(dataSource, name, size, cpuNo, False)

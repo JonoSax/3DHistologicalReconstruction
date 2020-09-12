@@ -499,7 +499,8 @@ if __name__ == "__main__":
 
     size = 3
 
-    featSelectArea(dataSource, size, 2, 0, False)
+    featChangePoint(r, f, ts = 4)
+    # featSelectArea(dataSource, size, 2, 0, False)
 
     '''
     'H710C_289A+B_0',

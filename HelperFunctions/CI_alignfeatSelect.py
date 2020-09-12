@@ -47,10 +47,7 @@ def fullMatchingSpec(datasrc, size, segSections = 1, cpuNo = False):
     # Outputs:  (), aligned samples of the seg sections
 
     # select the features within the aligned samples
-    featSelectArea(datasrc, size, segSections, 0, False)
-
-    print("\n\nReview the segSections and remove any bad samples\nThen press any key\n\n")
-    # cv2.waitKey(0)
+    # featSelectArea(datasrc, size, segSections, 0, False)
 
     dataSegSections = datasrc + str(size) + "/segSections/"
 
@@ -58,7 +55,7 @@ def fullMatchingSpec(datasrc, size, segSections = 1, cpuNo = False):
 
     # take a single segment section and perform a complete feature 
     # matching and alignment
-    for s in segdirs:
+    for s in segdirs[1:]:
         fullMatching(s + "/", cpuNo)
 
 
@@ -101,16 +98,19 @@ def fullMatching(sectiondir, cpuNo):
     sampleNames = sorted(nameFromPath(imgs, 3))
     shiftFeatures(sampleNames, dataDest, alignedimgDest)
 
+    # use a reference image
+    refImg = cv2.imread(imgs[1])
+
     # transform the samples
     if cpuNo is False:
         # serial transformation
         for spec in sampleNames:
-            transformSamples(spec, sectiondir, dataDest, alignedimgDest, saving, refImg = None)
+            transformSamples(spec, sectiondir, dataDest, alignedimgDest, saving, refImg = refImg)
         
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(transformSamples, zip(sampleNames, repeat(sectiondir), repeat(dataDest), repeat(alignedimgDest), repeat(saving), repeat(None)))
+            pool.starmap(transformSamples, zip(sampleNames, repeat(sectiondir), repeat(dataDest), repeat(alignedimgDest), repeat(saving), repeat(refImg)))
 
     # NOTE have some kind of command to cause the operations to come back in sync here
 
@@ -126,16 +126,16 @@ def featChangeSegPoint(segsrc, img, nopts = 5):
     tarFeatInfo = sorted(glob(segInfo + "*.tarfeat"))
     refFeatInfo = sorted(glob(segInfo + "*.reffeat"))
 
-    imgs = sorted(glob(segsrc + "*.tif"))
+    imgs = sorted(glob(segsrc + "alignedSamples/*.png"))
 
     # get the position of the features 
-    featP = np.where(np.array([i.find(img) for i in imgs]) >= 0)[0][0]
+    featP = np.where(np.array([i.find(img) for i in imgs]) >= 0)[0][0]-1
 
     # get the specific reference and target features
     # NOTE it is -1 because the images are "one ahead" because they include the 
     # initial reference image
-    refPath = refFeatInfo[featP - 1]
-    tarPath = tarFeatInfo[featP - 1]
+    refPath = refFeatInfo[featP ]
+    tarPath = tarFeatInfo[featP ]
 
     # load the info
     refInfo = txtToDict(refPath, float)[0]
@@ -151,20 +151,24 @@ def featChangeSegPoint(segsrc, img, nopts = 5):
 
 if __name__ == "__main__":
 
-    # multiprocessing.set_start_method('spawn')
+    multiprocessing.set_start_method('spawn')
 
     # datasrc = '/Volumes/USB/H671A_18.5/'
     datasrc = '/Volumes/Storage/H653A_11.3/'
     datasrc = '/Volumes/USB/H671B_18.5/'
+    datasrc = '/Volumes/USB/H750A_7.0/'
+    datasrc = '/Volumes/USB/Test/'
+
 
     size = 3
+    cpuNo = False
 
-    fullMatchingSpec(datasrc, size, 3)
+    fullMatchingSpec(datasrc, size, 3, cpuNo)
 
-    segsrc = datasrc + str(size) + '/segSections/seg0/'
+    segsrc = datasrc + str(size) + '/' #+ '/segSections/seg0/'
 
     # this is the target image to be modified
-    img = '054_0'
+    img = '031A+B_0'
 
-    # featChangeSegPoint(segsrc, img, 8)
+    featChangeSegPoint(segsrc, img, 8)
     

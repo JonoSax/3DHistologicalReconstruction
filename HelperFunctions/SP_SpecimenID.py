@@ -56,10 +56,8 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     # get all the images 
     imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
     imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
-
     
     print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
-    
     # serialised
     if cpuNo is False:
         for idir in imgsmall:    
@@ -101,15 +99,20 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
             tifShape.update(i[0])
             jpegShape.update(i[1])
     
+    dictToTxt(tifShape, datasrc + "info/all.tifshape")
+    dictToTxt(jpegShape, datasrc + "info/all.jpgshape")
+    print('Info Saved')
+
+    # NOTE this takes ages on the tifs.....
+    '''
     print("\n   #--- NORMALISE COLOURS ---#")
     # NOTE this is done seperately from the masking so that the colour 
     # normalisation is done on masked images, rather than images on slides
-
     # get all the masked images 
     imgsmallmasked = sorted(glob(imgMasked + "*png"))
     imgbigmasked = sorted(glob(imgMasked + "*tif")) 
 
-    imgref = cv2.imread(imgsmallmasked[2])
+    imgref = cv2.imread(imgsmallmasked[1])
 
     if cpuNo is False:
         # normalise the colours of the images
@@ -117,12 +120,10 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
             imgNormColour(imgtar, imgref)
     else:
         with Pool(processes=cpuNo) as pool: 
-            pool.starmap(imgNormColour, zip(imgbigmasked, repeat(imgref)))
+            pool.starmap(imgNormColour, zip(imgsmallmasked + imgbigmasked, repeat(imgref)))
 
     # create the all.shape information file
-    dictToTxt(tifShape, datasrc + "info/all.tifshape")
-    dictToTxt(jpegShape, datasrc + "info/all.jpgshape")
-    print('Info Saved')
+    '''
 
 def maskMaker(idir, imgMasked = None, plotting = False):     
 
@@ -540,15 +541,15 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/IndividualImages/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710B_6.1/'
-    dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
     dataSource = '/Volumes/USB/Test/'
     dataSource = '/Volumes/USB/H750A_7.0/'
+    dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
 
     name = ''
     size = 3

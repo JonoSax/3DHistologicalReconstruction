@@ -201,14 +201,14 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
-    dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H671B_18.5/'
-    dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/Test/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
 
 
 

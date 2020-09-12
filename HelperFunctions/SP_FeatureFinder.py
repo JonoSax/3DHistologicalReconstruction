@@ -91,8 +91,8 @@ def featFind(dataHome, name, size, cpuNo = False):
     dirMaker(imgDest)
 
     # set the parameters
-    gridNo = 6
-    featMin = 10
+    gridNo = 2
+    featMin = 40
     dist = 30
 
     # get the images
@@ -192,10 +192,9 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
             # normalise for all the colour channels
             # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
-            '''
             for c in range(img_tar.shape[2]):
                 img_tar[:, :, c] = hist_match(img_tar[:, :, c], img_ref[:, :, c])
-            '''
+            
             x, y, c = img_ref.shape
             pg = int(np.round(x/gridNo))        # create a grid which is pg x pg pixel size
             sc = 20                          # create an overlap of sc pixels around this grid
@@ -296,7 +295,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
             if manualAnno < 2:
                 # NOTE use these to then perform another round of fitting. These essentially 
                 # become the manual "anchor" points for the spatial coherence to work with. 
-                print("\n\n!!!" + imgName + " doesn't have enought matches!!!!\n\n")
+                print("\n\n!!!" + imgName + " doesn't have enough matches!!!!\n\n")
                 manualPoints = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 2)
                 manualAnno += 1
                 matchedInfo = []
@@ -410,7 +409,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
         cv2.line(img_tarC, (0, c), (ym, c), (255, 255, 255), 4, 1)
         cv2.line(img_tarC, (0, c), (ym, c), (0, 0, 0), 2, 1)
 
-    print(imgName + " has " + str(len(matchRefDict)) + " features, scale = " + str(scl))
+    print("     " + imgName + " has " + str(len(matchRefDict)) + " features, scale = " + str(scl))
 
     # print a combined image showing the matches
     img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
@@ -716,12 +715,12 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
     dataSource = '/Volumes/USB/Test/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
 
     name = ''
     size = 3
