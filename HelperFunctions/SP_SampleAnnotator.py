@@ -91,20 +91,22 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4)
         # if doing it for the main images
         try:    
             imgdirs = dataSource + 'masked/'
-            imgrefdir = imgdirs + ref + ".png"
-            imgtardir = imgdirs + tar + ".png"
 
-            imgref = cv2.cvtColor(cv2.imread(imgrefdir), cv2.COLOR_BGR2RGB)
-            imgtar = cv2.cvtColor(cv2.imread(imgtardir), cv2.COLOR_BGR2RGB)
+            # get the images, doesn't m
+            imgrefdir = glob(imgdirs + ref + ".*")[0]
+            imgtardir = glob(imgdirs + tar + ".*")[0]
+
+            imgref = cv2.imread(imgrefdir)
+            imgtar = cv2.imread(imgtardir)
 
         # if doing it for the segSections
         except: 
             imgdirs = dataSource
-            imgrefdir = imgdirs + ref + ".png"
-            imgtardir = imgdirs + tar + ".png"
+            imgrefdir = glob(imgdirs + ref + ".*")[0]
+            imgtardir = glob(imgdirs + tar + ".*")[0]
 
-            imgref = cv2.cvtColor(cv2.imread(imgrefdir), cv2.COLOR_BGR2RGB)
-            imgtar = cv2.cvtColor(cv2.imread(imgtardir), cv2.COLOR_BGR2RGB)
+            imgref = cv2.imread(imgrefdir)
+            imgtar = cv2.imread(imgtardir)
 
         matchRefdir = infodirs + ref + ".reffeat"
         matchTardir = infodirs + tar + ".tarfeat"
@@ -199,11 +201,11 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4)
 
     # save the new manually added positions to the original location, REPLACING the 
     # information
-    if ref is str:
+    if type(ref) is str:
         dictToTxt(matchRef, matchRefdir, fit = False)
         dictToTxt(matchTar, matchTardir, fit = False)
     
-    if type(featureInfo[0]) is dict:
+    if dataSource is None and type(featureInfo[0]) is dict:
         # if the input was a list of dictionaries, return a list of dictionaries
         featInfos = [matchRef, matchTar]
 
