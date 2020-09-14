@@ -1,7 +1,21 @@
 # Segmentation
-Full workflow of registeration of histological data into training/testing data for 3D virtual model, data extracted by Hanna Allerkamp et.al of the UoA
+Full registration and colour normalisation of histological images. Data collected by Hanna Allerkamp et.al of the UoA.
+
+This programme is not solving a new problem. Existing softwares such as "registration Virtual Stack Slices" in ImageJ (https://imagej.net/Register_Virtual_Stack_Slices) do a fantastic job of registeration (both rigidly and elastically). However this workflow uses the original image for registration which puts a lot of stress on RAM, especially for high resolution images, and when the process fails there is no easy method to correct the process.
+
+It is also well accepted that maunually registering images by an expert is the gold standard. However this process is extremely time consuming and subjective between users.
+
+This programme is designed to combine the time saving attributes and repeatability of an automatic workflow with the accuracy of manual annotations. It performs this with high resolution images and can be performed on machines with anything from low to high computational resources. 
+
+# Key features 
+
+* Registering any resolution image on everything from a laptop to a high performance computer. 
+
+* Integrating a manual feature identification process if there is failure in the automatic process to achieve gold standard registeration. 
+
 
 # HOW TO USE: extract the samples and align the tissue
+
 0 - with Python 3.6.# (tested on 3.6.9) pip install the requirements
 
 This has been tested on MacOS 10.15.6
@@ -35,11 +49,11 @@ NOTE recomend using pyenv to manage python versions: https://github.com/pyenv/py
     
 * **cpuNo**: number of cores to use 
 
-    * see Activity Montior (Mac) or Task Manager
+    * each CPU represents a single process being run on a seperate thread
     
-    * set to False for serialisation + debugging
+    * set to False for serialisation and debugging
     
-    * each thread uses a maximum of 2gb of ram when loading tif files of size 3... consider this when parallelising...
+    * each thread uses a maximum of 2gb of ram when loading tif. On a low memory machine (ie a laptop) set to a lower number, this will take longer but place less demand on your computer. If using a high performance computer set to a higher number to process faster. NOTE it is best not to use all your CPUs so that you can still use your computer for other tasks (ie if you have 8 cores, use 6 so that you can still browse web etc if you want to) 
     
 * **features**: from aligned images, the number of features you with to manually extract and align in the highest resoltuion 
 
