@@ -63,12 +63,12 @@ def align(data, name = '', size = 0, cpuNo = False, saving = True):
     if cpuNo is False:
         # serial transformation
         for spec in sampleNames:
-            transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving)
+            transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving, refImg)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuCount) as pool:
-            pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(saving)))
+            pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(saving), repeat(refImg)))
 
 
     print('Alignment complete')
@@ -83,7 +83,6 @@ def shiftFeatures(featNames, src, alignedSamples):
     #           (rotateNet), the rotation information to be applied per image
 
     # load the identified features
-    feats = {}
     featRef = {}
     featTar = {}
     for f in featNames:
@@ -245,18 +244,16 @@ def shiftFeatures(featNames, src, alignedSamples):
                 print("\n\n!! ---- FITTING PROCEDUCE DID NOT CONVERGE  ---- !!\n\n")
                 print("     Refitting, err = " + str(errN))
 
-                denseMatrixViewer([dictToArray(featsMod.ref), dictToArray(featsMod.tar), centre], True)
+                # denseMatrixViewer([dictToArray(featsMod.ref), dictToArray(featsMod.tar), centre], True)
 
                 # change the original positions used
-                annoRef, annoTar = featChangePoint(regionOfPath(src, 2), rF, tF, ts = 4)
-
-                _, commonFeats = uniqueKeys([annoRef, featRef[rF][0]])
+                feats = featChangePoint(regionOfPath(src, 2), rF, tF, nopts=8, title = "Select eight features on each image")
                 
                 # go through all the annotations and see if there have actually been any changes made
                 same = True
                 for cf in commonFeats:
                     # check if any of the annotations have changed
-                    if (annoRef[cf] != featRef[rF][0][cf]).all() or (annoTar[cf] != featTar[tF][0][cf]).all():
+                    if (feats.refP[cf] != featRef[rF][0][cf]).all() or (feats.tarP[cf] != featTar[tF][0][cf]).all():
                         same = False 
                         break
 
@@ -266,13 +263,13 @@ def shiftFeatures(featNames, src, alignedSamples):
                     break
 
                 # update the master dictionary as these are the new features saved
-                featRef[rF][0] = annoRef
-                featTar[tF][0] = annoTar
+                featRef[rF][0] = feats.refP
+                featTar[tF][0] = feats.tarP
 
                 # updated the featO features for a new fitting procedure based on these new
                 # modified features
-                featsO.ref = annoRef
-                featsO.tar = annoTar
+                featsO.ref = feats.refP
+                featsO.tar = feats.tarP
                 atmp = 0
             
             # if there are enough feature available but alignment didn't converge to 
@@ -369,8 +366,7 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     rotateNet = txtToDict(rotateNetdir, float)[0]
     specInfo = {}
 
-    # initialise the end position of the tif image to be cropped
-    posE = 0
+
 
     try: featR = txtToDict(refdir, float); specInfo['reffeat'] = featR[0]
     except: pass
@@ -389,12 +385,14 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     shapeR = np.round((shapeO / jpegSize)[0], 1)
 
     # get the measure of the amount of shift to create the 'platform' which all the images are saved to
-    ss = (np.ceil(dictToArray(translateNet, int) * shapeR)).astype(int)     # scale up for the 40% reduction in tif2pdf
+
+    ss = dictToArray(translateNet, float) * shapeR     # scale up for the 40% reduction in tif2pdf
     maxSx = np.max(ss[:, 0])
     maxSy = np.max(ss[:, 1])
     minSx = np.min(ss[:, 0])
     minSy = np.min(ss[:, 1]) 
-    maxPos = (maxSx, maxSy)
+    maxPos = (maxSy, maxSx)
+    minPos = (minSy, minSx)
 
     # get the anlge and centre of rotation used to align the samples
     w = -rotateNet[sample][0]
@@ -404,22 +402,27 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
 
     # ---------- apply the transformations onto the images ----------
     
-    # adjust the points for the tif image
-    for sI in specInfo:
-        for f in specInfo[sI]:
-            specInfo[sI][f] = specInfo[sI][f] * shapeR + np.array(maxPos)
-    
     # get the maximum dimensions of all the tif images (NOT the jpeg images)
     tsa = dictToArray(tifShapes, int)
 
-    my, mx, _ = (np.max(tsa, axis = 0)).astype(int)
+    # find the combined image size and shift
+    actualMove = []
+    for i in uniqueKeys([translateNet, tifShapes])[1]:
+        actualMove.append(tifShapes[i][:2] + abs(np.flip(translateNet[i])) * shapeR + np.array(maxPos))
+
+    my, mx = (np.max(np.array(actualMove), axis = 0)).astype(int)
 
     # get the dims of the total field size to be created for all the images stored
-    yF, xF, cF = (my + maxSy - minSy, mx + maxSx - minSx, 3)       # NOTE this will always be slightly larger than necessary because to work it    
+    # yF, xF, cF = (my + maxSy - minSy, mx + maxSx - minSx, 3)       # NOTE this will always be slightly larger than necessary because to work it    
                                                                     # out precisely I would have to know what the max displacement + size of the img
                                                                     # is... this is over-estimating the size needed but is much simpler
-    xp = np.clip(int(maxSx - np.ceil(translateNet[sample][0]) * shapeR), 0, mx)
-    yp = np.clip(int(maxSy - np.ceil(translateNet[sample][1]) * shapeR), 0, my)
+    xp = int(maxSx - translateNet[sample][0] * shapeR)
+    yp = int(maxSy - translateNet[sample][1] * shapeR)
+        
+    # adjust the points for the tif image
+    for sI in specInfo:
+        for f in specInfo[sI]:
+            specInfo[sI][f] = specInfo[sI][f] * shapeR + np.array([xp, yp])
 
     # Load the entire image
     field = cv2.imread(segmentdir)
@@ -427,14 +430,15 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # get the section of the image 
     fy, fx, fc = field.shape
 
-    newField = np.zeros([yF, xF, cF]).astype(np.uint8)      # empty matrix for ALL the images
+    newField = np.zeros([my, mx, 3]).astype(np.uint8)      # empty matrix for ALL the images
+    
     newField[yp:(yp+fy), xp:(xp+fx), :] += field
 
     # apply the rotational transformation to the image
     centre = centre + maxPos
 
     rot = cv2.getRotationMatrix2D(tuple(centre), -float(w), 1)
-    warped = cv2.warpAffine(newField, rot, (xF, yF))
+    warped = cv2.warpAffine(newField, rot, (mx, my))
     # NOTE this is very memory intense so probably should reduce the CPU
     # count so that more of the RAM is being used rather than swap
     # perform a colour nomralisation is a reference image is supplied
@@ -456,7 +460,7 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     
     # normalise the image ONLY if there is a reference image and the full scale
     # image hasn't already been normalised
-    if refImg is not None and saving is False:
+    if refImg is not None:
         for c in range(warped.shape[2]):
             imgr[:, :, c] = hist_match(imgr[:, :, c], refImg[:, :, c])   
 
@@ -750,17 +754,17 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H653/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
-    dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/USB/H750A_7.0/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H671A_18.5/'
 
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
     size = 3
-    cpuNo = 7
+    cpuNo = 6
 
     align(dataSource, name, size, cpuNo, False)
