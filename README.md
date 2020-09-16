@@ -1,25 +1,25 @@
 # Segmentation
 Full registration and colour normalisation of histological images. Data collected by Hanna Allerkamp et.al of the UoA.
 
-This programme is not solving a new problem. Existing softwares such as "registration Virtual Stack Slices" in ImageJ (https://imagej.net/Register_Virtual_Stack_Slices) do a fantastic job of registeration (both rigidly and elastically). However this workflow uses the original image for registration which puts a lot of stress on RAM, especially for high resolution images, and when the process fails there is no easy method to correct the process.
+This programme is not solving a new problem. Existing softwares such as "registration Virtual Stack Slices" in ImageJ (https://imagej.net/Register_Virtual_Stack_Slices) do a fantastic job of registeration (both rigidly and elastically). However this workflow uses the original image for registration which puts a lot of stress on RAM, especially for the ultra high resolution images often used in histology, and when the process fails there is no easy method to correct the process.
 
 It is also well accepted that maunually registering images by an expert is the gold standard. However this process is extremely time consuming and subjective between users.
 
-This programme is designed to combine the time saving attributes and repeatability of an automatic workflow with the accuracy of manual annotations. It performs this with high resolution images and can be performed on machines with anything from low to high computational resources. 
+This programme is designed to combine the time saving attributes and repeatability of an automatic workflow with the accuracy of manual annotations. This can be performed with a sequence of images of any resolution on anything from a laptop to a high performance computer. The only requirement is the ability to run python and launch a GUI.
 
 # Key features 
 
-* Registering any resolution image on everything from a laptop to a high performance computer. 
+* Registering any resolution images on everything from a laptop to a high performance computer. 
 
 * Integrating a manual feature identification process if there is failure in the automatic process to achieve gold standard registeration. 
 
 
-# HOW TO USE: extract the samples and align the tissue
+# Set up
 
 0 - with Python 3.6.# (tested on 3.6.9) pip install the requirements
 
-This has been tested on MacOS 10.15.6
-NOTE recomend using pyenv to manage python versions: https://github.com/pyenv/pyenv
+This has been tested on a MacBook Pro, 8gb Ram, 1.7 GHz Quad-Core Intel Core i7 with MacOS 10.15.6
+NOTE recommend using pyenv to manage python versions: https://github.com/pyenv/pyenv
 
 
     pyenv install 3.6.9                 # optional
@@ -37,13 +37,13 @@ NOTE recomend using pyenv to manage python versions: https://github.com/pyenv/py
 
     * 0 = highest resolution available (20x zoom for most, 40x zoom if availabe)
     
-    * lower size = better quality/**MUCH** slower speed
+    * lower size = better quality/**MUCH** slower speed and RAM usage
     
-    * Every increment is a half in the zoom level (a size of 3, aka 2.5x resolution, has proven to be a sufficient compromise)
+    * Every increment is a half in the zoom level (a size of **3**, aka 2.5x resolution, has proven to be a sufficient compromise of speed and resolution)
     
 * **res**: the scale to downsample the image to use for feature matching and mask making 
     
-    * higher = better quality/slower speeds (0.2 has proven to be sufficient from experience)
+    * higher = better quality/slower speeds (**0.2** has proven to be sufficient from experience)
     
     * 1 = same resolution, 0.5 = half size etc.
     
@@ -53,14 +53,16 @@ NOTE recomend using pyenv to manage python versions: https://github.com/pyenv/py
     
     * set to False for serialisation and debugging
     
-    * each thread uses a maximum of 2gb of ram when loading tif. On a low memory machine (ie a laptop) set to a lower number, this will take longer but place less demand on your computer. If using a high performance computer set to a higher number to process faster. NOTE it is best not to use all your CPUs so that you can still use your computer for other tasks (ie if you have 8 cores, use 6 so that you can still browse web etc if you want to) 
+    * each thread uses a maximum of 2gb of ram when loading tif. On a low memory machine (ie a laptop) set to a lower number, this will take longer but place less demand on your computer. If using a high performance computer set to a higher number to process faster. 
+    
+    * NOTE it is advised to not use all your CPUs if you want to perform other tasks (ie if you have 8 cores, use 6 so that you can still browse web etc if you want to) 
     
 * **features**: from aligned images, the number of features you with to manually extract and align in the highest resoltuion 
 
 3 - Through the featureFinding, aligning and segmentExtraction there are some manual steps (selecting ROI and if the feature finding doesn't work then manual annotations)
 
-# Outputs are saved as following:
-* alignedSamples [FINAL RESULTS]: stores the images (high and low res) and the features found in their aligned positions 
+# Outputs are saved in the following directories:
+* alignedSamples **[FINAL RESULTS]**: stores the images (high and low res) and the features found in their aligned positions 
 
 * images: the downsamples specimens
 
