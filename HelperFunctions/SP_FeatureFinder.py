@@ -145,6 +145,11 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     img_refC = img_refMaster.copy()
     img_tarC = img_tarMaster.copy()
 
+    # normalise for all the colour channels
+    # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
+    for c in range(img_tarC.shape[2]):
+        img_tarC[:, :, c] = hist_match(img_tarC[:, :, c], img_refC[:, :, c])
+
     # get the image dimensions
     xr, yr, cr = img_refMaster.shape
     xt, yt, ct = img_tarMaster.shape
@@ -190,11 +195,6 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
             # provide specimen specific image placement
             xrefDif, yrefDif, xtarDif, ytarDif, img_ref, img_tar = imgPlacement(nameFromPath(name_ref, 1), img_refO, img_tarO)
 
-            # normalise for all the colour channels
-            # fig, (bx1, bx2, bx3) = plt.subplots(1, 3)
-            for c in range(img_tar.shape[2]):
-                img_tar[:, :, c] = hist_match(img_tar[:, :, c], img_ref[:, :, c])
-            
             x, y, c = img_ref.shape
             pg = int(np.round(x/gridNo))        # create a grid which is pg x pg pixel size
             sc = 20                          # create an overlap of sc pixels around this grid
@@ -232,7 +232,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
                     # if the proporption of information within the slide is black (ie background)
                     # is more than a threshold, don't process
-                    if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.5): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
+                    if (np.sum((imgSect_ref==0)*1) >= imgSect_ref.size*0.6): #or (np.sum((imgSect_tar>0)*1) <= imgSect_tar.size):
                         continue
 
                     # plt.imshow(imgSect_ref); plt.show()
@@ -296,7 +296,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
                 # NOTE use these to then perform another round of fitting. These essentially 
                 # become the manual "anchor" points for the spatial coherence to work with. 
                 print("\n\n!!!" + imgName + " doesn't have enough matches!!!!\n\n")
-                manualPoints = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 2)
+                manualPoints = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 2, title = "Select 2 pairs of features to assist the automatic process")
                 manualAnno += 1
                 matchedInfo = []
 
@@ -304,7 +304,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
                 # if automatic process is still not working, just do 
                 # the whole thing manually
                 print("\n\n------- Manually annotating " + name_tar + " -------\n\n")
-                matchedInfo = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 8)
+                matchedInfo = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 8, title = "Automatic process failed, select 8 pairs of features for alignment")
                 searching = False
                 
     # ---------- update and save the found features ---------
@@ -378,13 +378,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
         org = tuple(newtar + np.array([-50, 15])),
         fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
 
-    # put text for the number of features
-    cv2.putText(img = img_refC, text = str("Feats found = " + str(len(matchTarDict))), 
-        org = (50, 50),
-        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (255, 255, 255), thickness = int(txtsz*12))
-    cv2.putText(img = img_refC, text = str("Feats found = " + str(len(matchTarDict))), 
-    org = (50, 50),
-    fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (0, 0, 0), thickness = int(txtsz*6))
+
     # plot the features found per resolution
     '''
     img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
@@ -415,7 +409,18 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
     img_tarF = field.copy(); img_tarF[:xt, :yt] = img_tarC
     # plt.imshow(np.hstack([img_refF, img_tarF])); plt.show()
-    cv2.imwrite(imgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", np.hstack([img_refF, img_tarF]))
+
+    imgCombine = np.hstack([img_refF, img_tarF])
+
+    # put text for the number of features
+    cv2.putText(img = imgCombine, text = str("Feats found = " + str(len(matchTarDict))), 
+        org = (50, 50),
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (255, 255, 255), thickness = int(txtsz*12))
+    cv2.putText(img = imgCombine, text = str("Feats found = " + str(len(matchTarDict))), 
+    org = (50, 50),
+    fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*4, color = (0, 0, 0), thickness = int(txtsz*6))
+
+    cv2.imwrite(imgdest + "/" + name_ref + " <-- " + name_tar + ".jpg", imgCombine)
 
     dictToTxt(matchRefDict, dataDest + name_ref + ".reffeat", shape = img_refO.shape, fit = False)
     dictToTxt(matchTarDict, dataDest + name_tar + ".tarfeat", shape = img_tarO.shape, fit = False)
@@ -550,7 +555,7 @@ def matchMaker(matchedInfo, resInfo, manual, dist = 50, featNo = None):
                 matchInfoN.append(i)
                 noFeatFind = 0
             else:
-                # if more than 2% of all the features are investigated and there are no
+                # if more than 5% of all the features are investigated and there are no
                 # new features found, break the matching process (unlikely to find anymore
                 # good features)
                 noFeatFind += 1
@@ -716,11 +721,11 @@ if __name__ == "__main__":
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H671A_18.5/'
-    dataSource = '/Volumes/USB/H710B_6.1/'
-    dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
     dataSource = '/Volumes/USB/Test/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
 
     name = ''
     size = 3
