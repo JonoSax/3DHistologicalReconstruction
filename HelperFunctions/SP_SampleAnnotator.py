@@ -53,7 +53,7 @@ class feature:
     def __repr__(self):
         return repr((self.dist, self.refP, self.tarP, self.size, self.res))
 
-def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4):
+def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4, title = "Matching"):
 
     # this fuction brings up a gui which allows for a user to manually CHANGE
     # features on the images. This modifies the original .feat file
@@ -71,16 +71,21 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4)
 
         matchRefO = {}
         matchTarO = {}
-        if type(featureInfo[0]) is dict:
-            # if dictionaries are passed in as a list
-            matchRefO = featureInfo[0]
-            matchTarO = featureInfo[1]
 
-        else:
-            # if the info is in a list of objects
+        # if there are not features found, break
+        if len(featureInfo) == 0:
+            pass
+
+        # if the info is in a list of objects
+        elif type(featureInfo[0]) is not dict:
             for n, f in enumerate(featureInfo):
                 matchRefO[n] = f.refP
                 matchTarO[n] = f.tarP
+
+        else:
+            # if dictionaries are passed in as a list
+            matchRefO = featureInfo[0]
+            matchTarO = featureInfo[1]
 
     # if modifying arrays
     else: 
@@ -183,7 +188,7 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4)
             cv2.circle(imgCombineA, tuple(featID.astype(int)), int(ts*12), (0, 255, 0), int(ts*8))
             
             # get the x and y position from the feature
-            y, x = roiselector(imgCombineA)
+            y, x = roiselector(imgCombineA, title)
 
             # if the window is closed to skip selecting a feature, keep the feature
             if np.sum(x) * np.sum(y) == 0:
@@ -201,19 +206,21 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4)
 
     # save the new manually added positions to the original location, REPLACING the 
     # information
-    if type(ref) is str:
-        dictToTxt(matchRef, matchRefdir, fit = False)
-        dictToTxt(matchTar, matchTardir, fit = False)
-    
-    if dataSource is None and type(featureInfo[0]) is dict:
-        # if the input was a list of dictionaries, return a list of dictionaries
-        featInfos = [matchRef, matchTar]
 
-    else:
+    
+    if dataSource is None:
+
         # if the input was an object, return an object
         featInfos = []
         for f in matchRef:
             featInfos.append(feature(refP = matchRef[f], tarP = matchTar[f], dist = -1, size = 100, res = -1))
+
+    else:
+        dictToTxt(matchRef, matchRefdir, fit = False)
+        dictToTxt(matchTar, matchTardir, fit = False)
+        
+        # if the input was a list of dictionaries, return a list of dictionaries
+        featInfos = [matchRef, matchTar]
 
     return(featInfos)
 
@@ -368,7 +375,7 @@ def sectionExtract(path, segSections, feats, x, y, ref = None):
 
     return(segShapes)
 
-def roiselector(img):
+def roiselector(img, title = "Matching"):
 
     # function which calls the gui and get the co-ordinates 
     # Inputs    (img), numpy array image of interest
@@ -393,7 +400,7 @@ def roiselector(img):
 
     # perform a search over a reduced size area
     imgr = cv2.resize(img, (sizeY, sizeX))
-    roi = cv2.selectROI("Matching", imgr, showCrosshair=True)
+    roi = cv2.selectROI(title, imgr, showCrosshair=True)
 
     # get the postions
     y = np.array([roi[1], roi[1] + roi[3]])
