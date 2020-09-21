@@ -57,10 +57,6 @@ TODO:
         easier to just allow it to do the best it can and add manual points on sections which 
         don't match
 
-    - Apply the sift operators over the target image ONCE and then organise these 
-    into the appropriate grids for searching --> NOTE this is only useful when it is 
-    on a reference image which I have tried and it doesn't work very well
-
     - EXTRA FOR EXPERTS: conver this into C++ for superior speed
 
     - Make the sift operator work over each image individually and collect all 
@@ -93,7 +89,7 @@ def featFind(dataHome, name, size, cpuNo = False):
     # set the parameters
     gridNo = 2
     featMin = 40
-    dist = 30
+    dist = 10
 
     # get the images
     imgs = sorted(glob(imgsrc + "*.png"))
@@ -296,7 +292,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
                 # NOTE use these to then perform another round of fitting. These essentially 
                 # become the manual "anchor" points for the spatial coherence to work with. 
                 print("\n\n!!!" + imgName + " doesn't have enough matches!!!!\n\n")
-                manualPoints = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 2, title = "Select 2 pairs of features to assist the automatic process")
+                manualPoints = featChangePoint(None, img_ref, img_tar, matchedInfo, nopts = 2, title = "Select 2 pairs of features to assist the automatic process")
                 manualAnno += 1
                 matchedInfo = []
 
@@ -304,7 +300,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
                 # if automatic process is still not working, just do 
                 # the whole thing manually
                 print("\n\n------- Manually annotating " + name_tar + " -------\n\n")
-                matchedInfo = featChangePoint(None, img_refMaster, img_tarMaster, matchedInfo, nopts = 8, title = "Automatic process failed, select 8 pairs of features for alignment")
+                matchedInfo = featChangePoint(None, img_ref, img_tar, matchedInfo, nopts = 8, title = "Automatic process failed, select 8 pairs of features for alignment")
                 searching = False
                 
     # ---------- update and save the found features ---------
@@ -717,7 +713,6 @@ if __name__ == "__main__":
     multiprocessing.set_start_method('spawn')
 
     dataSource = '/Volumes/USB/Testing1/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H671A_18.5/'
@@ -726,6 +721,7 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/Storage/H710C_6.1/'
 
     name = ''
     size = 3
