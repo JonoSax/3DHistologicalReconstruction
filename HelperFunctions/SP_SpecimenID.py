@@ -27,13 +27,13 @@ entire image, rather than segmenting the image into grids
 '''
 
 # NOTE can probably depreciate specID and make sectionSelecter the main function
-def specID(dataHome, name, size, serialised = True):
+def specID(dataHome, name, size, cpuNo = False):
 
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
 
     # gets the images for processing
-    sectionSelecter(name, datasrc, serialised)
+    sectionSelecter(name, datasrc, cpuNo)
 
 
 def sectionSelecter(spec, datasrc, cpuNo = False):
@@ -102,7 +102,7 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     dictToTxt(tifShape, datasrc + "info/all.tifshape")
     dictToTxt(jpegShape, datasrc + "info/all.jpgshape")
     print('Info Saved')
-
+    
     # NOTE this takes ages on the tifs.....
     '''
     print("\n   #--- NORMALISE COLOURS ---#")
@@ -553,6 +553,6 @@ if __name__ == "__main__":
 
     name = ''
     size = 3
-    cpuNo = 7
+    cpuNo = 2
         
     specID(dataSource, name, size, cpuNo)
