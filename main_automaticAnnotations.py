@@ -16,13 +16,14 @@ from HelperFunctions import *
 
 # dataHome is where the ndpi files are stored
 dataHome = '/Volumes/USB/H1029a/'
-dataHome = '/Volumes/USB/H710C_6.1/'
 dataHome = '/Volumes/Storage/H653A_11.3new/'
-dataHome = '/Volumes/USB/H710B_6.1/'
 dataHome = '/Volumes/USB/H750A_7.0/'
-dataHome = '/Volumes/USB/H673A_7.6/'
 dataHome = '/Volumes/USB/Test/'
-
+dataHome = '/Volumes/USB/H671A_18.5/'
+dataHome = '/Volumes/USB/H710B_6.1/'
+dataHome = '/Volumes/USB/H673A_7.6/'
+dataHome = '/Volumes/Storage/H653A_11.3/'
+dataHome = '/Volumes/Storage/H710C_6.1/'
 
 
 # research drive access via VPN
@@ -44,7 +45,7 @@ cpuNo = 6
 
 # number of features to extract from the aligned samples for higher
 # resolution analysis
-features = 2
+features = 3
 
 if __name__ == "__main__":
 
@@ -52,8 +53,9 @@ if __name__ == "__main__":
 
     print("\n----------- WSILoad -----------")
     # extract the tif file of the specified size
-    # WSILoad(dataHome, name, size)
-
+    WSILoad(dataHome, name, size)
+    '''
+    '''
     print("\n----------- smallerTif -----------")
     # create jpeg images of all the tifs and a single collated pdf
     smallerTif(dataHome, name, size, res, cpuNo)
@@ -68,8 +70,15 @@ if __name__ == "__main__":
 
     print("\n----------- AignSegments -----------") 
     # align all the samples 
-    align(dataHome, name, size, cpuNo)
+    align(dataHome, size, cpuNo)
+
+    print("\n----------- FixSamples -----------")
+    # evaluate the fit of all the samples and if there are some which are not
+    # well aligned, manually annotate those samples
+    input("Open the stack in ImageJ and assess if there are any samples poorly aligned. \nAdd these as strings to the list, samples, then press any key")
+    samples = []
+    fixit(dataHome, size, cpuNo, samples)
 
     print("\n----------- FeatureExtraction -----------")
-    # from the whole sample, select features and create a propogated stack 
+    # from the whole sample, propogate user chosen features and align these 
     fullMatchingSpec(dataHome, size, features, cpuNo)
