@@ -47,7 +47,9 @@ def fullMatchingSpec(datasrc, size, segSections = 1, cpuNo = False):
     # Outputs:  (), aligned samples of the seg sections
 
     # select the features within the aligned samples
-    # featSelectArea(datasrc, size, segSections, 0, False)
+    featSelectArea(datasrc, size, segSections, 0, False)
+
+    input("Check all the samples are of acceptable quality then press any key")
 
     dataSegSections = datasrc + str(size) + "/segSections/"
 
@@ -55,7 +57,7 @@ def fullMatchingSpec(datasrc, size, segSections = 1, cpuNo = False):
 
     # take a single segment section and perform a complete feature 
     # matching and alignment
-    for s in segdirs[1:]:
+    for s in segdirs:
         fullMatching(s + "/", cpuNo)
 
 
@@ -95,9 +97,9 @@ def fullMatching(sectiondir, cpuNo):
             pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
     
     # perform alignment of the segsections based on the features
+    
     sampleNames = sorted(nameFromPath(imgs, 3))
     shiftFeatures(sampleNames, dataDest, alignedimgDest)
-
     # use a reference image
     refImg = cv2.imread(imgs[1])
 
@@ -134,8 +136,8 @@ def featChangeSegPoint(segsrc, img, nopts = 5):
     # get the specific reference and target features
     # NOTE it is -1 because the images are "one ahead" because they include the 
     # initial reference image
-    refPath = refFeatInfo[featP ]
-    tarPath = tarFeatInfo[featP ]
+    refPath = refFeatInfo[featP -1]
+    tarPath = tarFeatInfo[featP -1]
 
     # load the info
     refInfo = txtToDict(refPath, float)[0]
@@ -158,6 +160,7 @@ if __name__ == "__main__":
     datasrc = '/Volumes/USB/H671B_18.5/'
     datasrc = '/Volumes/USB/H750A_7.0/'
     datasrc = '/Volumes/USB/Test/'
+    datasrc = '/Volumes/USB/H710B_6.1/'
 
 
     size = 3
