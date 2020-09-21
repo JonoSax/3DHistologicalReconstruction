@@ -27,7 +27,7 @@ class sampleFeatures:
         self.tar = tar
         self.fit = fit
 
-def align(data, name = '', size = 0, cpuNo = False, saving = True):
+def align(data, size = 0, cpuNo = False, saving = False, prefix = "png"):
 
     # This function will take the extracted sample tif file at the set resolution and 
     # translate and rotate them to minimise the error between slices
@@ -37,10 +37,6 @@ def align(data, name = '', size = 0, cpuNo = False, saving = True):
     # Outputs:  (), extracts the tissue sample from the slide and aligns them by 
     #           their identified featues
 
-    # use only 0.5 the CPU resources availabe, this is more to preserve
-    # the ram available
-    cpuCount = int(multiprocessing.cpu_count() * 0.5)
-
     # get the file of the features information 
     src = data + str(size)
     dataSegmented = src + '/masked/'     
@@ -48,10 +44,10 @@ def align(data, name = '', size = 0, cpuNo = False, saving = True):
     segInfo = src+ '/info/'
 
     # get the sample slices of the specimen to be processed
-    samples = sorted(glob(dataSegmented + "*.png"))
+    samples = sorted(glob(dataSegmented + "*." + prefix))
     sampleNames = nameFromPath(samples, 3)
 
-    # use the first sample png as the reference image
+    # use a sample png as the reference image
     refImg = cv2.imread(samples[1])
 
     # find the affine transformation necessary to fit the samples
@@ -67,7 +63,7 @@ def align(data, name = '', size = 0, cpuNo = False, saving = True):
 
     else:
         # parallelise with n cores
-        with Pool(processes=cpuCount) as pool:
+        with Pool(processes=cpuNo) as pool:
             pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(saving), repeat(refImg)))
 
 
@@ -366,8 +362,6 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     rotateNet = txtToDict(rotateNetdir, float)[0]
     specInfo = {}
 
-
-
     try: featR = txtToDict(refdir, float); specInfo['reffeat'] = featR[0]
     except: pass
 
@@ -408,7 +402,7 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # find the combined image size and shift
     actualMove = []
     for i in uniqueKeys([translateNet, tifShapes])[1]:
-        actualMove.append(tifShapes[i][:2] + abs(np.flip(translateNet[i])) * shapeR + np.array(maxPos))
+        actualMove.append(tifShapes[i][:2] + abs((translateNet[i])) * shapeR + np.array(maxPos))
 
     my, mx = (np.max(np.array(actualMove), axis = 0)).astype(int)
 
@@ -422,7 +416,7 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # adjust the points for the tif image
     for sI in specInfo:
         for f in specInfo[sI]:
-            specInfo[sI][f] = specInfo[sI][f] * shapeR + np.array([xp, yp])
+            specInfo[sI][f] = specInfo[sI][f] * shapeR + np.array([yp, xp])
 
     # Load the entire image
     field = cv2.imread(segmentdir)
@@ -752,7 +746,6 @@ if __name__ == "__main__":
     # dataHome is where all the directories created for information are stored 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/H653/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H710B_6.1/'
@@ -760,6 +753,7 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H750A_7.0/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/Storage/H710C_6.1/'
 
 
     # dataTrain = dataHome + 'FeatureID/'
