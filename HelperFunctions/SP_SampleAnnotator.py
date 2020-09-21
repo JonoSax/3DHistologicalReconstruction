@@ -207,13 +207,17 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
     # save the new manually added positions to the original location, REPLACING the 
     # information
 
-    
+    # return the data in the same format as the input
     if dataSource is None:
 
         # if the input was an object, return an object
         featInfos = []
-        for f in matchRef:
-            featInfos.append(feature(refP = matchRef[f], tarP = matchTar[f], dist = -1, size = 100, res = -1))
+        if type(featureInfo[0]) is not dict:
+            for f in matchRef:
+                featInfos.append(feature(refP = matchRef[f], tarP = matchTar[f], dist = -1, size = 100, res = -1))
+            
+        else:
+            featInfos = [matchRef, matchTar]
 
     else:
         dictToTxt(matchRef, matchRefdir, fit = False)
@@ -224,7 +228,7 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
 
     return(featInfos)
 
-def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
+def featSelectArea(datahome, size, feats = 1, sample = 0):
 
     # this function brings up a gui which allows user to manually selection a 
     # roi on the image. This extracts samples from the aligned tissues and saves them
@@ -286,73 +290,6 @@ def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
             imgShapes[name] = shapes[n][i]
 
         dictToTxt(imgShapes, segSections + "seg" + str(i) + "/info/all.tifshape")
-
-def featSelectPoint(imgref, imgtar, matchRef = {}, matchTar = {}, feats = 5, ts = 4):
-
-    # this fuction brings up a gui which allows for a user to manually select
-    # features on the images. This contributes to making a .feat file
-    # Inputs:   (nameref), either the path or the numpy array of the reference image
-    #           (nametar), either the path or the numpy array of the target image
-    #           (matchRef), any already identified features on the reference image
-    #           (matchTar), any already identified features on the target image
-    #           (feats), defaults to finding 5 features
-    # Outputs:  (matchRef, matchTar), updated ref and target features with new points added
-
-    # get the images with insufficient features
-    if type(imgref) == str or type(imgtar) == str:
-        imgref = cv2.imread(imgref)
-        imgtar = cv2.imread(imgtar)
-
-    # text size
-    ts = imgref.shape[0]/1000
-
-    if type(matchRef) is not dict:
-        matchObj = deepcopy(matchRef)
-        matchRef = []
-        matchTar = []
-        for mO in matchObj:
-            matchRef.append(mO.refP)
-            matchTar.append(mO.tarP)
-
-    # add the annotations already on the image
-    imgCombine = annotateImg([imgref, imgtar], [matchRef, matchTar], ts)
-
-    n = int(len(matchRef) * 2)
-    ym = int(imgCombine.shape[1]/2)
-    for i in range(n, feats*2):
-
-        # get the x and y position from the feature
-        x, y = roiselector(imgCombine)
-        xme = np.mean(x)
-        yme = np.mean(y)
-
-        # add the found points as marks
-        imgCombine = cv2.circle(imgCombine, (int(xme), int(yme)), int(ts*10), (255, 0, 0), int(ts*5))
-
-        featPos = (xme, yme)
-        featName = "feat_" + str(int(i/2))
-        # append reference and target information to the original list
-        if i%2 == 0:
-            obj = "ref"
-            matchRef[featName] = np.array(featPos)
-        else:
-            obj = "tar"
-            matchTar[featName] = np.array(featPos - np.array([ym, 0]))
-
-        # add info to image
-        feat = obj + " feat " + str(int(np.floor(i/2)))
-
-        cv2.putText(imgCombine, feat, 
-                tuple([int(xme), int(yme)] + np.array([20, 0])),
-                cv2.FONT_HERSHEY_SIMPLEX, ts, (255, 255, 255), int(ts*5))
-
-        cv2.putText(imgCombine, feat, 
-                tuple([int(xme), int(yme)] + np.array([20, 0])),
-                cv2.FONT_HERSHEY_SIMPLEX, ts, (0, 0, 0), int(ts*2.5))
-
-    cv2.destroyAllWindows()
-
-    return(matchRef, matchTar)
 
 def sectionExtract(path, segSections, feats, x, y, ref = None):
 
