@@ -50,7 +50,8 @@ WSIExtract(dataTrain, name, size)
 print("\n----------- SegmentExtract -----------")
 # extract only the sample from the whole slide
 # if there are multiple specimens, seperate these into a, b, c... samples (including info)
-sampleExtract(dataTrain, name, size, True)
+# specID()
+# depreciated: sampleExtract(dataTrain, name, size, True)
 
 print("\n----------- AignSegments -----------")
 # align all the specimens 
