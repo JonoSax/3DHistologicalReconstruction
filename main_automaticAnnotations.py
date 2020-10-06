@@ -54,8 +54,7 @@ if __name__ == "__main__":
     print("\n----------- WSILoad -----------")
     # extract the tif file of the specified size
     WSILoad(dataHome, name, size)
-    '''
-    '''
+    
     print("\n----------- smallerTif -----------")
     # create jpeg images of all the tifs and a single collated pdf
     smallerTif(dataHome, name, size, res, cpuNo)
@@ -71,12 +70,19 @@ if __name__ == "__main__":
     print("\n----------- AignSegments -----------") 
     # align all the samples 
     align(dataHome, size, cpuNo)
-
+    
     print("\n----------- FixSamples -----------")
-    # evaluate the fit of all the samples and if there are some which are not
-    # well aligned, manually annotate those samples
-    input("Open the stack in ImageJ and assess if there are any samples poorly aligned. \nAdd these as strings to the list, samples, then press any key")
+    # fix any samples which were not aligned properly 
+    print("Examine the samples (for example as as a stack in ImageJ) and assess if there are any samples poorly aligned. Type the name of the problematic samples here, then press enter twice to continue")
     samples = []
+    n = 0
+    while True:
+        sample = input("Sample name " + str(n) + ": ")
+        if sample is "":
+            break
+        samples.append(sample)
+        n += 1
+
     fixit(dataHome, size, cpuNo, samples)
 
     print("\n----------- FeatureExtraction -----------")
