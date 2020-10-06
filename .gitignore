@@ -9,9 +9,4 @@ testing.txt
 testimage.png
 archaicFunc.py
 HelperFunctions/__pycache__/
-HelperFunctions/__pycache__/CI_WSIExtract.cpython-36.pyc
-HelperFunctions/__pycache__/PR_WSILoad.cpython-36.pyc
-HelperFunctions/__pycache__/SP_AlignSamples.cpython-36.pyc
-HelperFunctions/__pycache__/SP_SampleFinder.cpython-36.pyc
-HelperFunctions/__pycache__/SP_SpecimenID.cpython-36.pyc
-HelperFunctions/__pycache__/Utilities.cpython-36.pyc
+HelperFunctions/NotFunctional/
