@@ -25,17 +25,17 @@ First install openslide, on a Mac (with brew) this is
 
     brew install openslide
 
+Install ndpitools
+
+    https://www.imnc.in2p3.fr/pagesperso/deroulers/software/ndpitools/, extracts the tif images from the ndpi file
+
 Next, pip install python requirements
 
     pyenv install 3.6.9                 # optional
     pip install pip --upgrade           # ensure latest pip version installed
     pip install -r requirements.txt
 
-Install openslide and ndpitools
-
-    https://www.imnc.in2p3.fr/pagesperso/deroulers/software/ndpitools/, extracts the tif images from the ndpi file
     
-    https://openslide.org/download/, allows properties of the npdi images to be extracted
 
 1 - open the main_automaticAnnotations script
 
