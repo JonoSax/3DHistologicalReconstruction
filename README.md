@@ -26,6 +26,11 @@ NOTE recommend using pyenv to manage python versions: https://github.com/pyenv/p
     pip install pip --upgrade           # ensure latest pip version installed
     pip install -r requirements.txt
 
+Install openslide and ndpitools
+
+    https://www.imnc.in2p3.fr/pagesperso/deroulers/software/ndpitools/, extracts the tif images from the ndpi file
+    
+    https://openslide.org/download/, allows properties of the npdi images to be extracted
 
 1 - open the main_automaticAnnotations script
 
