@@ -16,11 +16,16 @@ This programme is designed to combine the time saving attributes and repeatabili
 
 # Set up
 
-0 - with Python 3.6.# (tested on 3.6.9) pip install the requirements
+0 - with Python 3.6.# (tested on 3.6.9) install the requirements
 
 This has been tested on a MacBook Pro, 8gb Ram, 1.7 GHz Quad-Core Intel Core i7 with MacOS 10.15.6
 NOTE recommend using pyenv to manage python versions: https://github.com/pyenv/pyenv
 
+First install openslide, on a Mac (with brew) this is
+
+    brew install openslide
+
+Next, pip install python requirements
 
     pyenv install 3.6.9                 # optional
     pip install pip --upgrade           # ensure latest pip version installed
