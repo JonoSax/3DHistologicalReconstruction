@@ -5,7 +5,7 @@ from .SP_FeatureFinder import featFind
 from .SP_MaskMaker import maskMaker
 from .SP_SampleAnnotator import featSelectArea, featChangePoint
 from .SP_SpecimenID import specID
-from .SP_tif2pdf import smallerTif
+from .SP_smallSample import downsize
 from .fixSample import fixit
 from .CI_alignfeatSelect import fullMatchingSpec   
 from .CI_targetTissue import targetTissue
