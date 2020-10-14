@@ -11,7 +11,7 @@ matplotlib==3.2.1
 networkx==2.5
 numpy==1.19.1
 opencv-contrib-python==4.3.0.36
-openslide-python==1.1.1 
+openslide-python==1.1.2
 Pillow==7.1.2
 pyparsing==2.4.7
 PyQt5==5.13.2
