@@ -18,12 +18,15 @@ from HelperFunctions import *
 dataHome = '/Volumes/USB/H1029a/'
 dataHome = '/Volumes/Storage/H653A_11.3new/'
 dataHome = '/Volumes/USB/H750A_7.0/'
-dataHome = '/Volumes/USB/Test/'
 dataHome = '/Volumes/USB/H671A_18.5/'
 dataHome = '/Volumes/USB/H710B_6.1/'
 dataHome = '/Volumes/USB/H673A_7.6/'
 dataHome = '/Volumes/Storage/H653A_11.3/'
 dataHome = '/Volumes/Storage/H710C_6.1/'
+dataHome = '/Volumes/USB/Test/'
+
+# NOTE 
+#   bug check when there are no images
 
 
 # research drive access via VPN
@@ -50,14 +53,14 @@ features = 3
 if __name__ == "__main__":
 
     multiprocessing.set_start_method('spawn')
-
-    print("\n----------- WSILoad -----------")
+    
+    print("\n----------- WSILoad ---------")
     # extract the tif file of the specified size
     WSILoad(dataHome, name, size)
     
     print("\n----------- smallerTif -----------")
     # create jpeg images of all the tifs and a single collated pdf
-    smallerTif(dataHome, name, size, res, cpuNo)
+    downsize(dataHome, size, res, cpuNo)
 
     print("\n----------- specID -----------")
     # extract the invidiual sample from within the slide
@@ -66,10 +69,10 @@ if __name__ == "__main__":
     print("\n----------- featFind -----------")
     # identify corresponding features between samples 
     featFind(dataHome, name, size, cpuNo)
-
     print("\n----------- AignSegments -----------") 
-    # align all the samples 
-    align(dataHome, size, cpuNo)
+    # align all the samples
+    savingTif = True
+    align(dataHome, size, cpuNo, savingTif)
     
     print("\n----------- FixSamples -----------")
     # fix any samples which were not aligned properly 
@@ -78,11 +81,10 @@ if __name__ == "__main__":
     n = 0
     while True:
         sample = input("Sample name " + str(n) + ": ")
-        if sample is "":
+        if sample == "":
             break
         samples.append(sample)
         n += 1
-
     fixit(dataHome, size, cpuNo, samples)
 
     print("\n----------- FeatureExtraction -----------")
