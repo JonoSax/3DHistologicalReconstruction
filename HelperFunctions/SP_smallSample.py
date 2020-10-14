@@ -16,6 +16,10 @@ def downsize(dataHome, size, scale = 0.3, cpuNo = False):
 
     files = sorted(glob(dataHome + str(size) + "/tifFiles/*.tif"))
 
+    # create an error if there arent enough images
+    if len(files) < 2:
+        raise NameError("There are not enough image to perform any processing")
+
     targetDir = dataHome + str(size) + "/images/"
     dirMaker(targetDir)
 
