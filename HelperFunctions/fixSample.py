@@ -48,7 +48,11 @@ def fixit(dataHome, size, cpuNo, samples, segSection = False):
 
     # if there were samples to align, re-align the entire specimen
     if len(samples) > 0:
+        print("     Realigning samples")
         align(dataHome, size, cpuNo, saving)
+
+    else:
+        print("     No samples to fix")
 
 
 def reannotator(infosrc, imgsrc, targetSample, nopts = 8):
