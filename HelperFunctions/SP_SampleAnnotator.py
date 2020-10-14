@@ -228,7 +228,7 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
 
     return(featInfos)
 
-def featSelectArea(datahome, size, feats = 1, sample = 0):
+def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
 
     # this function brings up a gui which allows user to manually selection a 
     # roi on the image. This extracts samples from the aligned tissues and saves them
