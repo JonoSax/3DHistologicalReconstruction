@@ -47,9 +47,9 @@ def fullMatchingSpec(datasrc, size, segSections = 1, cpuNo = False):
     # Outputs:  (), aligned samples of the seg sections
 
     # select the features within the aligned samples
-    featSelectArea(datasrc, size, segSections, 0, False)
+    featSelectArea(datasrc, size, segSections, 0)
 
-    input("Check all the samples are of acceptable quality then press any key")
+    input("Check all the samples are of acceptable quality. Delete any that are severly damaged/not valuable then press any key")
 
     dataSegSections = datasrc + str(size) + "/segSections/"
 
@@ -68,7 +68,7 @@ def fullMatching(sectiondir, cpuNo):
 
     # get the seg section images
     imgs = sorted(glob(sectiondir + "*.tif"))
-    print(str(len(imgs)) + " images found")
+    print("\n" + str(len(imgs)) + " images found")
 
     # featfind parameters
     gridNo = 1
@@ -96,12 +96,15 @@ def fullMatching(sectiondir, cpuNo):
         with Pool(processes=cpuNo) as pool:
             pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
     
+    
     # perform alignment of the segsections based on the features
     
     sampleNames = sorted(nameFromPath(imgs, 3))
     shiftFeatures(sampleNames, dataDest, alignedimgDest)
+
     # use a reference image
     refImg = cv2.imread(imgs[1])
+    refImg = None
 
     # transform the samples
     if cpuNo is False:
@@ -113,8 +116,6 @@ def fullMatching(sectiondir, cpuNo):
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
             pool.starmap(transformSamples, zip(sampleNames, repeat(sectiondir), repeat(dataDest), repeat(alignedimgDest), repeat(saving), repeat(refImg)))
-
-    # NOTE have some kind of command to cause the operations to come back in sync here
 
 def featChangeSegPoint(segsrc, img, nopts = 5):
 
