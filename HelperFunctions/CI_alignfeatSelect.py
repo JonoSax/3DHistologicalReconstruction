@@ -68,7 +68,7 @@ def fullMatching(sectiondir, cpuNo):
 
     # get the seg section images
     imgs = sorted(glob(sectiondir + "*.tif"))
-    print("\n" + str(len(imgs)) + " images found")
+    print("\n ----- " + str(len(imgs)) + " images found -----")
 
     # featfind parameters
     gridNo = 1

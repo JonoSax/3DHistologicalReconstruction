@@ -131,7 +131,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     name_ref = nameFromPath(refsrc, 3)
     name_tar = nameFromPath(tarsrc, 3)
     imgName = name_ref + " <-- " + name_tar
-    print("Matching " + name_tar + " to " + name_ref)
+    print("\nMatching " + name_tar + " to " + name_ref)
 
     # load in the images
     img_refMaster = cv2.imread(refsrc)
