@@ -27,7 +27,7 @@ class sampleFeatures:
         self.tar = tar
         self.fit = fit
 
-def align(data, size = 0, cpuNo = False, saving = False, prefix = "png"):
+def align(data, size = 0, cpuNo = False, saving = True, prefix = "png"):
 
     # This function will take the extracted sample tif file at the set resolution and 
     # translate and rotate them to minimise the error between slices
@@ -380,13 +380,14 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
 
     # get the measure of the amount of shift to create the 'platform' which all the images are saved to
 
-    ss = dictToArray(translateNet, float) * shapeR     # scale up for the 40% reduction in tif2pdf
-    maxSx = np.max(ss[:, 0])
-    maxSy = np.max(ss[:, 1])
-    minSx = np.min(ss[:, 0])
-    minSy = np.min(ss[:, 1]) 
-    maxPos = (maxSy, maxSx)
-    minPos = (minSy, minSx)
+    # get the translations and set 0, 0 to be the position of minimum translation
+    tNet = dictToArray(translateNet, float) * shapeR    
+    tNet -= np.min(tNet, axis = 0)
+    maxPos = np.max(tNet, axis = 0)
+    translateNew = {}
+    for i, t in enumerate(translateNet):
+        translateNew[t] = tNet[i, :]
+
 
     # get the anlge and centre of rotation used to align the samples
     w = -rotateNet[sample][0]
@@ -399,20 +400,16 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # get the maximum dimensions of all the tif images (NOT the jpeg images)
     tsa = dictToArray(tifShapes, int)
 
-    # find the combined image size and shift
-    actualMove = []
-    for i in uniqueKeys([translateNet, tifShapes])[1]:
-        actualMove.append(tifShapes[i][:2] + abs((translateNet[i])) * shapeR + np.array(maxPos))
-
-    my, mx = (np.max(np.array(actualMove), axis = 0)).astype(int)
+    # find the combined image size and shift (NOTE tNet columns swapped)
+    actualMove = dictToArray(tifShapes)[:, :2] + tNet[:, [1, 0]]
+    my, mx = (np.max(actualMove, axis = 0)).astype(int)
 
     # get the dims of the total field size to be created for all the images stored
     # yF, xF, cF = (my + maxSy - minSy, mx + maxSx - minSx, 3)       # NOTE this will always be slightly larger than necessary because to work it    
                                                                     # out precisely I would have to know what the max displacement + size of the img
                                                                     # is... this is over-estimating the size needed but is much simpler
-    xp = int(maxSx - translateNet[sample][0] * shapeR)
-    yp = int(maxSy - translateNet[sample][1] * shapeR)
-        
+    xp, yp = np.floor(maxPos - translateNew[sample]).astype(int)
+
     # adjust the points for the tif image
     for sI in specInfo:
         for f in specInfo[sI]:
@@ -433,10 +430,10 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
 
     rot = cv2.getRotationMatrix2D(tuple(centre), -float(w), 1)
     warped = cv2.warpAffine(newField, rot, (mx, my))
+
     # NOTE this is very memory intense so probably should reduce the CPU
     # count so that more of the RAM is being used rather than swap
     # perform a colour nomralisation is a reference image is supplied
-
 
     # create a low resolution image which contains the adjust features
     plotPoints(dest + sample + '_alignedAnnotatedUpdated.jpg', warped, centre, specInfo)
@@ -458,7 +455,7 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
         for c in range(warped.shape[2]):
             imgr[:, :, c] = hist_match(imgr[:, :, c], refImg[:, :, c])   
 
-        cv2.imwrite(dest + sample + '.png', imgr)
+    cv2.imwrite(dest + sample + '.png', imgr)
 
     print("Done translation of " + sample)
 
