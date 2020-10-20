@@ -19,14 +19,14 @@ from itertools import repeat
 from copy import copy, deepcopy
 if __name__ != "HelperFunctions.SP_FeatureFinder":
     from Utilities import *
-    from SP_SampleAnnotator import featChangePoint
+    from SP_SampleAnnotator import featChangePoint, matchMaker
 else:
     from HelperFunctions.Utilities import *
-    from HelperFunctions.SP_SampleAnnotator import featChangePoint
+    from HelperFunctions.SP_SampleAnnotator import featChangePoint, matchMaker
 
 # for each fitted pair, create an object storing their key information
 class feature:
-    def __init__(self, refP = None, tarP = None, dist = None, size = None, res = None):
+    def __init__(self, refP = None, tarP = None, dist = None, size = None, res = -1, ID = None):
         # the position of the match on the reference image
         self.refP = refP
 
@@ -42,13 +42,10 @@ class feature:
         # the resolution index of the image that was processed
         self.res = res
 
+        self.ID = ID
+
     def __repr__(self):
             return repr((self.dist, self.refP, self.tarP, self.size, self.res))
-
-'''
-TODO: explanation of what happens here.....
-
-'''
 
 '''
 TODO:
@@ -131,7 +128,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     name_ref = nameFromPath(refsrc, 3)
     name_tar = nameFromPath(tarsrc, 3)
     imgName = name_ref + " <-- " + name_tar
-    print("\nMatching " + name_tar + " to " + name_ref)
+    print("-Matching " + name_tar + " to " + name_ref)
 
     # load in the images
     img_refMaster = cv2.imread(refsrc)
@@ -243,12 +240,12 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
                         matches = bf.match(des_ref, des_tar)
 
                         # get all the matches, adjust for the window used 
-                    # get all the matches, adjust for the window used 
+                        # get all the matches, adjust for the window used 
                         for m in matches:
 
                             # store the feature information as it appears on the original sized image
                             featureInfo.refP = (kp_ref[m.queryIdx].pt + np.array([r*pg, c*pg])) / scl
-                            featureInfo.tarP = (kp_tar[m.trainIdx].pt + + np.array([startY, startX])) / scl
+                            featureInfo.tarP = (kp_tar[m.trainIdx].pt + np.array([startY, startX])) / scl
                             featureInfo.dist = m.distance
                             featureInfo.size = kp_tar[m.trainIdx].size
                             featureInfo.res = scln
@@ -259,7 +256,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
             # find the spatially cohesive features
             if len(resInfo) > 0:
                 matchedInfo += deepcopy(manualPoints)
-                matchedInfo = matchMaker(matchedInfo, resInfo, manualAnno > 0, dist)
+                matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist)
 
                 for n, m in enumerate(matchedInfo):
                     matchedInfo[n].dist = 0.01 * n # preserve the order of the features
@@ -317,10 +314,10 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
         matchedInfo[fn].refP = refAdj
         matchedInfo[fn].tarP = tarAdj
+        matchedInfo[fn].ID = fn
         
-        # add matched feature,
+        # create feature dictionary
         name = "feat_" + str(fn) + "_scl_" + str(kp.res)
-        names.append(name)
         matchRefDict[name] = refAdj
         matchTarDict[name] = tarAdj
 
@@ -333,48 +330,12 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     # make pictures to show the features found
     txtsz = 0.5
 
-    # different colour for each resolution used to find features
-    colours = [(255, 0, 0), (255, 0, 255), (255, 255, 0), (0, 255, 0), (0, 255, 255), (255, 255, 255)]
-    
     # img_refC = cv2.resize(img_refO, (yr, xr))
     # img_tarC = cv2.resize(img_tarO, (yt, xt))
-    for i, nF in enumerate(matchedInfo):
 
-        # if there is no match info just assign it to 0 (ie was a manual annotaiton)
-        try: md = int(nF.dist); ms = np.round(nF.size, 2)
-        except: md = np.inf; ms = np.inf
-        
-        name = names[i]
-
-        # mark the feature
-        newref = nF.refP.astype(int)
-        newtar = nF.tarP.astype(int)
-
-        cv2.circle(img_refC, tuple(newref.astype(int)), int(txtsz*10), colours[nF.res], int(txtsz*6))
-        cv2.circle(img_tarC, tuple(newtar.astype(int)), int(txtsz*10), colours[nF.res], int(txtsz*6))
-
-        # add the feature number onto the reference image
-        cv2.putText(img = img_refC, text = str(name), 
-        org = tuple(newref + np.array([-50, 15])),
-        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
-
-        cv2.putText(img = img_refC, text = str(name), 
-        org = tuple(newref + np.array([-50, 15])),
-        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
-        
-        # add the feature number and dist + size info
-        text = str(name + ", d: " + str(md) + ", s: " + str(ms))
-        text = str(name)
-
-        cv2.putText(img = img_tarC, text = text, 
-        org = tuple(newtar + np.array([-50, 15])),
-        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
-
-        cv2.putText(img = img_tarC, text = text, 
-        org = tuple(newtar + np.array([-50, 15])),
-        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
-
-
+    # annotate the image with the feature info
+    img_refC, img_tarC = nameFeatures(img_refC, img_tarC, matchedInfo)
+    
     # plot the features found per resolution
     '''
     img_refF = field.copy(); img_refF[:xr, :yr] = img_refC
@@ -420,205 +381,6 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
     dictToTxt(matchRefDict, dataDest + name_ref + ".reffeat", shape = img_refO.shape, fit = False)
     dictToTxt(matchTarDict, dataDest + name_tar + ".tarfeat", shape = img_tarO.shape, fit = False)
-
-def matchMaker(matchedInfo, resInfo, manual, dist = 50, featNo = None):
-
-    # ---------- NOTE the theory underpinning this function ----------
-    # The combination of individual features which produces the most matched features 
-    # due to being the most spatially coherent with each other, most likely contain 
-    # the features that represent actual biological structures becasue biological 
-    # structures between individual samples which are physically close to each other 
-    # are also spatailly coherent
-    
-    # this takes lists of all the information from the SIFT feature identification 
-    # and bf matching and returns only n number of points which match the criteria
-    # Inputs:   (matchInfo*), points that have already been found
-    #           (resInfo), all the information returned by the sift operator after being
-    #               brute forced matched for that specific resolution
-    #           (manual), boolean as to whether the features that have been inputted 
-    #               include manually annotated features. If True then treat the manual
-    #               annotations as "ground truth" and don't overwrite
-    #           (dist), sets the minimium distance between each feature. A larger distance 
-    #               reduces the number of features that can be found but will also ensure 
-    #               that features are  better spread across the sample, rather than being pack 
-    #               arond a single strong feature
-    #           (featNo), minimum number of features to find in the images. depreceated
-    # Outputs:  (infoStore), the set of features and corresponding information that have been 
-    #               found to have the most spatial coherence
-
-    def findbestfeatures():
-
-        # find the two best features ensuring that they are located 
-        # a reasonable distane away
-
-        # get the best features and remove from the list of sorted features
-        matchInfo = []
-        matchInfo.append(allInfo[0]); del allInfo[0]
-        
-        # get the second best feature, ensuring that it is an acceptable distance away from 
-        # the best feature (sometimes two really good matches are found pretty much next
-        # to each other which isn't useful for fitting)
-        for n, i in enumerate(allInfo):
-
-            # if the distance between the next best feature is less than 100 
-            # pixels, don't use it
-            if (np.sqrt(np.sum((matchInfo[0].refP - i.refP)**2)) < dist) or (np.sqrt(np.sum((matchInfo[0].tarP - i.tarP)**2)) < dist):
-                continue
-            
-            # if the 2nd best feature found meets the criteria append and move on
-            else:
-                matchInfo.append(i); del allInfo[n]
-                break
-
-        return(matchInfo)
-
-    def findgoodfeatures():
-
-        # find new features in the ref and target tissue which are positioned 
-        # in approximately the same location RELATIVE to the best features found already
-
-        matchInfoN = []
-
-        # append the already found matching info
-        matchInfoN += matchInfo
-
-        # from all the remaining features, find the ones that meet the characteristics:
-        #   - The new feature is a distance away from all previous features
-        #   - The new features on each sample are within a threshold angle and distance
-        #   difference relative to the best features found 
-        noFeatFind = 0  # keep track of the number of times a match has not been found
-        for an, i in enumerate(allInfo):
-            
-            # if a featNo criteria is set, continue looking until the target number of features is 
-            # met (or if there are no new features found for a duration of the search, bottom break)
-            if featNo is int:
-                if len(allInfo) >= featNo:
-                    break
-
-            # if the difference between the any of the already found feature is less than dist 
-            # pixels, don't use it
-            repeated = False
-
-            for mi in matchInfoN:
-                if (np.sqrt(np.sum((mi.refP - i.refP)**2)) < dist) or (np.sqrt(np.sum((mi.tarP - i.tarP)**2)) < dist):
-                    repeated = True
-                    break           
-
-            if repeated:
-                continue
-
-            # get the relative angles of the new features compared to the best features 
-            # found. Essentially triangulate the new feature relative to all the previously 
-            # found features. This is particularly important as the further down the features
-            # list used, the worse the sift match is so being in a position relative to all 
-            # the other features found becomes a more important metric of fit
-            # print("FEAT BEING PROCESSED")
-            angdist = []
-            ratiodist = []
-            # use, up to, the top n best features: this is more useful/only used if finding
-            # LOTS of features as this fitting procedure has a O(n^2) time complexity 
-            # so limiting the search to this sacrifices limited accuracy for significant 
-            # speed ups
-            for n1, mi1 in enumerate(matchInfoN[:5]):
-                for n2, mi2 in enumerate(matchInfoN[:5]):
-
-                    # if the features are repeated, don't use it
-                    if n1 == n2:
-                        continue
-
-                    # find the angle for the new point and all the previously found point
-                    newrefang = findangle(mi1.refP, mi2.refP, i.refP)
-                    newtarang = findangle(mi1.tarP, mi2.tarP, i.tarP)
-
-                    # store the difference of this new point relative to all the ponts
-                    # previously found
-                    angdist.append(abs(newrefang - newtarang))
-
-                # get the distances of the new points to the best feature
-                newrefdist = np.sqrt(np.sum((mi1.refP - i.refP)**2))
-                newtardist = np.sqrt(np.sum((mi1.tarP - i.tarP)**2))
-
-                # finds how much larger the largest distance is compared to the smallest distance
-                ratiodist.append((newtardist/newrefdist)**(1-((newrefdist>newtardist)*2)) - 1)
-
-            # if the new feature is than 5 degress off and within 5% distance each other 
-            # from all the previously found features then append 
-            if (np.array(angdist) < 5/180*np.pi).all() and (np.array(ratiodist) < 0.05).all():
-            # NOTE using median is a more "gentle" thresholding method. allows more features
-            # but the standard of these new features is not as high
-            # if np.median(angdist) < 180/180*np.pi and np.median(ratiodist) < 1:
-                # add the features
-                matchInfoN.append(i)
-                noFeatFind = 0
-            else:
-                # if more than 5% of all the features are investigated and there are no
-                # new features found, break the matching process (unlikely to find anymore
-                # good features)
-                noFeatFind += 1
-                if noFeatFind > int(len(allInfo) * 0.05):
-                    break
-
-        return(matchInfoN)
-
-    # store the initial feature found (ensures that there aren't less features 
-    # than what we start with. Important for the manual annotations might have more 
-    # features than the automatic process)
-
-    # if there is a repeated feature, delete it (this comes from adding manual features)
-    for n1, mi1 in enumerate(matchedInfo):
-        for n2, mi2 in enumerate(matchedInfo):
-
-            # if checking the same feature don't use it
-            if n1 == n2:
-                continue
-
-            if (mi1.tarP == mi2.tarP).all() or (mi1.refP == mi2.refP).all():
-                del matchedInfo[n2]
-
-    infoStore = matchedInfo
-
-    # create a list containing all the confirmed matched points and current ponts of interest
-    allInfo = matchedInfo + resInfo
-
-    # sort the information based on the distance
-    allInfo = sorted(allInfo, key=lambda allInfo: allInfo.dist)
-
-    # append the next n number of best fit features to the matches but 
-    # ONLY if their angle from the two reference features is within a tolerance 
-    # range --> this heavily assumes that the two best fits found are actually 
-    # good features...
-    # try up to 10 times: NOTE this is important because it reduces the reliance on the assumption 
-    # that feature with lowest distance score is in fact and actual feature. This instead allows
-    # for the feature finding process to rely more on the coherence of all the other 
-    # features relative to each other
-    for fits in range(10):
-        # get the two best features 
-        matchInfo = findbestfeatures()
-
-        # find features which are spatially coherent relative to the best feature for both 
-        # the referenc and target image and with the other constrains
-        matchInfoN = findgoodfeatures()
-
-        # add the 2nd best feature back into all the info as it was removed and can 
-        # still be used
-        allInfo.insert(0, matchInfo[1])
-
-        # Store the features found and if more features are found with a different combination
-        # of features then save that instead
-        if len(matchInfoN) > len(infoStore): 
-            # re-initialise the matches found
-            infoStore = matchInfoN
-
-        # if there are no more features to search through, break
-        if (len(allInfo) < 3): # or (len(infoStore) > 200): 
-            break
-              
-        # print(str(fits) + " = " + str(len(matchInfoN)) + "/" + str(len(resInfo)))
-            
-    # denseMatrixViewer([infoStore.refP, infoStore.tarP], True)
-
-    return(infoStore)
-
 
 # ------------ HARD CODED SPECIMEN SPECIFIC FEATURES ------------
 
@@ -717,11 +479,11 @@ if __name__ == "__main__":
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
-    dataSource = '/Volumes/USB/Test/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/Storage/H710C_6.1/'
+    dataSource = '/Volumes/USB/Test/'
 
     name = ''
     size = 3
