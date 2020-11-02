@@ -27,7 +27,7 @@ class sampleFeatures:
         self.tar = tar
         self.fit = fit
 
-def align(data, size = 0, cpuNo = False, saving = True, prefix = "png"):
+def align(data, size = 0, cpuNo = False, saving = True, prefix = "tif"):
 
     # This function will take the extracted sample tif file at the set resolution and 
     # translate and rotate them to minimise the error between slices
@@ -44,32 +44,49 @@ def align(data, size = 0, cpuNo = False, saving = True, prefix = "png"):
     segInfo = src+ '/info/'
 
     # get the sample slices of the specimen to be processed
-    samples = sorted(glob(dataSegmented + "*." + prefix))
-    sampleNames = nameFromPath(samples, 3)
+    samples = sorted(glob(dataSegmented + "*." + prefix))[:5]
 
     # use a sample png as the reference image
-    refImg = cv2.imread(samples[1])
+    try: refImg = cv2.imread(samples[1])
+    except: refImg = None
+
+    aligner(samples, segInfo, dataSegmented, alignedSamples, saving, refImg, cpuNo)
+
+def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, refImg = None, cpuNo = False):
+
+    # this function takes all the directories and info and then does the full 
+    # rigid alignment and saves where directed:
+    # Inputs:   (samples), the paths of all the images to be processed
+    #           (segInfo), directory of the features positions found and where to save the 
+    #               rigid transformations
+    #           (destImgPath), directory to save the aligned samples
+    #           (dataSegmented), directory of the images to be processed
+    #           (saving), boolean whether to save the full resolution info
+    #           (refImg), optional whether to normalise the colours of the images
+    #           (cpuNo), number of cores to parallelise processes on
+
+
+    sampleNames = nameFromPath(samples, 3)
 
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    shiftFeatures(sampleNames, segInfo, alignedSamples)
+    shiftFeatures(samples, featureInfoPath, destImgPath)
 
     # apply the affine transformations to all the images and info
     if cpuNo is False:
         # serial transformation
-        for spec in sampleNames:
-            transformSamples(spec, dataSegmented, segInfo, alignedSamples, saving, refImg)
+        for sample in samples:
+            transformSamples(sample, srcImgPath, featureInfoPath, destImgPath, saving, refImg)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(transformSamples, zip(sampleNames, repeat(dataSegmented), repeat(segInfo), repeat(alignedSamples), repeat(saving), repeat(refImg)))
-
+            pool.starmap(transformSamples, zip(samples, repeat(srcImgPath), repeat(featureInfoPath), repeat(destImgPath), repeat(saving), repeat(refImg)))
 
     print('Alignment complete')
 
-def shiftFeatures(featNames, src, alignedSamples):
+def shiftFeatures(featPaths, src, alignedSamples):
 
     # Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
     # Inputs:   (featNames), the samples being aligned
@@ -81,6 +98,9 @@ def shiftFeatures(featNames, src, alignedSamples):
     # load the identified features
     featRef = {}
     featTar = {}
+
+    featNames = nameFromPath(featPaths, 3)
+
     for f in featNames:
         # load all the features
         try: 
@@ -337,18 +357,23 @@ def shiftFeatures(featNames, src, alignedSamples):
             dictToTxt(translateNet, src + "all.translated")
             dictToTxt(rotateNet, src + "all.rotated")
 
-def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = None):
+def transformSamples(samplePath, segSamples, segInfo, dest, saving = True, refImg = None):
     # this function takes the affine transformation information and applies it to the samples
-    # Inputs:   (spec), sample being processed
+    # Inputs:   (sample), sample being processed
     #           (segSamples), directory of the segmented samples
     #           (segInfo), directory of the feature information
     #           (dest), directories to save the aligned samples
     #           (saving), boolean whether to save new info
     # Outputs   (), saves an image of the tissue with the necessary padding to ensure all images are the same size and roughly aligned if saving is True
 
-    segmentdir = segSamples + spec + ".tif"
-    refdir = dest + spec + ".reffeat"
-    tardir = dest + spec + ".tarfeat"
+    # get the name of the sample
+    sample = nameFromPath(samplePath, 3)
+
+    # Load the entire image
+    field = cv2.imread(samplePath)
+
+    refdir = dest + sample + ".reffeat"
+    tardir = dest + sample + ".tarfeat"
     tifShapesdir = segInfo + "all.tifshape"
     jpgShapesdir = segInfo + "all.jpgshape"
     translateNetdir = segInfo + "all.translated"
@@ -356,9 +381,27 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
 
     # load the whole specimen info
     translateNet = txtToDict(translateNetdir, float)[0]
-    tifShapes = txtToDict(tifShapesdir, int)[0]
-    try:    jpgShapes = txtToDict(jpgShapesdir, int)[0]
-    except: jpgShapes = tifShapes   # if not jpgShapes then use the tifShapes
+    
+    # load the tif shapes
+    try:
+        tifShapes = txtToDict(tifShapesdir, int)[0]
+
+    # if there are no individualised tif shapes, assume they are all the same size
+    except:
+        tifShapes = {}
+        for t in list(translateNet.keys()):
+            tifShapes[t] = field.shape
+
+    # if there are small and large images, find the scale difference
+    try:    
+        jpegSize = txtToDict(jpgShapesdir, int)[0][sample]
+        tifSize = tifShapes[sample]
+        shapeR = np.round((tifSize / jpegSize)[0], 1)
+
+    # if there are no scale information assume that they are all the same size
+    except: 
+        shapeR = 1
+
     rotateNet = txtToDict(rotateNetdir, float)[0]
     specInfo = {}
 
@@ -368,15 +411,6 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     try: featT = txtToDict(tardir, float); specInfo['tarfeat'] = featT[0]
     except: pass
 
-    sample = nameFromPath(segmentdir, 3)
-
-    # get the size of jpeg version of the image, some tedious formatting changes to make into
-    # an np.array
-    jpegSize = jpgShapes[sample]
-    
-    # get the shapes of the jpeg image and original tif and find the ratio fo their sizes
-    shapeO = tifShapes[sample]
-    shapeR = np.round((shapeO / jpegSize)[0], 1)
 
     # get the measure of the amount of shift to create the 'platform' which all the images are saved to
 
@@ -400,8 +434,10 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     # get the maximum dimensions of all the tif images (NOT the jpeg images)
     tsa = dictToArray(tifShapes, int)
 
-    # find the combined image size and shift (NOTE tNet columns swapped)
-    actualMove = dictToArray(tifShapes)[:, :2] + tNet[:, [1, 0]]
+    # get the positions of the images being processed which have information shift
+    pos = [np.where(np.array(list(tifShapes.keys())) == u)[0][0] for u in list(translateNet.keys())]
+
+    actualMove = dictToArray(tifShapes)[pos, :2] + tNet[:, [1, 0]]
     my, mx = (np.max(actualMove, axis = 0)).astype(int)
 
     # get the dims of the total field size to be created for all the images stored
@@ -414,9 +450,6 @@ def transformSamples(spec, segSamples, segInfo, dest, saving = True, refImg = No
     for sI in specInfo:
         for f in specInfo[sI]:
             specInfo[sI][f] = specInfo[sI][f] * shapeR + np.array([yp, xp])
-
-    # Load the entire image
-    field = cv2.imread(segmentdir)
 
     # get the section of the image 
     fy, fx, fc = field.shape
@@ -524,6 +557,8 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
     res = minimize(objectivePolar, -5.0, args=(centre, True, tarP, refP), method = 'Nelder-Mead', tol = tol) 
     tarM = objectivePolar(res.x, centre, False, tar, refP, plot)   # get the transformed features and re-assign as the ref
     rotationStore = float(res.x)
+
+    ref, tarM = uniqueKeys([ref, tarM])[0]
 
     # errors per point
     errPnt = np.sum((dictToArray(ref) - dictToArray(tarM))**2, axis = 1)
@@ -697,9 +732,7 @@ def objectivePolar(w, centre, *args):
         newfeatPos = np.array([opp, adj]).astype(float) + centre
 
         # if the features were inversed, un-inverse
-
         tarN[feat] = newfeatPos
-
 
         # if plotting: denseMatrixViewer([tarA[n], tarN[i], centre])
 
@@ -750,12 +783,12 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H750A_7.0/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
+    dataSource = '/Volumes/USB/Test/'
     dataSource = '/Volumes/Storage/H710C_6.1/'
-
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
     size = 3
-    cpuNo = 6
+    cpuNo = False
 
-    align(dataSource, name, size, cpuNo, False)
+    align(dataSource, size, cpuNo, True, "tif")
