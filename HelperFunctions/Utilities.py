@@ -1,6 +1,5 @@
 '''
-This contains a collection of commonly used functions I have written to perform
-menial tasks not directly related to the extraction of relevant information
+This contains functions which are used by multipe different scripts
 '''
 
 import numpy as np
@@ -13,6 +12,7 @@ from glob import glob
 from PIL import Image
 import multiprocessing
 from itertools import repeat
+import pandas as pd
 
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
@@ -185,16 +185,29 @@ def dictToTxt(data, path, **kwargs):
     # write the arguments at the top of the file
     for i in range(len(kwargs)):
         f.write(argK[i] + "_" + argV[i] + "\n")        
+
+    # this is just boilerplate code so allow for the previous implementations
+    # of dictToTxt without specifying the type to still function
+    try: kwargs["classType"]
+    except: kwargs["classType"] = None 
     
     # set the number of entries
     f.write("Entries:" + str(len(data.keys())) + "\n")
 
     # write the informations
     for n in data.keys():
-        f.write(n + ":")
-        for v in data[n]:
-            f.write(str(v) + " ")
-        f.write("\n")
+        if type(data[n]) == kwargs["classType"]:
+
+            da = data[n].__dict__
+            f.write("Sample:" + str(n) + "\n")
+            for d in da:
+                f.write(str(d) + ":" + str(type(da[d])) + ":" + str(da[d]) + "\n")
+            
+        else:
+            f.write(str(n) + ":")
+            for v in data[n]:
+                f.write(str(v) + " ")
+            f.write("\n")
     
     f.close()
 
@@ -216,7 +229,8 @@ def txtToDict(path, typeV = int):
         # store the arguments in a dictionary
         args = {}
         for i in range(argNo):
-            arg = f.readline().split("_")
+            line = f.readline()
+            arg = line.split("_")
             args[arg[0]] = arg[1].replace("\n", "")
 
             # create conditions to read in the info correctly
@@ -241,6 +255,37 @@ def txtToDict(path, typeV = int):
 
         return([pathinfo, args])
 
+    def typeReader(type, info):
+
+        # this function converts string into the data type specified
+        # Input:    (type), string of the type
+        #           (info), info as a string
+        # Output:   (data), the info converted into that data type
+
+        # if numpy array
+        if type == "<class 'numpy.ndarray'>":
+
+            # get the nunumbers
+            num = info.split("[")[-1].split("]")[0].split(" ")
+            data = []
+
+            # add the number into the array
+            for n in num:
+                try: data.append(float(n))
+                except: pass
+            data = np.array(data)
+
+        # if int
+        elif type == "<class 'int'>":
+            data = int(info)
+
+        # if float
+        elif type == "<class 'numpy.float64'>":
+            data = float(info)
+        
+        return(data)
+
+
     # if a list of paths is provided then create a dictionary containing dictionaries
     # of all the dictionaries of info
     if type(path) == list:
@@ -248,6 +293,33 @@ def txtToDict(path, typeV = int):
         for p in path:
             name = nameFromPath(p)
             sampleDict[name] = extract(p)
+
+    # if the intput is a feature object
+    elif str(typeV).find("feature") > -1:
+        fi = open(path, 'r').read().split("\n")
+
+        sampleDict = {}
+        # ignore the first 3 lines
+        for f in fi[3:]:
+            if f == "":
+                continue
+            elif f.find("Sample")>-1:
+                obj = typeV()
+                samp = int(f.split("Sample:")[-1])
+            else:
+                i = f.split(":")
+                exec(f"obj.{i[0]} = typeReader(i[1], i[2])")
+
+                '''if i[0] == "refP":
+                    obj.refP = 
+                elif i[0] == "tarP":
+                    obj.tarP = typeReader(i[1], i[2])
+                elif i[0] == "dist":
+                    obj.dist = typeReader(i[1], i[2])
+                elif i[0] == "ID":
+                    obj.ID = typeReader(i[1], i[2])
+                '''
+            sampleDict[samp] = obj
             
     elif type(path) == str:
         sampleDict = extract(path)
@@ -696,7 +768,7 @@ def uniqueKeys(dictL):
 
     return(dictMod, commonKeys)
 
-def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = None, cpuNo = False, tol = 0.05, combos = 10):
+def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = None, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5):
 
     # ---------- NOTE the theory underpinning this function ----------
     # The combination of individual features which produces the most matched features 
@@ -724,8 +796,11 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = No
     #           (tol), the tolerance of the % of the matched features which are not included in the 
     #               the matching before breaking (ie 0.05 means that if there are no successful 
     #               matches for 5% of all the features found then break)
-    #           (combos), the number of anchor different feature sets to try before returning
+    #           (anchorPoints), the number of anchor different feature sets to try before returning
     #               the infostore
+    #           (r), the number of the points which are found by findgoodfeatures to be used to help
+    #               find other good featues (the higher the number the more accurate the spatially aware 
+    #               feature finding will be but will also become slower)
     # Outputs:  (infoStore), the set of features and corresponding information that have been 
     #               found to have the most spatial coherence
 
@@ -762,13 +837,12 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = No
     # ONLY if their angle from the two reference features is within a tolerance 
     # range --> this heavily assumes that the two best fits found are actually 
     # good features...
-    # try up to 10 times: NOTE this is important because it reduces the reliance on the assumption 
+    # try up to n times (spawnPoints): NOTE this is important because it reduces the reliance on the assumption 
     # that feature with lowest distance score is in fact and actual feature. This instead allows
     # for the feature finding process to rely more on the coherence of all the other 
     # features relative to each other
 
     # create the spawning points for the searches
-    spawnPoints = 10
     if len(allInfo) < spawnPoints:
         spawnPoints = len(allInfo) - 1
     elif cpuNo > spawnPoints:
@@ -776,14 +850,14 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = No
 
     matchInfos = []
     # get the two best features from within a select range of the data
-    for fits in range(combos):
+    for fits in range(spawnPoints):
         matchInfos.append(findbestfeatures(allInfo[fits:fits+spawnPoints], dist))
 
     # if the feature matching has to be performed sequentially (ie for non-rigid defomation)
     # then this step can definitely be parallelised
     if cpuNo is not False:
         with multiprocessing.Pool(cpuNo) as pool:
-            matchInfoNs = pool.starmap(findgoodfeatures, zip(matchInfos, repeat(allInfo), repeat(featNo), repeat(dist), repeat(tol)))
+            matchInfoNs = pool.starmap(findgoodfeatures, zip(matchInfos, repeat(allInfo), repeat(featNo), repeat(dist), repeat(tol)), repeat(r))
 
         infoStore = matchInfoNs[0]
         for m in matchInfoNs[1:]:
@@ -798,7 +872,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = No
 
             # find features which are spatially coherent relative to the best feature for both 
             # the referenc and target image and with the other constrains
-            matchInfoN = findgoodfeatures(matchInfo, allInfo, featNo, dist, tol)
+            matchInfoN = findgoodfeatures(matchInfo, allInfo, featNo, dist, tol, anchorPoints)
 
             # Store the features found and if more features are found with a different combination
             # of features then save that instead
@@ -844,7 +918,7 @@ def findbestfeatures(allInfo, dist):
 
     return(matchInfo)
 
-def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol):
+def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol, r = 5):
 
     # find new features in the ref and target tissue which are positioned 
     # in approximately the same location RELATIVE to the best features found already
@@ -891,8 +965,8 @@ def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol):
         # LOTS of features as this fitting procedure has a O(n^2) time complexity 
         # so limiting the search to this sacrifices limited accuracy for significant 
         # speed ups
-        for n1, mi1 in enumerate(matchInfoN[:5]):
-            for n2, mi2 in enumerate(matchInfoN[:5]):
+        for n1, mi1 in enumerate(matchInfoN[:r]):
+            for n2, mi2 in enumerate(matchInfoN[:r]):
 
                 # if the features are repeated, don't use it
                 if n1 == n2:
@@ -903,7 +977,9 @@ def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol):
                 newtarang = findangle(mi1.tarP, mi2.tarP, i.tarP)
 
                 # store the difference of this new point relative to all the ponts
-                # previously found
+                # previously found 
+                # NOTE this works on the assumption that the scale of the images
+                # remains the same
                 angdist.append(abs(newrefang - newtarang))
 
             # get the distances of the new points to the best feature
@@ -915,7 +991,7 @@ def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol):
 
         # if the new feature is than 5 degress off and within 5% distance each other 
         # from all the previously found features then append 
-        if (np.array(angdist) < 10/180*np.pi).all() and (np.array(ratiodist) < 0.1).all():
+        if (np.array(angdist) < 10/180*np.pi).all(): # and (np.array(ratiodist) < 0.05).all():
         # NOTE using median is a more "gentle" thresholding method. allows more features
         # but the standard of these new features is not as high
         # if np.median(angdist) < 180/180*np.pi and np.median(ratiodist) < 1:
@@ -1040,9 +1116,41 @@ def drawLine(img, point0, point1, blur = 2, colour = [0, 0, 255]):
     xp = np.linspace(int(point0[1]), int(point1[1]), int(dist)).astype(int)
     yp = np.linspace(int(point0[0]), int(point1[0]), int(dist)).astype(int)
 
+
     # change the colour of these pixels which indicate the line
     for vx in range(-blur, blur, 1):
         for vy in range(-blur, blur, 1):
             img[xp+vx, yp+vy, :] = colour
 
+    # NOTE this may do the interpolation between the points properly!
+    # pos = np.linspace(point0.astype(int), point1.astype(int), int(dist)).astype(int)
+    
+    
     return(img)
+
+def dictToDF(info, title, min = 3, scl = 1):
+
+    # create a pandas data frame from a dictionary of feature objects
+    # Inputs:   (info), dictionary
+    #           (title), list of the the column names
+    #           (min), minimum number of times which a feature has to appear 
+    #               for it to be used
+    #           (scl), scale to resize the points
+    # Outputs:  (df), pandas data frame
+    
+    c = 0
+    df = pd.DataFrame(columns=title)
+    for m in info:
+        if len(info[m]) < min:
+            continue
+        for nm, v in enumerate(info[m]):
+            i = info[m][v]
+            # only for the first iteration append the reference position
+            if nm == 0:
+                df.loc[c] = [i.refP[0]/scl, i.refP[1]/scl, int(v), int(m)]
+                c += 1
+                
+            df.loc[c] = [i.tarP[0]/scl, i.tarP[1]/scl, int(v + 1), int(m)]
+            c += 1
+
+    return(df)
