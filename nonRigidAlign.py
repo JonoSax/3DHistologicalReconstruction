@@ -47,18 +47,18 @@ def nonRigidAlign(dirHome, size, cpuNo):
     dirMaker(dirfeats)
     dirMaker(destNLALign)
 
-    imgs = sorted(glob(imgsrc + "*.png"))[:100]
-    scale = 0.2
+    imgs = sorted(glob(imgsrc + "*.png"))[:20]
+    scale = 0.4
     win = 1
     sect = 500
-    dist = 20
+    dist = 40
 
     # NOTE save feats as txt some how...
     contFeatFinder(imgs, dirfeats, destRigidAlign, cpuNo = False, scl = scale, plotting = True, sz = sect, dist = dist)
 
-    aligner(imgs, dirfeats, imgsrc, destRigidAlign, cpuNo=False)
+    aligner(imgs, dirfeats, imgsrc, destRigidAlign, cpuNo=5, errorThreshold=1000)
     
-    nonRigidDeform(destRigidAlign, dirfeats, destNLALign, cpuNo, scale, win, sect)
+    nonRigidDeform(destRigidAlign, destRigidAlign, destNLALign, cpuNo, scale, win, sect, featsMax=10)
 
 def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, scl = 1, plotting = False, sz = 100, dist = 20):
 
@@ -183,7 +183,9 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, scl = 1, plott
     maxNo = len(imgs)
     
     for n in range(1,maxNo):
-        print("Number of " + str(1+n) + "/" + str(maxNo) + " linked features = " + str(len(np.where(np.array([len(allMatchedInfo[mi]) for mi in allMatchedInfo]) == n)[0])))
+        featureNo = len(np.where(np.array([len(allMatchedInfo[mi]) for mi in allMatchedInfo]) == n)[0])
+        if featureNo > 0:
+            print("Number of " + str(1+n) + "/" + str(maxNo) + " linked features = " + str(featureNo))
     
     imgStack = []
     for i in imgs:
@@ -218,7 +220,7 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, scl = 1, plott
     if plotting:
         plotFeatureProgress(df, imgs, destImg + 'CombinedRough.jpg', scl, sz)
 
-def nonRigidDeform(dirimgs, dirfeats, dirdest, cpuNo = False, scl = 1, win = 9, sz = 100):
+def nonRigidDeform(dirimgs, dirfeats, dirdest, cpuNo = False, scl = 1, win = 9, sz = 100, featsMax = None):
 
     # This function takes the continuous feature sets found in contFeatFinder
     # and uses them to non-rigidly warp the 
@@ -236,7 +238,7 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, cpuNo = False, scl = 1, win = 9, 
 
     # get the new dictionaries, load them into a pandas dataframe
     refFeats = glob(dirfeats + "*.reffeat")
-    tarFeats = glob(dirfeats + "*.reffeat")
+    tarFeats = glob(dirfeats + "*.tarfeat")
     infopds = []
 
     # NOTE beacuse the ref and tarfeatures are the same for all the samples
@@ -250,10 +252,13 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, cpuNo = False, scl = 1, win = 9, 
         
     # combine into a single df
     df = pd.concat(infopds)
-    
+    px.line_3d(df, x="xPos", y="yPos", z="Sample", color="ID").show()
 
+    
     # get the number of features found
     featNo = np.max(df["ID"])
+
+    a, b = np.unique(np.array(df["ID"]).astype(int), return_counts = True)
 
     # ensure the window length is odd
     if win%2 != 1:
@@ -264,30 +269,41 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, cpuNo = False, scl = 1, win = 9, 
 
     # use only the five features with the most connections
     ID, IDCount = np.unique(np.array(df["ID"]), return_counts = True)
-    targetIDs = ID[np.argsort(-IDCount)]
+    if featsMax == None:
+        targetIDs = ID
+    else:
+        targetIDs = ID[np.argsort(-IDCount)][:featsMax]
 
     p = 0
     for f in targetIDs:
         xp = df[df["ID"] == f].xPos
         yp = df[df["ID"] == f].yPos
         z = df[df["ID"] == f].Sample
+
+        # if the number of samples the feature passes through is more than 
+        # the number of images being processed, don't include
+        if np.max(z) > len(imgs): 
+            sampRange = np.where(z < len(imgs))[0]
+            xp = xp[sampRange]
+            yp = yp[sampRange]
+            z = z[sampRange]
+
         num_true_pts = len(z)
 
         # perform a savgol_filter over the data
         if len(xp) > win:
             '''
+            xSm = np.linspace(np.array(xp)[0], np.array(xp)[0], len(xp))
+            ySm = np.linspace(np.array(yp)[0], np.array(yp)[0], len(yp))
+
             '''
-            # xSm = np.linspace(np.array(xp)[0], np.array(xp)[0], len(xp))
-            # ySm = np.linspace(np.array(yp)[0], np.array(yp)[0], len(yp))
-
-
             # this could possibly be used to interpolate between slices
             # to find missing ones!
             tck, u = splprep([xp, yp, z], s = 100)
             # u_fine = np.linspace(0,1,num_true_pts)
             # x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
             xSm, ySm, _ = splev(u, tck)
-
+            
 
             ID = np.array(df[df["ID"] == f].ID)
             for x, y, z, i in zip(xSm, ySm, z, ID):
@@ -296,8 +312,10 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, cpuNo = False, scl = 1, win = 9, 
                 featsSm.loc[p] = [x, y, z, i]
                 p += 1
 
-    # taking the features found and performing non-rigid alignment
     infoStore = []
+    plotFeatureProgress(featsSm, infoStore, dirdest + 'CombinedSmooth.jpg', scl, sz)
+
+    # taking the features found and performing non-rigid alignment
     if cpuNo is not False:
         with multiprocessing.Pool(processes=cpuNo) as pool:
             infoStore = pool.starmap(ImageWarp, zip(np.arange(len(imgs)), imgs, repeat(df), repeat(featsSm), repeat(dest), repeat(scl)))
@@ -309,8 +327,6 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, cpuNo = False, scl = 1, win = 9, 
         for s, imgpath in enumerate(imgs):
             img, flow = ImageWarp(s, imgpath, df, featsSm, dirdest, scl)
             infoStore.append(img)
-
-    plotFeatureProgress(featsSm, infoStore, dirdest + 'CombinedSmooth.jpg', scl, sz)
 
 def featMatching(m, tarImg, refImg = None, sz = 50):
 
@@ -352,7 +368,7 @@ def featMatching(m, tarImg, refImg = None, sz = 50):
         return
 
     # cross-correlate to within 1/10th of a pixel
-    shift, error, phasediff = pcc(refSectBW, tarSectBW, upsample_factor=10)
+    shift, error, phasediff = pcc(refSectBW, tarSectBW, upsample_factor=50)
     '''
     if m.ID == 2 or m.ID == 9 or m.ID == 11:
         cv2.circle(tarSectBW, tuple((m.tarP - np.flip(shift) - [ys, xs]).astype(int)), 3, 255, 5)
@@ -372,7 +388,7 @@ def featMatching(m, tarImg, refImg = None, sz = 50):
 
     return(allfeatureInfo)
 
-def ImageWarp(s, imgpath, dfRaw, dfNew, dest, scl = 1):
+def ImageWarp(s, imgpath, dfRaw, dfNew, dest, scl = 1, border = 5, smoother = 10, order = 2):
 
     # perform the non-rigid warp
     # Inputs:   (s), number of the sample
@@ -408,26 +424,19 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, scl = 1):
     # get the common feature positions
     refFeats = np.c_[allInfo.xPos_x, allInfo.yPos_x]
     tarFeats = np.c_[allInfo.xPos_y, allInfo.yPos_y]
-
-    # create the bounds on the image edges
-    bound = []
-    bound.append(np.array([0, 0]))
-    bound.append(np.array([0, y]))
-    bound.append(np.array([x, 0]))
-    bound.append(np.array([x, y]))
-    
-    for b in bound:
-        refFeats = np.insert(refFeats, 0, b, axis = 0)
-        tarFeats = np.insert(tarFeats, 0, b, axis = 0)
-    
+        
+    # flip the column order of the features for the sparse matrix calculation
+    reff = np.fliplr(np.unique(np.array(refFeats), axis = 0))
+    tarf = np.fliplr(np.unique(np.array(tarFeats), axis = 0))
 
     # ensure the inputs are 4D tensors
-    tfrefPoints = np.expand_dims(refFeats.astype(float), 0)
-    tftarPoints = np.expand_dims(tarFeats.astype(float), 0)
+    tfrefPoints = np.expand_dims(reff.astype(float), 0)
+    tftarPoints = np.expand_dims(tarf.astype(float), 0)
     tftarImg = np.expand_dims(img, 0).astype(float)
 
     # perform non-rigid deformation on the original sized image
     imgMod, imgFlow = sparse_image_warp(tftarImg, tfrefPoints, tftarPoints)
+    sparse_image_warp(tftarImg, tfrefPoints, tftarPoints, num_boundary_points=border, regularization_weight=smoother, interpolation_order=order)
 
     # convert the image and flow field into something useful
     imgMod = np.array(imgMod[0]).astype(np.uint8)
@@ -460,6 +469,8 @@ def plotFeatureProgress(df, imgAll, dirdest, scl = 1, sz = 0):
     # Outputs:  (), image of all the samples with their features and lines connecting them 
     #               and a 3d line plot (plotly)
 
+    # create a 3D plot of the feature progression
+    px.line_3d(df, x="xPos", y="yPos", z="Sample", color="ID").show()
 
     # if the input is a list of paths of the images, load the images into a list
     if type(imgAll[0]) is str:
@@ -490,6 +501,7 @@ def plotFeatureProgress(df, imgAll, dirdest, scl = 1, sz = 0):
                 imgAll = drawLine(imgAll, ref, tar, colour = [255, 0, 0])
                 cv2.circle(imgAll, tuple(tar), 10, [0, 0, 255], 6)
 
+            # draw bounding boxes showing the search area of the features
             imgAll = drawLine(imgAll, tar - l, tar + [l, -l], blur = 2, colour=[0, 255, 0])
             imgAll = drawLine(imgAll, tar - l, tar + [-l, l], blur = 2, colour=[0, 255, 0])
             imgAll = drawLine(imgAll, tar + l, tar - [l, -l], blur = 2, colour=[0, 255, 0])
@@ -499,17 +511,18 @@ def plotFeatureProgress(df, imgAll, dirdest, scl = 1, sz = 0):
             cv2.putText(imgAll, str(i), tuple(tar-[10, 5]), cv2.FONT_HERSHEY_SIMPLEX, 1, [0, 0, 0], 2)
             ref = tar
         
-        cv2.putText(imgAll, "Samp_" + str(samp) + " no_" + str(len(df[df["Sample"] == samp])), tuple(np.array([y * samp, 0]).astype(int) + [50, 100]), cv2.FONT_HERSHEY_SIMPLEX, 3, [255, 255, 255], 6)
         
         # make the final point pink
         if tar is not None:
             cv2.circle(imgAll, tuple(tar), 10, [255, 0, 255], 6)
 
+    # add the sample number and the number of features on the sample    
+    for s in np.unique(df["Sample"]):
+        cv2.putText(imgAll, "Samp_" + str(s) + " no_" + str(len(df[df["Sample"] == s])), tuple(np.array([y * s, 0]).astype(int) + [50, 100]), cv2.FONT_HERSHEY_SIMPLEX, 3, [255, 255, 255], 6)
+    
+    
     # save the linked feature images
     cv2.imwrite(dirdest, imgAll)
-    
-    # create a 3D plot of the feature progression
-    px.line_3d(df, x="xPos", y="yPos", z="Sample", color="ID").show()
 
 def tile(sz, x, y):
 
