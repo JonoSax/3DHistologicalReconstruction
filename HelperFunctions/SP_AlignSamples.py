@@ -52,7 +52,7 @@ def align(data, size = 0, cpuNo = False, saving = True, prefix = "tif"):
 
     aligner(samples, segInfo, dataSegmented, alignedSamples, saving, refImg, cpuNo)
 
-def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, refImg = None, cpuNo = False):
+def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, refImg = None, cpuNo = False, errorThreshold = 100):
 
     # this function takes all the directories and info and then does the full 
     # rigid alignment and saves where directed:
@@ -71,7 +71,7 @@ def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, re
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    shiftFeatures(samples, featureInfoPath, destImgPath)
+    shiftFeatures(samples, featureInfoPath, destImgPath, errorThreshold)
 
     # apply the affine transformations to all the images and info
     if cpuNo is False:
@@ -86,12 +86,14 @@ def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, re
 
     print('Alignment complete')
 
-def shiftFeatures(featPaths, src, alignedSamples):
+def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
 
     # Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
     # Inputs:   (featNames), the samples being aligned
     #           (src)
     #           (alignedSamples)
+    #           (errorThreshold), the maximum error value which is tolerated before 
+    #               removing features
     # Outputs:  (translateNet), the translation information to be applied per image
     #           (rotateNet), the rotation information to be applied per image
 
@@ -216,7 +218,7 @@ def shiftFeatures(featPaths, src, alignedSamples):
                 elif np.round(np.sum(np.diff(errorStore)), 2) <= 0:
                     # if the final error is below a threshold, it is complete
                     # but use the previously fit features
-                    if errO < 1e2:
+                    if errO < errorThreshold:
                         print("     Fitting converged, attempt " + str(atmp) + ", err/feat = " + str(int(errO)))
                         break
 
