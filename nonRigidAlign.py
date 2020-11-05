@@ -12,14 +12,18 @@ from skimage.registration import phase_cross_correlation as pcc
 import pandas as pd
 from scipy.signal import savgol_filter as svf
 from scipy.interpolate import splprep, splev
+from scipy.optimize import minimize
 
 
 # for each fitted pair, create an object storing their key information
 class feature:
-    def __init__(self, refP = None, tarP = None, dist = None, ID = None):
+    def __init__(self, ID = None, Samp = None, refP = None, tarP = None, dist = None):
 
         # the feature number 
         self.ID = ID
+
+        # sample which the reference feature is on
+        self.Samp = Samp
 
         # the position of the match on the reference image
         self.refP = refP
@@ -27,19 +31,16 @@ class feature:
         # the position of the match on the target image
         self.tarP = tarP
 
-        # eucledian error of the difference in gradient fields
-        self.dist = dist
-
 
     def __repr__(self):
-            return repr((self.ID, self.refP, self.tarP, self.dist))
+            return repr((self.ID, self.refP, self.tarP))
 
 def nonRigidAlign(dirHome, size, cpuNo):
 
     home = dirHome + str(size)
 
     imgsrc = home + "/pngImages/"
-    destRigidAlign = home + "/RealignedSamples/"
+    destRigidAlign = home + "/RealignedSamplesMultiple/"
     dirfeats = home + "/infoNL/"
     destNLALign = home + "/NLAlignedSamples/"
 
@@ -47,8 +48,8 @@ def nonRigidAlign(dirHome, size, cpuNo):
     dirMaker(dirfeats)
     dirMaker(destNLALign)
 
-    imgs = sorted(glob(imgsrc + "*.png"))[:20]
-    scale = 0.4
+    imgs = sorted(glob(imgsrc + "*.png"))[:40]
+    scale = 0.3
     win = 1
     sect = 500
     dist = 40
@@ -58,7 +59,7 @@ def nonRigidAlign(dirHome, size, cpuNo):
 
     aligner(imgs, dirfeats, imgsrc, destRigidAlign, cpuNo=5, errorThreshold=1000)
     
-    nonRigidDeform(destRigidAlign, destRigidAlign, destNLALign, cpuNo, scale, win, sect, featsMax=10)
+    # nonRigidDeform(destRigidAlign, destRigidAlign, destNLALign, cpuNo, scale, win, sect, featsMax=10)
 
 def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, scl = 1, plotting = False, sz = 100, dist = 20):
 
@@ -99,6 +100,9 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, scl = 1, plott
     # compute all the features 
     kp_ref, des_ref = sift.detectAndCompute(cv2.resize(refImg, (y, x)), None)
 
+    prevImg1 = None
+    prevImg2 = None
+
     # sequantially identify new previous features in each sample
     for sampleNo, tarPath in enumerate(imgs[1:]):
 
@@ -113,7 +117,7 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, scl = 1, plott
         if cpuNo is False:
             confirmInfo = []
             for m in matchedInfo:
-                confirmInfo.append(featMatching(m, tarImg, refImg, sz))
+                confirmInfo.append(featMatching(m, allMatchedInfo, tarImg, [refImg, prevImg1, prevImg2], sz))
 
         else:
             with multiprocessing.Pool(processes=cpuNo) as pool:
@@ -161,6 +165,7 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, scl = 1, plott
                 m.ID = featNo
                 allMatchedInfo[m.ID] = {}
                 featNo += 1
+            m.Samp = sampleNo
             allMatchedInfo[m.ID][sampleNo] = m
 
         '''
@@ -174,6 +179,8 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, scl = 1, plott
         # reasign the target info as the reference info
         refName = tarName
         kp_ref, des_ref = kp_tar, des_tar 
+        prevImg2 = prevImg1
+        prevImg1 = refImg
         refImg = tarImg
         
 
@@ -328,26 +335,50 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, cpuNo = False, scl = 1, win = 9, 
             img, flow = ImageWarp(s, imgpath, df, featsSm, dirdest, scl)
             infoStore.append(img)
 
-def featMatching(m, tarImg, refImg = None, sz = 50):
+def featMatching(m, allMatchedInfo, tarImg, prevImg = None, sz = 50):
 
     # Identifies the location of a feature in the next slice
     # Inputs:   (m), feature object of the previous point
     #           (tarImg), image of the next target sample
-    #           (refImg), debugging stuff
+    #           (refImg), image of the current target sample
+    #           (prevImg), image of the previous reference sample
     #           (sz), the equivalent number of windows to create
     # Outputs:  (featureInfo), feature object of feature (if identified
     #               in the target image)
 
-
     # get target position from the previous match, use this as the 
-    # position of a possible reference feature 
+    # position of a possible reference feature in the next image
     yp, xp = (m.refP).astype(int)
-    x, y, c = tarImg.shape
+    x, y, c = tarImg.shape      # assume all images are the same size
     s = int(tile(sz, x, y)/2)
     xs = np.clip(xp-s, 0, x); xe = np.clip(xp+s, 0, x)
     ys = np.clip(yp-s, 0, y); ye = np.clip(yp+s, 0, y)
     tarSect = tarImg[xs:xe, ys:ye]
-    refSect = refImg[xs:xe, ys:ye]
+
+    tarSectBW = np.mean(tarSect, axis = 2).astype(np.uint8)
+
+    # get the section from the previous reference image
+    # NOTE this needs to be made so that it can take n previous samples
+    prevSectBW = []
+
+    # get the feature keys which are being referenced in the previous images
+    featInfoKeys = np.flip(list(allMatchedInfo[m.ID].keys()))[:len(prevImg)]
+
+    for f, p in zip(featInfoKeys, prevImg):
+
+        if type(p) == type(None):
+            continue
+
+        # get all the previous information
+        pm = allMatchedInfo[m.ID][f]
+        ypm, xpm = (pm.refP).astype(int)
+        xsm = np.clip(xpm-s, 0, x); xem = np.clip(xpm+s, 0, x)
+        ysm = np.clip(ypm-s, 0, y); yem = np.clip(ypm+s, 0, y)
+        pS = p[xsm:xem, ysm:yem]
+
+        # find all the features within this section of the new target image using cross-correlation
+        prevSectBW.append(np.mean(pS, axis = 2).astype(np.uint8))
+
 
     # if the point being searched for is black (ie background), 
     # don't return a value
@@ -357,36 +388,78 @@ def featMatching(m, tarImg, refImg = None, sz = 50):
         return
     '''
 
-    # find all the features within this section of the new target image using cross-correlation
-    refSectBW = np.mean(refSect, axis = 2).astype(np.uint8)
-    tarSectBW = np.mean(tarSect, axis = 2).astype(np.uint8)
-
     # if a significant majority of the section is background, 
     # dont' return a value
     if (np.sum((tarSectBW == 0) * 1) / tarSectBW.size) > 0.5:
         # plt.imshow(tarSect); plt.show()
         return
 
-    # cross-correlate to within 1/10th of a pixel
-    shift, error, phasediff = pcc(refSectBW, tarSectBW, upsample_factor=50)
-    '''
-    if m.ID == 2 or m.ID == 9 or m.ID == 11:
-        cv2.circle(tarSectBW, tuple((m.tarP - np.flip(shift) - [ys, xs]).astype(int)), 3, 255, 5)
-        cv2.circle(tarSectBW, tuple((m.tarP - np.flip(shift) - [ys, xs]).astype(int)), 3, 0, 2)
-        cv2.circle(refSectBW, tuple((m.tarP - [ys, xs]).astype(int)), 3, 255, 5)
-        cv2.circle(refSectBW, tuple((m.tarP - [ys, xs]).astype(int)), 3, 0, 2)
-        plt.imshow(np.hstack([refSectBW, tarSectBW]), cmap = 'gray'); plt.show()
-    '''
+    # minimise the error of the feature positon between the target, current and 
+    # previous seciton feature search
+    # shift, error, phasediff = pcc(refSectBW, tarSectBW, upsample_factor=50)
 
+    shift = featSearch(tarSectBW, prevSectBW)
+
+    '''
+    if prevImg.any() == None:
+        shift, error, phasediff = pcc(refSectBW, tarSectBW, upsample_factor=50)
+    else:
+        prevSectBW.append(refSectBW)
+    '''
+        
+    
     # create the new feature object
     featureInfo = feature()
     featureInfo.refP = m.tarP 
     featureInfo.tarP = m.tarP - np.flip(shift)
-    featureInfo.dist = error
+    featureInfo.dist = 0
     featureInfo.ID = m.ID
     allfeatureInfo = [featureInfo]
 
     return(allfeatureInfo)
+
+def featSearch(tar, prev):
+
+    # this function is minimising the error between the searches for a feature
+    # in the next target slice by comparing the target features with the current and 
+    # previous reference slice. This is in order to reduce sudden shifts in positon 
+    # Inputs:   (tar), target sample area
+    #           (prev), all previous target sample areas
+    # Outputs:  (shift), the pixel shift required to minimise errors
+
+    # NOTE: key thing is to minimse the amount of shift required in the target image
+    # to minimise the error value of the convolution match
+
+    shift = minimize(objectiveFeatPos, (0, 0), args = (tar, prev), method = 'Nelder-Mead', tol = 1e-6)
+
+    return(shift.x)
+
+def objectiveFeatPos(move, *args):
+
+    # Inputs:   (move), value to minimise
+    #           (args), the respective areas of searching
+    #               the frist arg is the target and the second arg is a list of previous inputs 
+    # Outputs:  (counterShift), error between the difference between the movement required
+    #               and the average shift of the features
+
+    #
+    tar = args[0]
+    prev = args[1]
+
+    # get the optimised shifts of the target image compared to both the tar and all previous 
+    # secions
+    shiftPrev = []
+    for p in prev:
+        shift, error, _ = pcc(p, tar, upsample_factor=50)
+        shiftPrev.append(shift)
+    
+    # find the average shift position from all previous matches
+    shiftAvg = np.mean(shiftPrev, axis = 0)
+
+    # create the error value to minmimise, NOTE this could be squared to penalise large changes?
+    counterError = np.sum(abs(move - shiftAvg))
+
+    return(counterError)
 
 def ImageWarp(s, imgpath, dfRaw, dfNew, dest, scl = 1, border = 5, smoother = 10, order = 2):
 
