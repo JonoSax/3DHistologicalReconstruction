@@ -493,6 +493,9 @@ def nameFromPath(paths, n = 2):
     #           (n), number of 
     # Outputs:  (names), elist of the names from the paths
 
+    if paths == None:
+        return(None)
+
     # if it is a string input, output a list
     pathStr = False
     if type(paths) is str:
@@ -768,45 +771,46 @@ def uniqueKeys(dictL):
 
     return(dictMod, commonKeys)
 
-def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = None, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5):
+def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5):
 
-    # ---------- NOTE the theory underpinning this function ----------
-    # The combination of individual features which produces the most matched features 
-    # due to being the most spatially coherent with each other, most likely contain 
-    # the features that represent actual biological structures becasue biological 
-    # structures between individual samples which are physically close to each other 
-    # are also spatailly coherent
-    
-    # this takes lists of all the information from the SIFT feature identification 
-    # and bf matching and returns only n number of points which match the criteria
-    # Inputs:   (resInfo), all the information returned by the sift operator after being
-    #               brute forced matched for that specific resolution
-    #           (matchInfo), points that have already been found
-    #           (manual), boolean as to whether the features that have been inputted 
-    #               include manually annotated features. If True then treat the manual
-    #               annotations as "ground truth" and don't overwrite
-    #           (dist), sets the minimium distance between each feature. A larger distance 
-    #               reduces the number of features that can be found but will also ensure 
-    #               that features are  better spread across the sample, rather than being pack 
-    #               arond a single strong feature
-    #           (featNo), minimum number of features to find in the images. depreceated
-    #           (cpuNo), number of CPUs to use, allows for parallelisation of the maximum
-    #               number of features loop. NOTE this should be set to FALSE if the 
-    #               processing of samples is parallelised --> you can't spawn processes from spawns
-    #           (tol), the tolerance of the % of the matched features which are not included in the 
-    #               the matching before breaking (ie 0.05 means that if there are no successful 
-    #               matches for 5% of all the features found then break)
-    #           (anchorPoints), the number of anchor different feature sets to try before returning
-    #               the infostore
-    #           (r), the number of the points which are found by findgoodfeatures to be used to help
-    #               find other good featues (the higher the number the more accurate the spatially aware 
-    #               feature finding will be but will also become slower)
-    # Outputs:  (infoStore), the set of features and corresponding information that have been 
-    #               found to have the most spatial coherence
+    '''
+    ---------- NOTE the theory underpinning this function ----------
+    The combination of individual features which produces the most matched features 
+    due to being the most spatially coherent with each other, most likely contain 
+    the features that represent actual biological structures becasue biological 
+    structures between individual samples which are physically close to each other 
+    are also spatailly coherent
+    this takes lists of all the information from the SIFT feature identification 
+    and bf matching and returns only n number of points which match the criteria
 
-    # store the initial feature found (ensures that there aren't less features 
-    # than what we start with. Important for the manual annotations might have more 
-    # features than the automatic process)
+    Inputs:   
+        (resInfo), all the information returned by the sift operator after being
+        brute forced matched for that specific resolution
+        (matchInfo), points that have already been found
+        (manual), boolean as to whether the features that have been inputted 
+        include manually annotated features. If True then treat the manual
+        annotations as "ground truth" and don't overwrite
+        (dist), sets the minimium distance between each feature. A larger distance 
+        reduces the number of features that can be found but will also ensure 
+        that features are  better spread across the sample, rather than being pack 
+        arond a single strong feature
+        (featNo), minimum number of features to find in the images. depreceated
+        (cpuNo), number of CPUs to use, allows for parallelisation of the maximum
+        number of features loop. NOTE this should be set to FALSE if the 
+        processing of samples is parallelised --> you can't spawn processes from spawns
+        (tol), the tolerance of the % of the matched features which are not included in the 
+        the matching before breaking (ie 0.05 means that if there are no successful 
+        matches for 5% of all the features found then break)
+        (spawnPoints), the number of the points which are found by findgoodfeatures to be used to help
+        find other good featues (the higher the number the more accurate the spatially aware 
+        feature finding will be but will also become slower)
+        (anchorPoints), the number of different feature sets to try before returning
+        the infostore
+
+    Outputs:  
+        (infoStore), the set of features and corresponding information that have been 
+        found to have the most spatial coherence
+    '''
 
     # if there is a repeated feature, delete it (this comes from adding manual features)
     for n1, mi1 in enumerate(matchedInfo):
@@ -823,7 +827,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = No
     infoStore = matchedInfo
 
     # create a list containing all the confirmed matched points and current ponts of interest
-    allInfo = matchedInfo + resInfo
+    allInfo = matchedInfo.copy() + resInfo.copy()
 
     # if there aren't enough features to even perform this feat find process
     # just end the script
@@ -855,24 +859,40 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, featNo = No
 
     # if the feature matching has to be performed sequentially (ie for non-rigid defomation)
     # then this step can definitely be parallelised
-    if cpuNo is not False:
+
+    # NOTE for some reason this is slower ot paraellise (both by pool and process) than 
+    # being calculated sequentially.... WHY???
+    if cpuNo != False:
+        # Using Pool
+        '''
         with multiprocessing.Pool(cpuNo) as pool:
-            matchInfoNs = pool.starmap(findgoodfeatures, zip(matchInfos, repeat(allInfo), repeat(featNo), repeat(dist), repeat(tol)), repeat(r))
+            matchInfoNs = pool.starmap(findgoodfeatures, zip(matchInfos, repeat(allInfo), repeat(dist), repeat(tol)), repeat(r))
+        '''
+
+        # Using Process
+        job = {}
+        qs = {}
+        for n, m in enumerate(matchInfos):
+            qs[n] = multiprocessing.Queue()
+            job[n] = multiprocessing.Process(target=findgoodfeatures, args = (m, allInfo, dist, tol, anchorPoints, qs[n], ))
+            job[n].start()
+        matchInfoNs = []
+        for n in job:
+            matchInfoNs.append(qs[n].get())
+            job[n].join()
 
         infoStore = matchInfoNs[0]
         for m in matchInfoNs[1:]:
             if len(m) > len(infoStore):
                 infoStore = m
 
-
-    # if the samples are being processed in parallel then the search for the optimum seeding 
-    # points can't be parallelised
+    # Serialised
     else:
         for matchInfo in matchInfos:
 
             # find features which are spatially coherent relative to the best feature for both 
             # the referenc and target image and with the other constrains
-            matchInfoN = findgoodfeatures(matchInfo, allInfo, featNo, dist, tol, anchorPoints)
+            matchInfoN = findgoodfeatures(matchInfo, allInfo, dist, tol, anchorPoints)
 
             # Store the features found and if more features are found with a different combination
             # of features then save that instead
@@ -918,7 +938,7 @@ def findbestfeatures(allInfo, dist):
 
     return(matchInfo)
 
-def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol, r = 5):
+def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, q = None):
 
     # find new features in the ref and target tissue which are positioned 
     # in approximately the same location RELATIVE to the best features found already
@@ -934,12 +954,6 @@ def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol, r = 5):
     #   difference relative to the best features found 
     noFeatFind = 0  # keep track of the number of times a match has not been found
     for an, i in enumerate(allInfo):
-        
-        # if a featNo criteria is set, continue looking until the target number of features is 
-        # met (or if there are no new features found for a duration of the search, bottom break)
-        if featNo is int:
-            if len(allInfo) >= featNo:
-                break
 
         # if the difference between the any of the already found feature is less than dist 
         # pixels, don't use it
@@ -991,6 +1005,8 @@ def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol, r = 5):
 
         # if the new feature is than 5 degress off and within 5% distance each other 
         # from all the previously found features then append 
+        # NOTE using distance is a thresholding criteria which doesn't work when there 
+        # is deformation
         if (np.array(angdist) < 10/180*np.pi).all(): # and (np.array(ratiodist) < 0.05).all():
         # NOTE using median is a more "gentle" thresholding method. allows more features
         # but the standard of these new features is not as high
@@ -1006,7 +1022,10 @@ def findgoodfeatures(matchInfo, allInfo, featNo, dist, tol, r = 5):
             if noFeatFind > int(len(allInfo) * tol):
                 break
 
-    return(matchInfoN)
+    if type(q) is type(None):
+        return(matchInfoN)
+    else:
+        q.put(matchInfoN)
 
 def nameFeatures(imgref, imgtar, matchedInfo, txtsz = 0.5, combine = False, width = 3):
 
@@ -1128,29 +1147,38 @@ def drawLine(img, point0, point1, blur = 2, colour = [0, 0, 255]):
     
     return(img)
 
-def dictToDF(info, title, min = 3, scl = 1):
+def dictToDF(info, title, min = 3, feats = None):
 
     # create a pandas data frame from a dictionary of feature objects
     # Inputs:   (info), dictionary
     #           (title), list of the the column names
     #           (min), minimum number of times which a feature has to appear 
     #               for it to be used
+    #           (feats), max number of features to include (if a feat has less
+    #               # than the min then it will be excluded)
     #           (scl), scale to resize the points
     # Outputs:  (df), pandas data frame
-    
+    #     
     c = 0
     df = pd.DataFrame(columns=title)
-    for m in info:
+
+    # get the name of the dict keys in order of the lengths
+    if feats is None:
+        keys = list(info.keys())
+    else:
+        keys = np.array(list(info.keys()))[np.argsort([-len(info[i]) for i in info])][:feats]
+
+    for m in keys:
         if len(info[m]) < min:
             continue
         for nm, v in enumerate(info[m]):
             i = info[m][v]
             # only for the first iteration append the reference position
             if nm == 0:
-                df.loc[c] = [i.refP[0]/scl, i.refP[1]/scl, int(v), int(m)]
+                df.loc[c] = [i.refP[0], i.refP[1], int(v), int(m)]
                 c += 1
                 
-            df.loc[c] = [i.tarP[0]/scl, i.tarP[1]/scl, int(v + 1), int(m)]
+            df.loc[c] = [i.tarP[0], i.tarP[1], int(v + 1), int(m)]
             c += 1
 
     return(df)
