@@ -211,11 +211,12 @@ def dictToTxt(data, path, **kwargs):
     
     f.close()
 
-def txtToDict(path, typeV = int):
+def txtToDict(path, typeV = int, typeID = str):
 
     # Reads in a text file which was saved with the dictToTxt function
     # Inputs:   (dir), the name of a single file
-    #           (type), type of variable to load into dictionary, defaults int
+    #           (typeV), value type to load into dictionary, defaults int
+    #           (typeID), ID type to load into dictionary, defaults string
     # Outputs:  (sampleDict), either a list of dictionary of the information: 
     #           if paths is a list then the output is a dictinary named by the samples of the info
     #           if the paths is a string then the output is a list 
@@ -248,7 +249,7 @@ def txtToDict(path, typeV = int):
         dictNo = int(f.readline().replace("Entries:", ""))
         for n in range(dictNo):
             info = f.readline().split(":")
-            key = info[0]
+            key = typeID(info[0])
             data = info[1].replace("\n", "")
             # save data as a dictionary
             pathinfo[key] = np.array(data.split(" ")[0:-1]).astype(typeV)
@@ -771,7 +772,7 @@ def uniqueKeys(dictL):
 
     return(dictMod, commonKeys)
 
-def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5):
+def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True):
 
     '''
     ---------- NOTE the theory underpinning this function ----------
@@ -783,33 +784,35 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
     this takes lists of all the information from the SIFT feature identification 
     and bf matching and returns only n number of points which match the criteria
 
-    Inputs:   
-        (resInfo), all the information returned by the sift operator after being
-        brute forced matched for that specific resolution
-        (matchInfo), points that have already been found
-        (manual), boolean as to whether the features that have been inputted 
-        include manually annotated features. If True then treat the manual
-        annotations as "ground truth" and don't overwrite
-        (dist), sets the minimium distance between each feature. A larger distance 
-        reduces the number of features that can be found but will also ensure 
-        that features are  better spread across the sample, rather than being pack 
-        arond a single strong feature
-        (featNo), minimum number of features to find in the images. depreceated
-        (cpuNo), number of CPUs to use, allows for parallelisation of the maximum
-        number of features loop. NOTE this should be set to FALSE if the 
-        processing of samples is parallelised --> you can't spawn processes from spawns
-        (tol), the tolerance of the % of the matched features which are not included in the 
-        the matching before breaking (ie 0.05 means that if there are no successful 
-        matches for 5% of all the features found then break)
-        (spawnPoints), the number of the points which are found by findgoodfeatures to be used to help
-        find other good featues (the higher the number the more accurate the spatially aware 
-        feature finding will be but will also become slower)
-        (anchorPoints), the number of different feature sets to try before returning
-        the infostore
+    Inputs:   \n
+    (resInfo), all the information returned by the sift operator after being
+    brute forced matched for that specific resolutionn\n
+    (matchInfo), points that have already been found\n
+    (manual), boolean as to whether the features that have been inputted 
+    include manually annotated features. If True then treat the manual
+    annotations as "ground truth" and don't overwrite\n
+    (dist), sets the minimium distance between each feature. A larger distance 
+    reduces the number of features that can be found but will also ensure 
+    that features are  better spread across the sample, rather than being pack 
+    arond a single strong feature\n
+    (featNo), minimum number of features to find in the images. depreceated\n
+    (cpuNo), number of CPUs to use, allows for parallelisation of the maximum
+    number of features loop. NOTE this should be set to FALSE if the 
+    processing of samples is parallelised --> you can't spawn processes from spawns\n
+    (tol), the tolerance of the % of the matched features which are not included in the 
+    the matching before breaking (ie 0.05 means that if there are no successful 
+    matches for 5% of all the features found then break)\n
+    (spawnPoints), the number of the points which are found by findgoodfeatures to be used to help
+    find other good featues (the higher the number the more accurate the spatially aware 
+    feature finding will be but will also become slower)\n
+    (anchorPoints), the number of different feature sets to try before returning
+    the infostore\n
+    (distCheck), boolean whether to take into account the distance of objects for 
+    spatial cohesion\n
 
-    Outputs:  
-        (infoStore), the set of features and corresponding information that have been 
-        found to have the most spatial coherence
+    Outputs:  \n
+    (infoStore), the set of features and corresponding information that have been 
+    found to have the most spatial coherence\n
     '''
 
     # if there is a repeated feature, delete it (this comes from adding manual features)
@@ -874,7 +877,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
         qs = {}
         for n, m in enumerate(matchInfos):
             qs[n] = multiprocessing.Queue()
-            job[n] = multiprocessing.Process(target=findgoodfeatures, args = (m, allInfo, dist, tol, anchorPoints, qs[n], ))
+            job[n] = multiprocessing.Process(target=findgoodfeatures, args = (m, allInfo, dist, tol, anchorPoints, distCheck, qs[n], ))
             job[n].start()
         matchInfoNs = []
         for n in job:
@@ -892,7 +895,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
 
             # find features which are spatially coherent relative to the best feature for both 
             # the referenc and target image and with the other constrains
-            matchInfoN = findgoodfeatures(matchInfo, allInfo, dist, tol, anchorPoints)
+            matchInfoN = findgoodfeatures(matchInfo, allInfo, dist, tol, anchorPoints, distCheck)
 
             # Store the features found and if more features are found with a different combination
             # of features then save that instead
@@ -938,7 +941,7 @@ def findbestfeatures(allInfo, dist):
 
     return(matchInfo)
 
-def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, q = None):
+def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, q = None):
 
     # find new features in the ref and target tissue which are positioned 
     # in approximately the same location RELATIVE to the best features found already
@@ -1007,7 +1010,11 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, q = None):
         # from all the previously found features then append 
         # NOTE using distance is a thresholding criteria which doesn't work when there 
         # is deformation
-        if (np.array(angdist) < 10/180*np.pi).all(): # and (np.array(ratiodist) < 0.05).all():
+        angConfirm = (np.array(angdist) < 10/180*np.pi).all()
+        distConfirm = (np.array(ratiodist) < 0.05).all() or not distCheck       # inverse distCheck boolean so 
+                                                                                # when False, distCheck is always true
+                                                                                # and when True, only works when condition met
+        if angConfirm and distConfirm:
         # NOTE using median is a more "gentle" thresholding method. allows more features
         # but the standard of these new features is not as high
         # if np.median(angdist) < 180/180*np.pi and np.median(ratiodist) < 1:
@@ -1182,3 +1189,24 @@ def dictToDF(info, title, min = 3, feats = None):
             c += 1
 
     return(df)
+
+def tile(sz, x, y):
+
+    '''
+    gets the side length of an area proporptional to the image
+
+    Inputs:   \n
+    (sz), tile proporption of the image\n
+    (x, y), img dims\n
+
+    Outputs:  
+    (s), the square length needed
+    '''
+
+    # if the size is 0 then don't create a tile
+    if sz == 0:
+        return(0)
+
+    s = int(np.round(np.sqrt(x*y/sz)))   # border lenght of a tile to use
+
+    return(s)
