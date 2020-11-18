@@ -12,22 +12,22 @@ from glob import glob
 import cv2
 
 if __name__ != "HelperFunctions.fixSample":
-    from Utilities import txtToDict, dictToTxt
+    from Utilities import txtToDict, dictToTxt, nameFromPath
     from SP_SampleAnnotator import featSelectArea, featChangePoint
     from SP_AlignSamples import align
 else:
-    from HelperFunctions.Utilities import txtToDict, dictToTxt
+    from HelperFunctions.Utilities import txtToDict, dictToTxt, nameFromPath
     from HelperFunctions.SP_SampleAnnotator import featSelectArea, featChangePoint
     from HelperFunctions.SP_AlignSamples import align
 
 
-def fixit(dataHome, size, cpuNo, samples, segSection = False):
+def fixit(dataHome, size, cpuNo, sampleIDs, segSection = False):
 
     # perform manual fitting of samples which did not align properly
     # Inputs:   (dataHome), directory of the specimen
     #           (size), resolution
     #           (cpuNo), parallelisation 
-    #           (samples), strings of samples which were not aligned properly
+    #           (sampleIDs), strings of sample IDs which were not aligned properly
     #           (imagesrc), specifies where the images are stored, ie either 
     #           in aligned samples or within the segsections directories
 
@@ -39,8 +39,35 @@ def fixit(dataHome, size, cpuNo, samples, segSection = False):
     datainfo = dataHome + str(size) + imagesrc + "/info/"
     datamasked = dataHome + str(size) + imagesrc + "/masked/"
 
+    samples = []
+    # search for the key word in the name and verify it exists
+    for s in sampleIDs:
+
+        while True: 
+            samp = glob(dataaligned + "*" + s + "*.png")
+
+            # if the key word returned only one sample
+            if len(samp) == 1:
+                samples.append(samp[0])
+                break
+
+            # if the key word return more than one sample
+            if len(samp) > 1:
+                print("For " + s + " which sample are you referring to?")
+                for sa in samp:
+                    print(nameFromPath(sa, 3))
+                s = input("Type in one of the above: ")
+            
+            # if the key word return no samples adjust the sampleID
+            if len(samp) == 0:
+                s = input("Key word " + s + " returned no results, check sample exists and type it in here: ")
+
+    # ensure none are repeated
+    samples = np.unique(samples).tolist()
+    
     # perform manual annotation of the samples
     for targetSample in samples:
+        print("Processing " + nameFromPath(targetSample, 3))
         reannotator(datainfo, datamasked, targetSample)
 
     # if there are tif tiles already there, then replace those as well
@@ -49,7 +76,7 @@ def fixit(dataHome, size, cpuNo, samples, segSection = False):
     # if there were samples to align, re-align the entire specimen
     if len(samples) > 0:
         print("     Realigning samples")
-        align(dataHome, size, cpuNo, saving)
+        align(dataHome, size, cpuNo, saving, errorThreshold=300)
 
     else:
         print("     No samples to fix")
@@ -63,7 +90,7 @@ def reannotator(infosrc, imgsrc, targetSample, nopts = 8):
     imgs = sorted(glob(imgsrc + "*.png"))
 
     # get the position of the features 
-    featP = np.where(np.array([i.find(targetSample) for i in imgs]) >= 0)[0][0]
+    featP = np.where(np.array([i.find(nameFromPath(targetSample, 3)) for i in imgs]) >= 0)[0][0]
 
     # get the specific reference and target features
     # NOTE it is -1 because the images are "one ahead" because they include the 
@@ -88,9 +115,11 @@ if __name__ == "__main__":
     multiprocessing.set_start_method("spawn")
 
     dataHome = '/Volumes/Storage/H710C_6.1/'
+    dataHome = '/Volumes/Storage/H653A_11.3/'
+
     size = 3
     cpuNo = 6
-    samples = ['H710C_321A+B_0']
+    
+    sampleIDs = ["54_0", "61_0", "80_1", "90_0"]
 
-
-    fixit(dataHome, size, cpuNo, samples)
+    fixit(dataHome, size, cpuNo, sampleIDs)
