@@ -27,13 +27,14 @@ class sampleFeatures:
         self.tar = tar
         self.fit = fit
 
-def align(data, size = 0, cpuNo = False, saving = True, prefix = "tif", errorThreshold = 100):
+def align(data, size = 0, cpuNo = False, saving = True, prefix = "tif", refName = None, errorThreshold = 100):
 
     # This function will take the extracted sample tif file at the set resolution and 
     # translate and rotate them to minimise the error between slices
     # co-ordinates of the key features on that image for alignment
     # Inputs:   (data), directories of the tif files of interest
     #           (featDir), directory of the features
+    #           (refImg), sample name of the reference image to be used
     # Outputs:  (), extracts the tissue sample from the slide and aligns them by 
     #           their identified featues
 
@@ -41,18 +42,14 @@ def align(data, size = 0, cpuNo = False, saving = True, prefix = "tif", errorThr
     src = data + str(size)
     dataSegmented = src + '/masked/'     
     alignedSamples = src + '/alignedSamples/'
-    segInfo = src+ '/info/'
+    segInfo = src + '/info/'
 
     # get the sample slices of the specimen to be processed
-    samples = sorted(glob(dataSegmented + "*." + prefix))[:30]
+    samples = sorted(glob(dataSegmented + "*." + prefix))
 
-    # use the first sample png as the reference image
-    try: refImg = cv2.imread(samples[0])
-    except: refImg = None
+    aligner(samples, segInfo, dataSegmented, alignedSamples, saving, refName, cpuNo, errorThreshold)
 
-    aligner(samples, segInfo, dataSegmented, alignedSamples, saving, refImg, cpuNo, errorThreshold)
-
-def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, refImg = None, cpuNo = False, errorThreshold = 100):
+def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, refName = None, cpuNo = False, errorThreshold = 100):
 
     # this function takes all the directories and info and then does the full 
     # rigid alignment and saves where directed:
@@ -65,13 +62,31 @@ def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, re
     #           (refImg), optional whether to normalise the colours of the images
     #           (cpuNo), number of cores to parallelise processes on
 
+    # use a reference sample to normalise colours
+    if refName is not None:
+        try: 
+            imgDir = glob(srcImgPath + "*" + refName + "*.png")
+            while len(imgDir) != 1:
+                print("Perhaps you meant...")
+                for i in imgDir:
+                    print(nameFromPath(i, 3))
+                refName = input("Double check sample name and retype: ")
+                imgDir = glob(srcImgPath + "*" + refName + "*.png")
+
+            refImg = cv2.imread(imgDir[0])
+            print("Refimg " + nameFromPath(imgDir[0], 3) + " used")
+        except: 
+            refImg = None
+            print("No ref image used")
+    else:
+        refImg = None
 
     sampleNames = nameFromPath(samples, 3)
 
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    shiftFeatures(samples, featureInfoPath, destImgPath, 1000)
+    shiftFeatures(samples, featureInfoPath, destImgPath, 100)
 
     # get the field shape required for all specimens to fit
     info = sorted(glob(featureInfoPath + "*feat"))[:len(sampleNames)]
@@ -87,7 +102,7 @@ def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, re
     shiftMi = np.min(dictToArray(translated), axis = 0)
 
     # combine the shapes and translations to calculate the net shape from the origin per image
-    maxShape = np.insert(np.ceil(np.max(np.array(shapes) + np.flip(shiftMa), axis = 0)), 2, 3).astype(int)
+    maxShape = np.insert(np.ceil(np.max(np.array(shapes) + np.flip(shiftMa) - np.flip(shiftMi), axis = 0)), 2, 3).astype(int)
 
     # apply the affine transformations to all the images and info
     if cpuNo is False:
@@ -119,17 +134,11 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
 
     featNames = nameFromPath(featPaths, 3)
 
-    for f in featNames:
+    for fr, ft in zip(featNames[:-1], featNames[1:]):
         # load all the features
-        try: featTar[f] = txtToDict(src + f + ".tarfeat", float)
-        except: pass
+        featRef[fr] = txtToDict(src + fr + ".reffeat", float)                
+        featTar[ft] = txtToDict(src + ft + ".tarfeat", float)
 
-        try: featRef[f] = txtToDict(src + f + ".reffeat", float)
-        except: featRef[f] = featTar[f]     # the last feature will never be fit so this 
-                                            # this is essentially a junk data allocated 
-                                            # only so that the whole script will run error 
-                                            # free (main issue is carry through transformation
-                                            # of features)                     
                                             
     # store the affine transformations
     translateAll = {}
@@ -139,6 +148,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
     translateAll[featNames[0]] = np.array([0, 0])
     rotateNet[featNames[0]] = [0, 0, 0]
     featsO = sampleFeatures()
+    sampleObj = sampleFeatures()
 
     # perform transformations on neighbouring slices and build them up as you go
     for rF, tF in zip(featRef, featTar):
@@ -153,12 +163,25 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
         '''
 
         # get the features to align
-        # NOTE atm whichever dictionary assignment is first comes linked to featsMod
-        # so they both become changed but ONLY the first one..... ?????
+        # create the feature matched object (ie these are the pairs of feature that are to be aligned)
+        featsO = sampleFeatures()
         featsO.ref = deepcopy(featRef[rF][0])
         featsO.tar = deepcopy(featTar[tF][0])
-        try:    featsO.fit = featTar[tF][1]['fit']
-        except: featsO.fit = False
+
+        # create the sample object (ie these are the features that are on the same object)
+        try:    sampleObj.ref = deepcopy(featRef[tF][0])
+        except: sampleObj.ref = deepcopy(featTar[tF][0])    # for final match just use the same features
+        sampleObj.tar = deepcopy(featTar[tF][0])
+        shapeTar = featTar[tF][1]['shape']
+        shapeRef = featRef[rF][1]['shape']
+
+        # if there are no features to match, assume fit is true, otherwise set as the 
+        # flag in the dictionary
+        if (len(featsO.ref) == 0) or (len(featsO.tar) == 0):
+            featsO.fit = True
+        
+        else:
+            featsO.fit = featTar[tF][1]['fit']
 
         # set the initial attempt positional ranges to remove features in the case of 
         # refitting attempts
@@ -166,6 +189,8 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
         atmp = 0
         lastFt = []
         n = 0
+        featsMod = deepcopy(featsO)
+        translateSum = np.zeros(2).astype(float)
         
         print("Shifting " + tF + " features")
         # -------- CREATE THE MOST OPTIMISED POSSIBLE FIT OF 
@@ -228,6 +253,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                 if errN == 0:
                     print("     Fitting successful, err/feat = " + str(int(errN))) 
                     featsMod = feattmp      # this set of feats are the ones to use
+                    featsO.fit = True
 
                 # positions have converged 
                 elif np.round(np.sum(np.diff(errorStore)), 2) <= 0:
@@ -236,6 +262,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                     if errO < errorThreshold:
                         print("     " + str(len(featsMod.tar)) + "/" + str(len(featTar[tF][0])) + " w err = " + str(int(errN)))
                         print("     Fitting converged, attempt " + str(atmp))
+                        featsO.fit = True
                         break
 
                     # with the current features, if they are not providing a good match
@@ -317,59 +344,62 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
 
         # -------- CREATE THE SINGLE TRANSLATION AND ROTATION FILES --------
 
-        # if the file was already fit then don't save any information
-        if featsO.fit:
-            print("     " + tF + " is already fitted")
-            translateAll[tF] = np.array([0, 0])
-            rotateNet[tF] = [0, 0, 0]
+        # replicate the whole fitting proceduce in a single go to be applied to the 
+        # images later on
+        featToMatch = sampleFeatures()
+        featToMatch.ref = deepcopy(featsMod.tar)       # get the fitted feature (ref)
+        featToMatch.tar = deepcopy(sampleObj.tar)        # get the original position of features
 
-        # if a fitting procedure was performed, save the relevant information
-        else:
-            # replicate the whole fitting proceduce in a single go to be applied to the 
-            # images later on
-            featToMatch = sampleFeatures()
-            featToMatch.ref = deepcopy(featsMod.tar)       # get the fitted feature (ref)
-            featToMatch.tar = deepcopy(featsO.tar)        # get the previous position of it
+        # translation, featToMatch, err = translatePoints(featToMatch, True)
 
-            # translation, featToMatch, err = translatePoints(featToMatch, True)
+        # apply ONLY the translation transformations to the original features so that the 
+        # adjustments are made to the optimised feature positions
+        for f in featToMatch.tar:
+            # print("Orig: " + str(featsMaster['H653A_09_1'][f]))
+            featToMatch.tar[f] -= translateSum
+            
+        translateAll[tF] = translateSum
 
-            # apply ONLY the translation transformations to the original features so that the 
-            # adjustments are made to the optimised feature positions
-            for f in featToMatch.tar:
-                # print("Orig: " + str(featsMaster['H653A_09_1'][f]))
-                featToMatch.tar[f] -= translateSum
-                
-            translateAll[tF] = translateSum
+        # perform a single rotational fitting procedure
+        rotateSum = 0
 
-            # perform a single rotational fitting procedure
-            rotateSum = 0
+        # view the final points before rotating VS the optimised points
+        # denseMatrixViewer([dictToArray(featToMatch[tF]), dictToArray(featsMod[tF]), centre[tF]], True)
 
-            # view the final points before rotating VS the optimised points
-            # denseMatrixViewer([dictToArray(featToMatch[tF]), dictToArray(featsMod[tF]), centre[tF]], True)
+        # continue fitting until convergence with the already fitted results
+        while abs(errN) > 1e-8:
+            rotationAdjustment, featToMatch, errN, cent, MxErrPnt = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre)
+            rotated = rotationAdjustment
+            rotateSum += rotationAdjustment
+            # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
+            n += 1
+        
+        # pass the rotational degree and the centre of rotations
+        rotateNet[tF] = [rotateSum, centre[0], centre[1]]  
 
-            # continue fitting until convergence with the already fitted results
-            while abs(errN) > 1e-8:
-                rotationAdjustment, featToMatch, errN, cent, MxErrPnt = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre)
-                rotated = rotationAdjustment
-                rotateSum += rotationAdjustment
-                # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
-                n += 1
+        # perform the same transformation to the dictionaries 
+        for fr in sampleObj.ref: 
+            sampleObj.ref[fr] -= translateSum    
+        for ft in sampleObj.tar:
+            sampleObj.tar[ft] -= translateSum    
 
-            # perform the same transformation to the dictionaries 
-            for fr, ft in zip(featRef[tF][0], featTar[tF][0]): 
-                featRef[tF][0][fr] -= translateSum    
-                featTar[tF][0][ft] -= translateSum    
-            featRef[tF][0] = objectivePolar(rotateSum, centre, False, featRef[tF][0]) 
-            featTar[tF][0] = objectivePolar(rotateSum, centre, False, featTar[tF][0]) 
+        sampleObj.ref = objectivePolar(rotateSum, centre, False, sampleObj.ref) 
+        sampleObj.tar = objectivePolar(rotateSum, centre, False, sampleObj.tar) 
 
-            # pass the rotational degree and the centre of rotations
-            rotateNet[tF] = [rotateSum, centre[0], centre[1]]  
-            # denseMatrixViewer([featsMod.ref, featsMod.tar, centre], True)
-            # featsMod.ref
+        # denseMatrixViewer([featRef[rF][0], sampleObj.tar, featsMod.ref, featsMod.tar, centre], True)
+        # denseMatrixViewer([featsMod.ref, featsMod.tar, centre], True)
 
-            # save all the original features but transformed to meet fitting criteria 
-            dictToTxt(featRef[rF][0], alignedSamples + rF + ".reffeat", fit = True, shape = featRef[rF][1]['shape'])
-            dictToTxt(featTar[tF][0], alignedSamples + rF + ".tarfeat", fit = True, shape = featTar[tF][1]['shape'])
+        # featsMod.ref
+
+        _, L = uniqueKeys([sampleObj.tar, featsMod.tar])
+
+        # save all the original features but transformed to meet fitting criteria 
+        dictToTxt(featRef[rF][0], alignedSamples + rF + ".reffeat", fit = featsO.fit, shape = shapeRef)
+        dictToTxt(sampleObj.tar, alignedSamples + tF + ".tarfeat", fit = featsO.fit, shape = shapeTar)
+
+        # reasign the sample features after being translated and rotated
+        try:    featRef[tF][0] = sampleObj.ref
+        except: print("Finished fitting")
 
     # save the tif shapes, translation and rotation information
     dictToTxt(translateAll, src + "all.translated")
