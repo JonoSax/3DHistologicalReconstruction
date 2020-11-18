@@ -85,22 +85,39 @@ def featFind(dataHome, name, size, cpuNo = False):
     dirMaker(imgDest)
 
     # set the parameters
-    gridNo = 2
+    gridNo = 3
     featMin = 40
     dist = 10
 
     # get the images
     imgs = sorted(glob(imgsrc + "*.png"))
+    imgRef = []
+    imgTar = []
+
+    # get the images which need to have features identified. 
+    info = sorted(glob(dataDest + "*feat"))
+    featNames = nameFromPath(imgs, 3)
+    for n, f in enumerate(featNames):
+        # load all the features
+        refinfo = glob(dataDest + f + "*reffeat")
+        tarinfo = glob(dataDest + f + "*tarfeat")
+        allI = len(info)
+        # if missing the features
+        if len(tarinfo) < 1 and n != 0:
+            imgRef.append(imgs[n-1])
+            imgTar.append(imgs[n])
+
+    print(str(len(imgTar)) + "/" + str(len(imgs)-1) + " images pairs to be processed")
 
     if cpuNo is False:
         # serialisation (mainly debuggin)
-        for refsrc, tarsrc in zip(imgs[:-1], imgs[1:]):
+        for refsrc, tarsrc in zip(imgRef, imgTar):
             findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featMin, dist)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(findFeats, zip(imgs[:-1], imgs[1:], repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
+            pool.starmap(findFeats, zip(imgRef, imgTar, repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
         
 def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50):
 
@@ -112,25 +129,23 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
     TO THE ORIGINAL SIZE TIF FILES --> info is stored as args in the .feat files
     It is heavily based on the cv2.SIFT function
     
-    Inputs:   
-        (imgsrc), source of the pre-processed images (from SP_SpecimenID)
-        (dataDest), the location to save the txt files
-        (imgdest), location to save the images which show the matching process
-        (gridNo), number of grids (along horizontal axis) to use to analyse images
-        (featMin), minimum number of features to apply per image
-        (dist), the minimum distance between features in pixels
+        Inputs:   \n
+    (imgsrc), source of the pre-processed images (from SP_SpecimenID)\n
+    (dataDest), the location to save the txt files\n
+    (imgdest), location to save the images which show the matching process\n
+    (gridNo), number of grids (along horizontal axis) to use to analyse images\n
+    (featMin), minimum number of features to apply per image\n
+    (dist), the minimum distance between features in pixels\n
 
-    Outputs: 
-        (), saves .feat files for each specimen which correspond to the neighbouring
-        two slices (one as the reference and one as the target)
-        (), jpg images which show where the features were found bewteen slices
+        Outputs: \n
+    (), saves .feat files for each specimen which correspond to the neighbouring
+    two slices (one as the reference and one as the target)\n
+    (), jpg images which show where the features were found bewteen slices\n
     '''
 
     # counting the number of features found
     matchRefDict = {}    
     matchTarDict = {}
-    bf = cv2.BFMatcher()   
-    sift = cv2.xfeatures2d.SIFT_create()    # NOTE this required the contrib module --> research use only
 
     name_ref = nameFromPath(refsrc, 3)
     name_tar = nameFromPath(tarsrc, 3)
@@ -177,7 +192,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
     # find all the spatially cohesive features in the samples
     matchedInfo, xrefDif, yrefDif, xtarDif, ytarDif, scl = allFeatSearch(img_refMaster, img_tarMaster, scales = scales, \
-        dist = dist, featMin = featMin, name_ref = name_ref, gridNo = gridNo)
+        dist = dist, featMin = featMin, name_ref = name_ref, name_tar = name_tar, gridNo = gridNo)
     x, y = int(xt*scl), int(yt*scl)
 
     # ---------- update and save the found features ---------
@@ -337,7 +352,7 @@ def imgPlacement(name_spec, img_ref, img_tar):
         
     return(xrefDif, yrefDif, xtarDif, ytarDif, img_refF, img_tarF)
     
-def allFeatSearch(imgRef, imgTar, matchedInfo = [], scales = [0.2, 0.3, 0.5, 0.8, 1], dist = 1, featMin = 20, name_ref = None, gridNo = 1, sc = 20, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5):
+def allFeatSearch(imgRef, imgTar, matchedInfo = [], scales = [0.2, 0.3, 0.5, 0.8, 1], dist = 1, featMin = 20, name_ref = "", name_tar = "", gridNo = 1, sc = 20, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True):
 
     '''
     Find the spatially cohesive features in an image
@@ -395,6 +410,7 @@ def allFeatSearch(imgRef, imgTar, matchedInfo = [], scales = [0.2, 0.3, 0.5, 0.8
             xrefDif, yrefDif, xtarDif, ytarDif, img_ref, img_tar = imgPlacement(nameFromPath(name_ref, 1), img_refO, img_tarO)
 
             x, y, c = img_ref.shape
+            # pg = tile(gridNo, x, y)
             pg = int(np.round(x/gridNo))        # create a grid which is pg x pg pixel size
 
             # perform a sift operation over the entire image and find all the matching 
@@ -462,7 +478,7 @@ def allFeatSearch(imgRef, imgTar, matchedInfo = [], scales = [0.2, 0.3, 0.5, 0.8
             if len(resInfo) > 0:
                 matchedInfo += deepcopy(manualPoints)
                 # matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist)
-                matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist * scl, cpuNo, tol, spawnPoints, anchorPoints)
+                matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist * scl, cpuNo, tol, spawnPoints, anchorPoints, distCheck)
 
                 for n, m in enumerate(matchedInfo):
                     matchedInfo[n].dist = 0.01 * n # preserve the order of the features
@@ -494,7 +510,7 @@ def allFeatSearch(imgRef, imgTar, matchedInfo = [], scales = [0.2, 0.3, 0.5, 0.8
             if manualAnno < 2:
                 # NOTE use these to then perform another round of fitting. These essentially 
                 # become the manual "anchor" points for the spatial coherence to work with. 
-                print("\n\n!!!Not enough matches!!!!\n\n")
+                print("\n\n!!! Not enough matches " + name_ref + "!!!!\n\n")
                 manualPoints = featChangePoint(None, img_ref, img_tar, matchedInfo, nopts = 2, title = "Select 2 pairs of features to assist the automatic process")
                 manualAnno += 1
                 matchedInfo = []
@@ -516,7 +532,6 @@ if __name__ == "__main__":
 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/Storage/H653A_11.3new/'
-    dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
     dataSource = '/Volumes/USB/H673A_7.6/'
@@ -524,9 +539,10 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/Storage/H710C_6.1/'
     dataSource = '/Volumes/USB/Test/'
+    dataSource = '/Volumes/Storage/H653A_11.3/'
 
     name = ''
     size = 3
-    cpuNo = False
+    cpuNo = 6
 
     featFind(dataSource, name, size, cpuNo)
