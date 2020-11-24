@@ -86,7 +86,7 @@ def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, re
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    shiftFeatures(samples, featureInfoPath, destImgPath, 100)
+    shiftFeatures(samples, featureInfoPath, destImgPath, errorThreshold)
 
     # get the field shape required for all specimens to fit
     info = sorted(glob(featureInfoPath + "*feat"))[:len(sampleNames)]
@@ -260,7 +260,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                     # if the final error is below a threshold, it is complete
                     # but use the previously fit features
                     if errO < errorThreshold:
-                        print("     " + str(len(featsMod.tar)) + "/" + str(len(featTar[tF][0])) + " w err = " + str(int(errN)))
+                        print("     " + str(len(featsMod.ref)) + "/" + str(len(featRef[rF][0])) + " w err = " + str(int(errN)))
                         print("     Fitting converged, attempt " + str(atmp))
                         featsO.fit = True
                         break
@@ -283,7 +283,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                         for m in MxErrPnt:
                             del featsO.tar[m]
                             del featsO.ref[m]
-                        print("     " + str(len(featsMod.tar)) + "/" + str(len(featTar[tF][0])) + "feats left @ err = " + str(int(errN)))
+                        print("     " + str(len(featsMod.ref)) + "/" + str(len(featRef[rF][0])) + "feats left @ err = " + str(int(errN)))
                         atmp += 1
                         break
 
