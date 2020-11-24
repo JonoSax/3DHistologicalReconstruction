@@ -711,9 +711,8 @@ def findangle(point1, point2, point3 = None):
             unit_vector_1 = vector1 / np.linalg.norm(vector1)
             unit_vector_2 = vector2 / np.linalg.norm(vector2)
             dot_product = np.dot(unit_vector_1, unit_vector_2)
-            if dot_product * 1 != dot_product:
-                print("WHOA")
-
+            if (dot_product * 1 != dot_product).all():
+                return(np.inf)      # if there is any kind of error, just return a silly number
             return dot_product
 
         # makes point2 the origin
@@ -724,14 +723,19 @@ def findangle(point1, point2, point3 = None):
             p3 = point3.copy()
             p3 -= p2
 
-        # find the angle relative to the horizontal for both points
+        # get the dot product of the two vectors created or defaulted 
         dp1 = dotpro(p1)
+        dp3 = dotpro(p3)
+
+        # if there is an error in the dotproduct calculation, return a silly angle
+        if dp1 == np.inf or dp3 == np.inf:
+            return(np.inf)
+
+        # find the angle of the vectors relative to each other
+        angle3 = np.arccos(dp3)
         angle1 = np.arccos(dp1)
 
-        dp3 = dotpro(p3)
-        angle3 = np.arccos(dp3)
-        
-        # adjust the angles 
+        # adjust the angles relative to their position on the local grids
         if p1[0] < 0:
             angle1 = 2*np.pi - angle1
 
@@ -990,6 +994,8 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, q =
                     continue
 
                 # find the angle for the new point and all the previously found point
+                if (mi1.refP).any() == np.inf:
+                    print("TO INFINITY AND BEYOND")
                 newrefang = findangle(mi1.refP, mi2.refP, i.refP)
                 newtarang = findangle(mi1.tarP, mi2.tarP, i.tarP)
 
@@ -1003,8 +1009,11 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, q =
             newrefdist = np.sqrt(np.sum((mi1.refP - i.refP)**2))
             newtardist = np.sqrt(np.sum((mi1.tarP - i.tarP)**2))
 
-            # finds how much larger the largest distance is compared to the smallest distance
-            ratiodist.append((newtardist/newrefdist)**(1-((newrefdist>newtardist)*2)) - 1)
+            if newrefdist - newrefdist == 0 and newtardist - newtardist == 0:
+                # finds how much larger the largest distance is compared to the smallest distance
+                ratiodist.append((newtardist/newrefdist)**(1-((newrefdist>newtardist)*2)) - 1)
+            else:
+                ratiodist.append(np.inf)
 
         # if the new feature is than 5 degress off and within 5% distance each other 
         # from all the previously found features then append 
@@ -1210,3 +1219,40 @@ def tile(sz, x, y):
     s = int(np.round(np.sqrt(x*y/sz)))   # border lenght of a tile to use
 
     return(s)
+
+def moveImg(ref, tar, shift):
+
+    '''
+    Moves the target image by the shift amount and returns the error between the ref and target 
+    image
+
+    Inputs:     (ref), reference image (doesn't move)
+                (tar), target image (moves by shift amount)
+                (shift), pixel values to shift image by
+
+    Outputs:    (refM, tarM), both images resized and the tar re-positioned 
+    '''
+
+    imgshape = ref.shape
+
+    if len(ref.shape) == 3:
+        x, y, c = imgshape
+        xs, ys, c = shift.astype(int)
+    elif len(ref.shape) == 2:
+        x, y = imgshape
+        xs, ys = shift.astype(int)
+
+    # create the field which will contain both images. assumes they are the same size
+    fieldN = np.zeros((ref.shape) + abs(shift.astype(int))).astype(np.uint8)
+    field = np.zeros(ref.shape).astype(np.uint8)
+    # shift the images
+    xSc = int(np.clip(xs, 0, x))
+    ySc = int(np.clip(ys, 0, y))
+    xEc = int(np.clip(xs + x, 0, x))
+    yEc = int(np.clip(ys + y, 0, y))
+
+    fieldN[xSc:x+xSc, ySc:y+ySc] = tar
+    tarM = fieldN[-x:, -y:]
+
+    return(tarM)
+
