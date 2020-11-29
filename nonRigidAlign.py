@@ -40,31 +40,33 @@ def nonRigidAlign(dirHome, size, cpuNo):
     home = dirHome + str(size)
 
     imgsrc = home + "/alignedSamples/"
-    destRigidAlign = home + "/RealignedSamplesV50/"
+    destRigidAlign = home + "/RealignedSamplesAll/"
     dirfeats = home + "/infoNL/"
-    destNLALign = home + "/NLAlignedSamplesV50/"
-
+    destNLALign = home + "/NLAlignedSamplesAll2/"
+    destFeatSections = home + "/FeatureSectionsAll2/"
+    
     dirMaker(destRigidAlign)
     dirMaker(dirfeats)
     dirMaker(destNLALign)
+    dirMaker(destFeatSections)
 
-    imgs = sorted(glob(imgsrc + "*.png"))[:50]
-    sect = 100           # the proporptional area of the image to search for features
+    imgs = sorted(glob(imgsrc + "*.png"))
+    sect = 300           # the proporptional area of the image to search for features
     dist = 30           # distance between the sift features
-    featsMin = 10       # min number of samples a feature must pass through for use to NL deform
+    featsMin = 20       # min number of samples a feature must pass through for use to NL deform
 
     # Find the continuous features throught the samples
-    contFeatFinder(imgs, dirfeats, destRigidAlign, cpuNo = True, plotting = True, sz = sect, dist = dist, connect = featsMin)
+    # contFeatFinder(imgs, dirfeats, destRigidAlign, cpuNo = True, plotting = True, sz = sect, dist = dist, connect = featsMin)
     
     # perform a rigid alignment on the tracked features
-    aligner(imgs, dirfeats, imgsrc, destRigidAlign, cpuNo = False, errorThreshold=200)
+    # aligner(imgs, dirfeats, imgsrc, destRigidAlign, cpuNo = False, errorThreshold=100)
     
-    featsMax = 8       # max number of samples which meet criteria to be used
-    distFeats = 250     # distance (pixels) between the final features
+    featsMax = 20       # max number of samples which meet criteria to be used
+    distFeats = 300     # distance (pixels) between the final features
 
     # perform a non-linear deformation on the samples based on a smoothed trajectory of the features
     # through the samples
-    nonRigidDeform(destRigidAlign, destRigidAlign, destNLALign, dist = distFeats, sz = sect, featsMin = featsMin, featsMax = featsMax)
+    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, dist = distFeats, sz = sect, featsMin = featsMin, featsMax = featsMax)
 
 def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = False, sz = 100, dist = 20, connect = np.inf):
 
@@ -140,10 +142,10 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = Fal
                 j = multiprocessing.Process(target=featMatching, args = (m, tarImg, refImg, None, sz, qs[n]))
                 job.append(j)
                 j.start()
-            confirmInfo = []
             for j in job:
                 j.join()
 
+            confirmInfo = []
             for q in qs:
                 confirmInfo.append(qs[q].get())
         featMatchTime = time() - startFeatMatch
@@ -230,23 +232,23 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = Fal
         for x, y, s, ID in np.array(tar):
             tarD[str(int(ID))] = np.array([x, y])
         dictToTxt(tarD, destFeat + tarN + ".tarfeat", fit = False, shape = tarImg.shape)
-
+    
     # plot the position of the features through the samples
     
     if plotting:
         px.line_3d(df, x="xPos", y="yPos", z="Sample", color="ID", title = "All features, unaligned").show()
         plotFeatureProgress(df, imgs, destImg + 'CombinedRough.jpg', sz, 2)
 
-def nonRigidDeform(dirimgs, dirfeats, dirdest, dist = 100, sz = 0, featsMin = 0, featsMax = None):
+def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMin = 0, featsMax = None):
 
     '''
     This function takes the continuous feature sets found in contFeatFinder
     and uses them to non-rigidly warp the 
 
     Inputs:   
-        (dirimgs), directory of all the images
-        (dirfeats), directory of the features 
-        (dirdest), path to save the NL deformed info
+        (diralign), directory of all the aligned info and images
+        (dirNLdest), path to save the NL deformed info
+        (dirSectdest), path to save the feature sections
         (scl), resolution scale factor
         (s), section size used for feature finding
     
@@ -254,12 +256,15 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, dist = 100, sz = 0, featsMin = 0,
         (), warp the images and save
     '''
 
+    LSectDir = dirSectdest + "linearSect/"
+    NLSectDir = dirSectdest + "NLSect/"
+
     # get the image paths
-    imgs = sorted(glob(dirimgs + "*.png"))
+    imgs = sorted(glob(diralign + "*.png"))
 
     # get the new dictionaries, load them into a pandas dataframe
-    refFeats = sorted(glob(dirfeats + "*.reffeat"))
-    tarFeats = sorted(glob(dirfeats + "*.tarfeat"))
+    refFeats = sorted(glob(diralign + "*.reffeat"))
+    tarFeats = sorted(glob(diralign + "*.tarfeat"))
     infopds = []
 
     # NOTE beacuse the ref and tarfeatures are the same for all the samples
@@ -273,7 +278,25 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, dist = 100, sz = 0, featsMin = 0,
         
     # combine into a single df
     df = pd.concat(infopds)
+    # px.line_3d(df, x="xPos", y="yPos", z="Sample", color="ID", title = "Raw aligned features").show()
 
+    # serialised feature extraction (for debugging)
+    '''
+    for n, img in enumerate(imgs):
+        sampdf = df[df["Sample"] == n]
+        featExtractor(destSects, img, sampdf, sz)
+    '''
+
+    # for all the features identified, extract the found features
+    job = []
+    for n, img in enumerate(imgs):
+        sampdf = df[df["Sample"] == n]
+        j = multiprocessing.Process(target=featExtractor, args = (LSectDir, img, sampdf, sz))
+        job.append(j)
+        j.start()
+    for j in job:
+        j.join()
+    
     # create the 3D plot of the aligned features
     # px.line_3d(df, x="xPos", y="yPos", z="Sample", color="ID", title = "All aligned features").show()
     
@@ -331,15 +354,21 @@ def nonRigidDeform(dirimgs, dirfeats, dirdest, dist = 100, sz = 0, featsMin = 0,
     # 3D plot the smoothed and rough selected features 
     px.line_3d(dfSelectR, x="xPos", y="yPos", z="Sample", color="ID", title = "Raw selected features").show()
     px.line_3d(dfSelectSM, x="xPos", y="yPos", z="Sample", color="ID", title = "Smoothed selected features").show()
-    
+        
     # Warp images to create smoothened feature trajectories
     # NOTE the sparse image warp is already highly parallelised so not MP functions
-    for s, imgpath in enumerate(imgs):
-        ImageWarp(s, imgpath, dfSelectR, dfSelectSM, dirdest, border = 2, smoother = 0, order = 2)
+    for imgpath in imgs:
+        s = imgs.index(imgpath)
+        ImageWarp(s, imgpath, dfSelectR, dfSelectSM, dirNLdest, border = 2, smoother = 0, order = 1)
 
-    imgsMod = sorted(glob(dirdest + "*.png"))
+    imgsMod = sorted(glob(dirNLdest + "*.png"))
+
+    # for all the NL features SELECTED, extract them
+    for n, img in enumerate(imgsMod):
+        sampdf = dfSelectSM[dfSelectSM["Sample"] == n]
+        featExtractor(NLSectDir, img, sampdf, sz)
     
-    plotFeatureProgress([dfSelectR, dfSelectSM], imgsMod, dirdest + 'CombinedSmooth.jpg', sz, [3])
+    plotFeatureProgress([dfSelectR, dfSelectSM], imgsMod, dirNLdest + 'CombinedSmooth.jpg', sz, [3])
 
 def featMatching(m, tarImg, refImg, prevImg = None, sz = 100, q = None):
 
@@ -502,31 +531,42 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf):
         extraLen = featsMin - (featsMin - (sampleMax - s)) * ((sampleMax - s) < featsMin)
 
         # get all the feature positions on the sample
-        sampdf = dfR[dfR["Sample"] == s + extraLen]
+        sampsdfBoth = []
+        n = 0
+        # ensure that there are at least 3 features which are continued.
+        # if that condition is not met then reduce the extraLen needed
+        while len(sampsdfBoth) < 3 and n < extraLen:
+            sampdf = dfR[dfR["Sample"] == s + extraLen]
 
-        # create a data frame which contains the 
-        sampHere, sampExtra = dfR[dfR["Sample"] == s + extraLen], dfR[dfR["Sample"] == s]
-        sampsdfBoth = pd.merge(sampHere, sampExtra, left_on = "ID", right_on = "ID")
+            # create a data frame which contains the 
+            sampHere, sampExtra = dfR[dfR["Sample"] == s + extraLen - n], dfR[dfR["Sample"] == s]
+            sampsdfBoth = pd.merge(sampHere, sampExtra, left_on = "ID", right_on = "ID")
 
-        # create a DF which contains all the features which pass through sample s
-        dfSamp = pd.concat([dfR[dfR["ID"] == f] for f in np.unique(sampsdfBoth.ID)])
+            # create a DF which contains all the features which pass through sample s
+            try:    
+                dfSamp = pd.concat([dfR[dfR["ID"] == f] for f in np.unique(sampsdfBoth.ID)])
+                # get the feature IDs and their REMAINING lengths from the current sample
+                _, featLen = np.unique(dfSamp[dfSamp["Sample"] >= s + extraLen - n].ID, return_counts = True)
 
-        # get the feature IDs and their REMAINING lengths from the current sample
-        _, featLen = np.unique(dfSamp[dfSamp["Sample"] >= s + extraLen].ID, return_counts = True)
+            except: pass
+            n += 1
+
 
         # calculate the average error per point between the smoothed and raw features
         errorStore = []
+        errorStorem = []
         for i in sampsdfBoth.ID:
             rawFeat = np.c_[dfR[dfR["ID"] == i].xPos, dfR[dfR["ID"] == i].yPos]
             smFeat = np.c_[dfSm[dfSm["ID"] == i].xPos, dfSm[dfSm["ID"] == i].yPos]
             error = np.sum((rawFeat - smFeat)**2)/len(smFeat)
             errorStore.append(error)        # get the error of the entire feature
-
+            
         # creat a dataframe with the error and length info
         featInfo = pd.DataFrame({'ID': sampsdfBoth.ID, 'xPos': sampsdfBoth.xPos_x, 'yPos': sampsdfBoth.yPos_y, 'error': errorStore, 'len': featLen})
 
         # sort the data first by length (ie longer values priortised) then by smoothness)
-        featInfoSorted = featInfo.sort_values(by = ['error', 'len'], ascending = [True, False])
+        # featInfoSorted = featInfo.sort_values(by = ['error', 'len'], ascending = [True, False])
+        featInfoSorted = featInfo.sort_values(by = ['len', 'error'], ascending = [False, True])
 
         # get the positions of all the features on sample s ordered based on the number 
         # of samples it passes through 
@@ -609,6 +649,29 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     # get the common feature positions
     rawFeats = np.c_[allInfo.xPos_x, allInfo.yPos_x]
     smFeats = np.c_[allInfo.xPos_y, allInfo.yPos_y]
+    
+    '''
+    # add points in between features found, NOTE this definitely doesn't work!
+    # sort the feature into order from top to bottom
+    rawFeatsS = rawFeats[np.argsort(rawFeats[:, 1])]
+    smFeatsS = smFeats[np.argsort(rawFeats[:, 1])]
+
+    rawFeatsM = []
+    for (xs, ys), (xe, ye) in zip(rawFeatsS[:-1], rawFeatsS[1:]):
+        rawFeatsM.append(np.c_[np.linspace(xs, xe, 10), np.linspace(ys, ye, 10)])
+    rawFeatsMC = np.concatenate(rawFeatsM)
+
+    smFeatsm = []
+    for (xs, ys), (xe, ye) in zip(smFeatsS[:-1], smFeatsS[1:]):
+        smFeatsm.append(np.c_[np.linspace(xs, xe, 10), np.linspace(ys, ye, 10)])
+    smFeatsMC = np.concatenate(smFeatsm)
+    '''
+
+    '''
+    for nr, ns in zip(rawFeatsMC, smFeatsMC):
+        cv2.circle(img, tuple(nr.astype(int)), 10, [255, 0, 0], 5)
+        cv2.circle(img, tuple(ns.astype(int)), 10, [0, 255, 0], 3)
+    '''
 
     # if there is no information regarding the positions to warp images,
     # assume images don't need warping therefore save the original image as final
@@ -650,8 +713,8 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
         imgAS = getSect(imgA, rawP, l, bw = False)
         imgModAS = getSect(imgModA, smP, l, bw = False)
 
-        cv2.imwrite(dest + name + "feat" + str(id) + "sampR" + str(s) + ".jpg", imgAS)       # raw sections
-        cv2.imwrite(dest + name + "feat" + str(id) + "sampS" + str(s) + ".jpg", imgModAS)    # smooth sections
+        # cv2.imwrite(dest + name + "feat" + str(id) + "sampR" + str(s) + ".jpg", imgAS)       # raw sections
+        # cv2.imwrite(dest + name + "feat" + str(id) + "sampS" + str(s) + ".jpg", imgModAS)    # smooth sections
 
         # plt.imshow(np.hstack([imgAS, imgModAS])); plt.show()
         
@@ -664,10 +727,6 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
         # add featue ID to image
         cv2.putText(imgModA, str(id), tuple(smP + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, [255, 255, 255], 5)
         cv2.putText(imgModA, str(id), tuple(smP + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, [0, 0, 0], 2)
-        
-    # create images combining the unwarped and warped images
-    imgComb = np.hstack([imgA, imgModA])
-    cv2.imwrite(dest + name + "comb.jpg", imgComb)
 
     imgMod = imgModA
     # save the images
@@ -726,7 +785,7 @@ def drawPoints(img, df, sampleNos, annos = 3, l = 0):
         (img), image to annotate on
         (df), pandas dataframe which stores information
         (sampleNos), number of samples in the image
-        (l), length fo the sides to draw for the bounding boxes
+        (l), length of the sides to draw for the bounding boxes
         (annos), draws features circles (1), connecting lines + numbering also (2) and bounding
         boxes also (3). 0 is no annotations. The different levels of annotations also 
         changes the colour of the lines etc
@@ -741,9 +800,9 @@ def drawPoints(img, df, sampleNos, annos = 3, l = 0):
     for samp, i in enumerate(np.unique(df["ID"])):
         featdf = df[df["ID"] == i]
         tar = None
-        for n, (fx, fy, s) in enumerate(zip(featdf.xPos, featdf.yPos, featdf.Sample)):
+        for n, (fx, fy) in enumerate(zip(featdf.xPos, featdf.yPos)):
 
-            tar = ((np.array([np.round(fx), np.round(fy)])) + np.array([y * s, 0])).astype(int)
+            tar = ((np.array([np.round(fx), np.round(fy)])) + np.array([y * n, 0])).astype(int)
             if n == 0 and annos > 0:
                 # draw the first point on the first sample it appears as green
                 cv2.circle(img, tuple(tar), 9, [int(85 * annos), 255, 255 - int(85 * annos)], int(annos * 2))
@@ -758,6 +817,8 @@ def drawPoints(img, df, sampleNos, annos = 3, l = 0):
 
             if annos > 2:
                 # draw bounding boxes showing the search area of the features
+                if (tar-l == np.array([2686.0, 1052.0])).all():
+                    print("WAIG")
                 img = drawLine(img, tar - l, tar + [l, -l], blur = 2, colour=[int(85 * annos), 255, 0])
                 img = drawLine(img, tar - l, tar + [-l, l], blur = 2, colour=[int(85 * annos), 255, 0])
                 img = drawLine(img, tar + l, tar - [l, -l], blur = 2, colour=[int(85 * annos), 255, 0])
@@ -782,30 +843,43 @@ def drawPoints(img, df, sampleNos, annos = 3, l = 0):
         
     return(img)
 
-def getSect(img, mpos, l, bw = True):
+def featExtractor(dest, imgPath, info, sz):
 
-    # get the section of the image based off the feature object and the tile size
-    # Inputs:   (img), numpy array of image
-    #           (mpos), position
-    #           (s), tile size 
-    # Outputs:  (imgSect), black and white image section
+    '''
+    This function takes an image and all the feature positions as a pandas data 
+    frame and extracts from the image the tissue segment and saves it in the 
+    correct directory
 
-    x, y, c = img.shape      
+        Inputs: \n
+    (dest), home directory to save the information\n
+    (imgPath), the path to the single sample to extract the sections from\n
+    (info), the pandas data frame of that sample info\n
+    (sz), the size of the segment used to identify that feature
 
-    # get target position from the previous match, use this as the 
-    # position of a possible reference feature in the next image
-    yp, xp = np.round(mpos).astype(int)
-    xs = int(np.clip(xp-l, 0, x)); xe = int(np.clip(xp+l, 0, x))
-    ys = int(np.clip(yp-l, 0, y)); ye = int(np.clip(yp+l, 0, y))
-    sect = img[xs:xe, ys:ye]
+        Outputs: \n
+    (), saves the section in the directory as its feature name\n
+    '''
 
-    # NOTE turn into black and white to minimise the effect of colour
-    if bw:
-        sectImg = np.mean(sect, axis = 2).astype(np.uint8)
-    else:
-        sectImg = sect
+    # get the sample number
+    samp = np.array(info.Sample)[0]
 
-    return(sectImg)
+    # get info
+    img = cv2.imread(imgPath)
+    x, y, c = img.shape
+    l = tile(sz, x, y)/2
+    
+
+    # go through all the info for each sample and extract all the features
+    # and save in directories to categorise them into features, named after
+    # the sample they were found in
+    for i, d in info.iterrows():
+        featSect = getSect(img, np.array([d.xPos, d.yPos]), l, False)
+        featdir = dest + str(int(d.ID)) + "/"
+        made = dirMaker(featdir)
+        if made:
+            firstSamp = drawPoints(img.copy(), info[info["ID"] == d.ID], 1, 3, l)
+            cv2.imwrite(featdir + "_referenceImage.jpg", firstSamp, [int(cv2.IMWRITE_JPEG_QUALITY), 20])
+        cv2.imwrite(featdir + nameFromPath(imgPath, 3) + ".png", featSect)
 
 if __name__ == "__main__":
 
