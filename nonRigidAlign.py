@@ -42,7 +42,7 @@ def nonRigidAlign(dirHome, size, cpuNo):
     imgsrc = home + "/alignedSamples/"
     destRigidAlign = home + "/RealignedSamplesAll/"
     dirfeats = home + "/infoNL/"
-    destNLALign = home + "/NLAlignedSamplesAll2/"
+    destNLALign = home + "/NLAlignedSamplesAll3/"
     destFeatSections = home + "/FeatureSectionsAll2/"
     
     dirMaker(destRigidAlign)
@@ -267,18 +267,18 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMi
     tarFeats = sorted(glob(diralign + "*.tarfeat"))
     infopds = []
 
+    # read in the ref and tar files and concat into a single padas data frame
     # NOTE beacuse the ref and tarfeatures are the same for all the samples
     # it just has to iteratue through the samples, not the ref/tar feat files
     for n, r in enumerate(refFeats + [tarFeats[-1]]):
         info = txtToDict(r, float)[0]
-        infopd = pd.DataFrame.from_dict(info, orient = 'index', columns = ['xPos', 'yPos'])
-        infopd['Sample'] = n       # add the sample number
+        infopd = pd.DataFrame.from_dict(info, orient = 'index', columns = ['X', 'Y'])
+        infopd['Zs'] = n       # add the sample number
         infopd['ID'] = np.array(list(info.keys())).astype(int)
         infopds.append(infopd)
         
     # combine into a single df
     df = pd.concat(infopds)
-    # px.line_3d(df, x="xPos", y="yPos", z="Sample", color="ID", title = "Raw aligned features").show()
 
     # serialised feature extraction (for debugging)
     '''
@@ -288,6 +288,7 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMi
     '''
 
     # for all the features identified, extract the found features
+    '''
     job = []
     for n, img in enumerate(imgs):
         sampdf = df[df["Sample"] == n]
@@ -296,77 +297,47 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMi
         j.start()
     for j in job:
         j.join()
-    
-    # create the 3D plot of the aligned features
-    # px.line_3d(df, x="xPos", y="yPos", z="Sample", color="ID", title = "All aligned features").show()
-    
-    # pick the best features for warping --> this is important to ensure that the 
-    # features are not too close to eachother or else they will cause impossible 
-    # warping
-    shape = cv2.imread(imgs[0]).shape
+    '''
 
-    # create a new dataframe for the smoothed feature positions
-    featsSm = pd.DataFrame(columns=["xPos", "yPos", "Sample", "ID"])
+    # of the features which are found, perform a smoothing operation and select the 
+    # features which best match the criteria for NL deformation, then fix it taking
+    # into account the missing samples
 
-    p = 0       # create data frame count 
-    for f in np.unique(df["ID"]):
-        xp = df[df["ID"] == f].xPos
-        yp = df[df["ID"] == f].yPos
-        z = df[df["ID"] == f].Sample
-
-        # if the number of samples the feature passes through is more than 
-        # the number of images being processed, don't include
-        if np.max(z) > len(imgs): 
-            sampRange = np.where(z < len(imgs))[0]
-            if len(sampRange) < 3:
-                continue
-            xp = xp[sampRange]
-            yp = yp[sampRange]
-            z = z[sampRange]
-
-        num_true_pts = len(z)
-
-        # perform a cubic spline fitting over the data
-        
-        '''
-        xSm = np.linspace(np.array(xp)[0], np.array(xp)[0], len(xp))
-        ySm = np.linspace(np.array(yp)[0], np.array(yp)[0], len(yp))
-
-        '''
-        # this could possibly be used to interpolate between slices
-        # to find missing ones!
-        tck, u = splprep([xp, yp, z], s = 1e8)
-        # u_fine = np.linspace(0,1,num_true_pts)
-        # x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
-        xSm, ySm, _ = splev(u, tck)
-        
-
-        ID = np.array(df[df["ID"] == f].ID)
-        for x, y, z, i in zip(xSm, ySm, z, ID):
-            # add info to new dataframe AND rescale the featues
-            # to the original image size
-            featsSm.loc[int(p)] = [x, y, int(z), int(i)]
-            p += 1
+    # smooth the features
+    featsSm = smoothFeatures(df, imgs, 1e6, zAxis = "Zs")
 
     # select the best features
     dfSelectR, dfSelectSM, targetIDs = featureSelector(df, featsSm, featsMin = featsMin, dist = dist, maxfeat = featsMax)
 
+    # fix the features for the missing samples
+    dfSelectRFix = fixFeatures(dfSelectR, regionOfPath(diralign, 2))
+    dfSelectSMFix = fixFeatures(dfSelectSM, regionOfPath(diralign, 2))
+
+    # re-smooth the fixed features
+    dfSelectSMFix2 = smoothFeatures(dfSelectSMFix, imgs, smooth = 1e6)
+
     # 3D plot the smoothed and rough selected features 
-    px.line_3d(dfSelectR, x="xPos", y="yPos", z="Sample", color="ID", title = "Raw selected features").show()
-    px.line_3d(dfSelectSM, x="xPos", y="yPos", z="Sample", color="ID", title = "Smoothed selected features").show()
-        
+    # px.line_3d(dfSelectRFix, x="X", y="Y", z="Z", color="ID", title = "Raw selected features").show()
+    # px.line_3d(dfSelectSMFix, x="X", y="Y", z="Z", color="ID", title = "Smoothed selected + fix features").show()
+    # px.line_3d(dfSelectSMFix2, x="X", y="Y", z="Z", color="ID", title = "All Smoothed selected features").show()    
+
+    # create the dictionary which relates the real Z number to the sample image available
+    key = np.c_[np.unique(dfSelectRFix.Z), [np.unique(dfSelectRFix[dfSelectRFix["Z"] == f].Zs)[0] for f in np.unique(dfSelectRFix.Z)]].astype(int)
+
     # Warp images to create smoothened feature trajectories
     # NOTE the sparse image warp is already highly parallelised so not MP functions
-    for imgpath in imgs:
-        s = imgs.index(imgpath)
-        ImageWarp(s, imgpath, dfSelectR, dfSelectSM, dirNLdest, border = 2, smoother = 0, order = 1)
+    for Z, Zs in key:
+        imgPath = imgs[Zs]
+        ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix2, dirNLdest, border = 2, smoother = 0, order = 1)
 
     imgsMod = sorted(glob(dirNLdest + "*.png"))
 
     # for all the NL features SELECTED, extract them
+    '''
     for n, img in enumerate(imgsMod):
         sampdf = dfSelectSM[dfSelectSM["Sample"] == n]
         featExtractor(NLSectDir, img, sampdf, sz)
+    '''
     
     plotFeatureProgress([dfSelectR, dfSelectSM], imgsMod, dirNLdest + 'CombinedSmooth.jpg', sz, [3])
 
@@ -515,7 +486,7 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf):
     '''
     
     # set the maximum iterations
-    sampleMax = np.max(dfR["Sample"])
+    sampleMax = np.max(dfR["Zs"])
     s = 0
     
     # initialise the searching positions
@@ -536,17 +507,17 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf):
         # ensure that there are at least 3 features which are continued.
         # if that condition is not met then reduce the extraLen needed
         while len(sampsdfBoth) < 3 and n < extraLen:
-            sampdf = dfR[dfR["Sample"] == s + extraLen]
+            sampdf = dfR[dfR["Zs"] == s + extraLen]
 
             # create a data frame which contains the 
-            sampHere, sampExtra = dfR[dfR["Sample"] == s + extraLen - n], dfR[dfR["Sample"] == s]
+            sampHere, sampExtra = dfR[dfR["Zs"] == s + extraLen - n], dfR[dfR["Zs"] == s]
             sampsdfBoth = pd.merge(sampHere, sampExtra, left_on = "ID", right_on = "ID")
 
             # create a DF which contains all the features which pass through sample s
             try:    
                 dfSamp = pd.concat([dfR[dfR["ID"] == f] for f in np.unique(sampsdfBoth.ID)])
                 # get the feature IDs and their REMAINING lengths from the current sample
-                _, featLen = np.unique(dfSamp[dfSamp["Sample"] >= s + extraLen - n].ID, return_counts = True)
+                _, featLen = np.unique(dfSamp[dfSamp["Zs"] >= s + extraLen - n].ID, return_counts = True)
 
             except: pass
             n += 1
@@ -556,25 +527,21 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf):
         errorStore = []
         errorStorem = []
         for i in sampsdfBoth.ID:
-            rawFeat = np.c_[dfR[dfR["ID"] == i].xPos, dfR[dfR["ID"] == i].yPos]
-            smFeat = np.c_[dfSm[dfSm["ID"] == i].xPos, dfSm[dfSm["ID"] == i].yPos]
+            rawFeat = np.c_[dfR[dfR["ID"] == i].X, dfR[dfR["ID"] == i].Y]
+            smFeat = np.c_[dfSm[dfSm["ID"] == i].X, dfSm[dfSm["ID"] == i].Y]
             error = np.sum((rawFeat - smFeat)**2)/len(smFeat)
             errorStore.append(error)        # get the error of the entire feature
             
-        # creat a dataframe with the error and length info
-        featInfo = pd.DataFrame({'ID': sampsdfBoth.ID, 'xPos': sampsdfBoth.xPos_x, 'yPos': sampsdfBoth.yPos_y, 'error': errorStore, 'len': featLen})
+        # creat a dataframe with the error and length info of the features at the current sample
+        featInfo = pd.DataFrame({'ID': sampsdfBoth.ID, 'X': sampsdfBoth.X_x, 'Y': sampsdfBoth.Y_x, 'error': errorStore, 'len': featLen})
 
         # sort the data first by length (ie longer values priortised) then by smoothness)
         # featInfoSorted = featInfo.sort_values(by = ['error', 'len'], ascending = [True, False])
         featInfoSorted = featInfo.sort_values(by = ['len', 'error'], ascending = [False, True])
 
-        # get the positions of all the features on sample s ordered based on the number 
-        # of samples it passes through 
-        sampInfo = np.c_[sampsdfBoth.xPos_x, sampsdfBoth.yPos_y]
-
         # evaluate each feature in order of the distance it travels through the samples
-        for idF, xPos, yPos, err, lenF in featInfoSorted.values:
-            si = np.array([xPos, yPos])
+        for idF, x, y, err, lenF in featInfoSorted.values:
+            si = np.array([x, y])
 
             # for each feature position, check if it meets the distance criteria and that it
             # also has not been found yet, then append the information
@@ -584,8 +551,8 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf):
                 featPos.append(si)      # add in the new feature which meets the criteria
 
                 # add the features from the current sample
-                pdAllR.append(dfR[dfR["ID"]==idF][dfR[dfR["ID"]==idF]["Sample"] >= s])
-                pdAllSm.append(dfSm[dfSm["ID"]==idF][dfSm[dfSm["ID"]==idF]["Sample"] >= s])
+                pdAllR.append(dfR[dfR["ID"]==idF][dfR[dfR["ID"]==idF]["Zs"] >= s])
+                pdAllSm.append(dfSm[dfSm["ID"]==idF][dfSm[dfSm["ID"]==idF]["Zs"] >= s])
 
             # remove the initialising points
             if featPosID[0] == -1:
@@ -599,12 +566,12 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf):
         dfNew = pd.concat([dfSm[dfSm["ID"] == f] for f in featPosID])
 
         # find out how far the minimum feature goes for
-        s += np.min([np.max((dfNew[dfNew["ID"] == i]).Sample)-s+1 for i in featPosID])
+        s += np.min([np.max((dfNew[dfNew["ID"] == i]).Zs)-s+1 for i in featPosID])
 
         # re-initialise all the features which are longer than the 
         # shortest feature
-        featPosID = list(np.unique(dfNew[dfNew["Sample"] >= s].ID))
-        featPos = list(np.c_[dfNew[dfNew["Sample"] == s].xPos, dfNew[dfNew["Sample"] == s].yPos])
+        featPosID = list(np.unique(dfNew[dfNew["Zs"] >= s].ID))
+        featPos = list(np.c_[dfNew[dfNew["Zs"] == s].X, dfNew[dfNew["Zs"] == s].Y])
 
     # collate the list of the final features
     finalFeats = np.unique(featAll)
@@ -632,7 +599,7 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     # samples so that the warping is true, rather than a distorted movement
     # ie create bounds on the images to deform
 
-    name = nameFromPath(imgpath, 3)
+    name = nameFromPath(imgpath, 1) + "_" + str(s)
     print("Warping " +  name)
 
     # load the correct ID images
@@ -640,32 +607,15 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     x, y, c = img.shape
 
     # get the sample specific feature info
-    rawInfo = dfRaw[dfRaw["Sample"] == s]
-    smoothInfo = dfNew[dfNew["Sample"] == s]
+    rawInfo = dfRaw[dfRaw["Z"] == s]
+    smoothInfo = dfNew[dfNew["Z"] == s]
 
     # merge the info of the features which have the same ID
     allInfo = pd.merge(rawInfo, smoothInfo, left_on = 'ID', right_on = 'ID')
 
     # get the common feature positions
-    rawFeats = np.c_[allInfo.xPos_x, allInfo.yPos_x]
-    smFeats = np.c_[allInfo.xPos_y, allInfo.yPos_y]
-    
-    '''
-    # add points in between features found, NOTE this definitely doesn't work!
-    # sort the feature into order from top to bottom
-    rawFeatsS = rawFeats[np.argsort(rawFeats[:, 1])]
-    smFeatsS = smFeats[np.argsort(rawFeats[:, 1])]
-
-    rawFeatsM = []
-    for (xs, ys), (xe, ye) in zip(rawFeatsS[:-1], rawFeatsS[1:]):
-        rawFeatsM.append(np.c_[np.linspace(xs, xe, 10), np.linspace(ys, ye, 10)])
-    rawFeatsMC = np.concatenate(rawFeatsM)
-
-    smFeatsm = []
-    for (xs, ys), (xe, ye) in zip(smFeatsS[:-1], smFeatsS[1:]):
-        smFeatsm.append(np.c_[np.linspace(xs, xe, 10), np.linspace(ys, ye, 10)])
-    smFeatsMC = np.concatenate(smFeatsm)
-    '''
+    rawFeats = np.c_[allInfo.X_x, allInfo.Y_x]
+    smFeats = np.c_[allInfo.X_y, allInfo.Y_y]
 
     '''
     for nr, ns in zip(rawFeatsMC, smFeatsMC):
@@ -702,33 +652,27 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     imgFlow[:, :, 0] = Flow[:, :, 0]
     imgFlow[:, :, 1] = Flow[:, :, 1]
     '''
-
-    imgA = img.copy()
-    imgModA = imgMod.copy()
+    '''
     l = tile(sz, x, y)/2
     for n, (r, t, id) in enumerate(zip(rawFeats, smFeats, allInfo.ID)):
         rawP = r.astype(int)
         smP = t.astype(int)
         
-        imgAS = getSect(imgA, rawP, l, bw = False)
-        imgModAS = getSect(imgModA, smP, l, bw = False)
-
-        # cv2.imwrite(dest + name + "feat" + str(id) + "sampR" + str(s) + ".jpg", imgAS)       # raw sections
-        # cv2.imwrite(dest + name + "feat" + str(id) + "sampS" + str(s) + ".jpg", imgModAS)    # smooth sections
-
-        # plt.imshow(np.hstack([imgAS, imgModAS])); plt.show()
-        
-        cv2.circle(imgA, tuple(smP), 8, [255, 0, 0], 4)
-        cv2.circle(imgA, tuple(rawP), 8, [0, 0, 255], 4)
-
-        cv2.circle(imgModA, tuple(rawP), 8, [0, 0, 255], 4)
-        cv2.circle(imgModA, tuple(smP), 8, [255, 0, 0], 4)
+        cv2.circle(imgMod, tuple(rawP), 8, [0, 0, 255], 4)
+        cv2.circle(imgMod, tuple(smP), 8, [255, 0, 0], 4)
 
         # add featue ID to image
-        cv2.putText(imgModA, str(id), tuple(smP + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, [255, 255, 255], 5)
-        cv2.putText(imgModA, str(id), tuple(smP + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, [0, 0, 0], 2)
+        cv2.putText(imgMod, str(id), tuple(smP + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, [255, 255, 255], 5)
+        cv2.putText(imgMod, str(id), tuple(smP + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, [0, 0, 0], 2)
 
-    imgMod = imgModA
+        # add key 
+        cv2.putText(imgMod, str("Orig"), tuple([100,100]), cv2.FONT_HERSHEY_SIMPLEX, 2, [255, 255, 255], 8)
+        cv2.putText(imgMod, str("Orig"), tuple([100,100]), cv2.FONT_HERSHEY_SIMPLEX, 2, [0, 0, 255], 3)
+
+        cv2.putText(imgMod, str("New"), tuple([100,150]), cv2.FONT_HERSHEY_SIMPLEX, 2, [255, 255, 255], 8)
+        cv2.putText(imgMod, str("New"), tuple([100,150]), cv2.FONT_HERSHEY_SIMPLEX, 2,  [255, 0, 0], 3)
+    '''
+    
     # save the images
     cv2.imwrite(dest + name + ".png", imgMod)
 
@@ -800,7 +744,7 @@ def drawPoints(img, df, sampleNos, annos = 3, l = 0):
     for samp, i in enumerate(np.unique(df["ID"])):
         featdf = df[df["ID"] == i]
         tar = None
-        for n, (fx, fy) in enumerate(zip(featdf.xPos, featdf.yPos)):
+        for n, (fx, fy) in enumerate(zip(featdf.X, featdf.Y)):
 
             tar = ((np.array([np.round(fx), np.round(fy)])) + np.array([y * n, 0])).astype(int)
             if n == 0 and annos > 0:
@@ -880,6 +824,168 @@ def featExtractor(dest, imgPath, info, sz):
             firstSamp = drawPoints(img.copy(), info[info["ID"] == d.ID], 1, 3, l)
             cv2.imwrite(featdir + "_referenceImage.jpg", firstSamp, [int(cv2.IMWRITE_JPEG_QUALITY), 20])
         cv2.imwrite(featdir + nameFromPath(imgPath, 3) + ".png", featSect)
+
+def fixFeatures(features, home):
+
+    '''this function interpolates the position of missing features based
+    on a manual record of how many samples are missing between samples
+
+        Inputs:\n
+    (features), dataframe of the features found with the X, Y positions, sample
+    position in current stack, NOT the whole one, ID\n
+    (home), directory to information (in particular the images and missing Samples info)\n
+    (smooth), the amount of smoothing in the b-cubic spline 
+
+        Outputs:\n
+    (featuresFixed), dataframe of the features with interpolated positions
+    for missing features
+    '''
+
+    def makeSampKey(missingSampPath, imgs):
+
+        '''
+        Gets the csv file containing the missing sample information and 
+        the img paths and turns it into a data frame correlating the sample
+        image with the position in its REAL vertical position
+        '''
+
+        # get the csv file on the missing samples
+        try:
+            info = open(missingSampPath, "r").read().split("\n")
+            missingSampInfo = np.array([i.split(",") for i in info[1:]])
+        except:
+            # if there is no missingSampInfo just assume there are no missing samples
+            missingSampInfo = np.c_[nameFromPath(imgs[:-1], 3), nameFromPath(imgs[1:], 3), np.zeros(len(imgs)-1).astype(int)]
+        imgID = []
+        imgPath = []
+        n = 0
+        imgPath.append(imgs[0])
+        imgID.append(0) # first feature always included
+        for m, i in zip(missingSampInfo[:, 2].astype(int), imgs[1:]):
+            n += m
+            n += 1
+            imgID.append(int(n))
+            imgPath.append(i)
+        imgID = np.array(imgID).astype(int)
+
+        # key = pd.DataFrame(np.c_[imgID, np.arange(len(imgID)), imgPath], columns = ["Z", "Sample", "img"])
+        key = pd.DataFrame(np.c_[imgID, np.arange(len(imgID))], columns = ["Z", "Zs"])
+        key["Zs"] = key.Zs.astype(int)      # convert positions into ints
+        key["Z"] = key.Z.astype(int)
+        return(key)
+
+    alignedSamples = home + "alignedSamples/"
+    info = home + "info/"
+
+    # get the csv file on the missing samples
+    missingSampDir = info + "missingSamples.csv"
+
+    # get all the images
+    imgs = glob(alignedSamples + "*.png")
+
+    # get the samp to Z keys
+    imgID = makeSampKey(missingSampDir, imgs)
+
+    featuresdf = pd.merge(features, imgID, left_on = "Zs", right_on = "Zs").sort_values(by=["Zs", "Z"])
+    featureIDs = np.unique(featuresdf.ID)
+    # NOTE this is begging to be parallelised.....
+    # extrapolate features on missing samples
+    info = []
+    for ft in featureIDs:
+
+        featdf = featuresdf[featuresdf["ID"] == ft]
+        # create a new DF with the SAME columns
+        featNdf = pd.DataFrame(columns = featdf.keys())
+
+        for rf, tf in zip(featdf.index[:-1], featdf.index[1:]):
+            ref = featdf.loc[rf]
+            tar = featdf.loc[tf]
+
+            # get the number of missing samples
+            rang = int(tar.Z - ref.Z)
+
+            # use the same information, just iterate the sample number
+            for n, r in enumerate(range(rang)):
+                # when closer to the reference sample
+                if n <= np.floor(rang/2):
+                    rN = ref.copy()
+                    rN.Z += n 
+                    featNdf = featNdf.append(rN)
+                # when closer to the target sample
+                else:
+                    tN = tar.copy()
+                    tN.Z += (n - rang)
+                    featNdf = featNdf.append(tN)
+
+        featNdf = featNdf.append(tar)
+
+        # store the df
+        info.append(featNdf)
+
+    # combine each feature df
+    featfix = pd.concat(info)
+
+    return(featfix)
+
+def smoothFeatures(df, imgs, smooth = 0, zAxis = "Z"):
+
+    '''
+    Perform a cubic-b-spline smoothing over features
+
+        Inputs:\n
+    (df), data frame of the raw feature positions\n
+    (smooth), the amount to smooth the features by
+
+        Outputs:\n
+    (featsSm), data frame of features with smoothed trajectories
+    '''
+
+    # create a new dataframe for the smoothed feature positions
+    featsStore = []
+    p = 0       # create data frame count 
+    for f in np.unique(df["ID"]):
+        xp = df[df["ID"] == f].X.astype(float)
+        yp = df[df["ID"] == f].Y.astype(float)
+        zp = df[df["ID"] == f][zAxis].astype(float)
+        # imgsdf = df[df["ID"] == f].img
+        # if the number of samples the feature passes through is more than 
+        # the number of images being processed, don't include
+        '''
+        if np.max(zp) > len(imgs): 
+            sampRange = np.where(zp < len(imgs))[0]
+            if len(sampRange) < 3:
+                continue
+            xp = xp[sampRange]
+            yp = yp[sampRange]
+            zp = zp[sampRange]
+        '''
+        '''
+        xSm = np.linspace(np.array(xp)[0], np.array(xp)[0], len(xp))
+        ySm = np.linspace(np.array(yp)[0], np.array(yp)[0], len(yp))
+        '''
+        # perform a cubic spline fitting over the data
+        tck, u = splprep([xp, yp, zp], s = smooth)
+        # num_true_pts = len(z)
+        # u_fine = np.linspace(0,1,num_true_pts)        # interpolating between missing points
+        # x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
+        xSm, ySm, _ = splev(u, tck)
+    
+        ID = np.array(df[df["ID"] == f].ID)
+
+        # create data frame with info and ensure they are the correct data types
+        featsSm = pd.DataFrame(np.c_[xSm, ySm, zp, ID], columns=["X", "Y", zAxis, "ID"])
+        featsStore.append(featsSm)
+
+    featsStore = pd.concat(featsStore)
+
+    # ensure the correct data format in the df
+    featsStore["X"] = featsStore.X.astype(float)
+    featsStore["Y"] = featsStore.Y.astype(float)
+    featsStore[zAxis] = featsStore[zAxis].astype(float)
+    featsStore["ID"] = featsStore.ID.astype(int)
+    
+    return(featsStore)
+
 
 if __name__ == "__main__":
 
