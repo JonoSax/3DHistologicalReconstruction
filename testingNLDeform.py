@@ -45,25 +45,26 @@ def imgManualFeatSelect(imgPath):
 
     n = 10
     points = []
+    '''
     for xr in range(1, n):
         for yr in range(1, n):
             points.append(np.array([y/n*yr, x/n*xr]))
-
+    '''
     i = 0
     # allow for manual annotations of the images
     # points = [[100, 100], [200, 200], [300, 300]]
 
-    points.append([0, 0])
+    # points.append([0, 0])
     while True:
-        # point = np.median(roiselector(imgAnno, "Select the points"), axis = 1)
-        point = np.array(points[i])
+        point = np.median(roiselector(imgAnno, "Select the points"), axis = 1)
+        # point = np.array(points[i])
         orig = tuple(point.astype(int))
 
         # if no point is added then that's the manual end of point selection
         if np.sum(point) == 0:
             break
 
-        
+        '''
         # make the target point something randomally 10 points away from the reference
         shift = np.random.rand(2)*20-10
         tar.append(point + shift)
@@ -81,7 +82,7 @@ def imgManualFeatSelect(imgPath):
             tar.append(point)
             cv2.circle(imgAnno, orig, 5, [0, 0, 255], 5)
             id = str(int(np.floor(i/2)))
-        '''
+        
         cv2.putText(imgAnno, id, orig, cv2.FONT_HERSHEY_SIMPLEX, 1, [255, 255, 255], 4)
         cv2.putText(imgAnno, id, orig, cv2.FONT_HERSHEY_SIMPLEX, 1, [0, 0, 0], 2)
 
@@ -93,6 +94,8 @@ def imgManualFeatSelect(imgPath):
     if len(ref.shape) < 2:
         ref = np.expand_dims(ref, axis = 0)
         tar = np.expand_dims(tar, axis = 0)
+
+    # imgMod = remap(img, ref, tar)
 
     # don't modify the image (just annotate it)
     imgNoMod, flow = warper(img, ref, tar, anno = True, warp = False)
@@ -130,6 +133,8 @@ def warper(img, ref, tar, anno = False, warp = True, border = 10, smoother = 0, 
     #           (ref, tar), numpy array of points
     #           (anno), if true will add the ref and target points onto the image
     #           (warp), if true will warp based on the ref and tar positions
+    #           (border), number of points along each edge
+    #           (smoother), 
     # Outputs:  (imgMod), modified image
     #           (flow), flow field of the transformation
 
@@ -191,6 +196,17 @@ def warper(img, ref, tar, anno = False, warp = True, border = 10, smoother = 0, 
             cv2.circle(imgMod, tuple(t.astype(int)), 5, [255, 0, 0], 5)
 
     return(imgMod, [Flow1, Flow2])
+
+def remap(img, ref, tar):
+
+    # use the remamp function to morph the image based on features
+    # Inputs:   (img), numpy array of image
+    #           (ref, tar), list of feature positions
+    # Returns:  (imgMod), modified image
+
+    dst = cv2.remap(img, ref, tar, cv2.INTER_CUBIC)
+
+    blended = cv2.addWeighted(true_dst, 0.5, dst, 0.5, 0)
 
 def imgAutoFeatSelect(imgPath, opt):
     # ---- modifiying the images
