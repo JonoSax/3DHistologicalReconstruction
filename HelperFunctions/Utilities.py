@@ -17,30 +17,6 @@ import pandas as pd
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
 
-def trainingDirs(data, target, label, *args):
-
-    # This function takes data and copies it from that location into a new directory containing all the training data
-    # of the true labels
-    # Inputs:   (data), the directory of the data
-    #           (target), the location of the directory to save the data (either pre-existing or new)
-    #           (label), the label for the data being moved (either into an existing folder or new)
-    #           (*args), sub-directories that can be created
-    # Outputs:  (), the directory is populated with true data labels to be used
-
-    # create the target tissue folder 
-    dir = target + label
-    dirMaker(dir)
-
-    # create subdirectories (optional)
-    for d in args:
-        dirn = dir + "/" + d
-        dirMaker(dirn)
-        dir = dirn
-
-
-    # copy the data into created folders
-    copy(data, dirn)
-
 def listToTxt(data, dir, **kwargs):
 
     # Converts a list of information into a txt folder with the inputted name
@@ -105,19 +81,29 @@ def listToTxt(data, dir, **kwargs):
 
 def dirMaker(dir):
 
-    # creates directories (including sub-directories)
-    # Input:    (dir), path to be made
-    # Output:   (), all sub-directories necessary are created
+    '''
+    creates directories (including sub-directories)
+
+    Input:    \n
+    (dir), path to be made
+
+    Output:   \n
+    (), all sub-directories necessary are created\n
+    (made), boolean whether this is the first time the directory has been made
+    '''
 
     # ensure that the exact directory being specified exists, if not create it
+    made = False     # boolean if the directory was successfully made for the first time
     dirSplit = dir.split("/")
     dirToMake = ""
     for d in range(dir.count("/")):
         dirToMake += str(dirSplit[d] + "/")
         try:
             os.mkdir(dirToMake)
+            made = True
         except:
             pass
+    return(made)
 
 def txtToList(dir):
 
@@ -392,47 +378,6 @@ def denseMatrixViewer(coords, plot = True, unique = False):
 
     return(area, shift)
 
-def quadrantLines(dir, dirTarget, kernel):
-
-    # This function adds the quadrant lines onto the tif file
-    # Inputs:   (dir), the SPECIFIC name of the original tif image 
-    #           (dirTarget), the location to save the image
-    #           (kernel), kernel size
-    # Outputs:  (), re-saves the image with quadrant lines drawn over it
-
-    imgO = tifi.imread(dir)
-    hO, wO, cO = imgO.shape
-
-    # if the image is more than 6 megapixels downsample 
-    if hO * wO >= 30 * 10 ** 6:
-        aspectRatio = hO/wO
-        imgR = cv2.resize(imgO, (6000, int(6000*aspectRatio)))
-    else:
-        imgR = imgO
-
-    h, w, c = imgR.shape
-
-    # scale the kernel to the downsampled image
-    scale = h/hO
-    kernelS = int(kernel * scale)
-
-    wid = np.arange(0, w, kernelS)
-    hgt = np.arange(0, h, kernelS)
-
-    # draw verticl lines
-    for x in wid:
-        cv2.line(imgR, (x, 0), (x, h), (0, 0, 0), thickness=1)
-
-    # draw horizontal lines
-    for y in hgt:
-        cv2.line(imgR, (0, y), (w, y), (0, 0, 0), thickness=1)
-
-    newImg = dirTarget + "mod.jpeg"
-    cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
-    # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
-
-    return(newImg, scale)
-
 def maskCover(dir, dirTarget, masks, small = True):
 
     # This function adds add the mask outline to the image
@@ -469,24 +414,6 @@ def maskCover(dir, dirTarget, masks, small = True):
 
     # cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
     # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
-
-def dataPrepare0(imgDir):
-
-    # this function prepares an array of data for the network
-    # MAKE A NEW ONE FOR EACH METHOD OF PROCESSING
-    # Inputs:   (imgDir), a list containing the image directories of data
-    # Outputs:  (arrayP), the array of data now standardised for processing
-
-    array = np.array([cv2.imread(fname, 0) for fname in imgDir]) 
-
-    # normalise data to be within a range of 0 to 1 for each image
-    arrayP = np.array([(a-np.min(a))/(np.max(a) - np.min(a)) for a in array])
-
-    # ensure a 4d tensor is created
-    while len(arrayP.shape) < 4:
-        arrayP = np.expand_dims(arrayP, -1)
-
-    return(arrayP)
 
 def nameFromPath(paths, n = 2):
     # this function extracts the names from a path/s
@@ -613,33 +540,6 @@ def dictToArray(d, type = float):
     l = np.array(list(d.values())).astype(type)
 
     return(l)
-
-def extractFeatureInfo(featInfo, feat):
-
-    # this function takes a dictionary of information which is categorical and extracts
-    # only the information which is specificed
-    # Inputs:   (featInfo), dictionary containing all the info
-    #           (feat), the specific dictionary reference of interest
-    # Outputs:  (specFeatInfo), a dictionary which contains the specific reference and its 
-    #                           corresponding information
-
-    featKey = list()
-    for f in sorted(featInfo.keys()):
-        key = f.split("_")
-        featKey.append(key)
-    
-    featKey = np.array(featKey)[np.where(np.array(featKey)[:, 0] == feat), :][0]
-
-    specFeatInfo = {}
-    for v in np.unique(np.array(featKey)[:, -1]):
-        specFeatInfo[v] = {}
-
-    # allocate the scaled and normalised sample to the dictionary PER specimen
-    for _, f, p in featKey:
-        specFeatInfo[p][f] = featInfo[feat + "_" + f + "_" + p]
-        
-
-    return(specFeatInfo)
 
 def hist_match(source, template):
     """
@@ -1255,4 +1155,29 @@ def moveImg(ref, tar, shift):
     tarM = fieldN[-x:, -y:]
 
     return(tarM)
+
+def getSect(img, mpos, l, bw = True):
+
+    # get the section of the image based off the feature object and the tile size
+    # Inputs:   (img), numpy array of image
+    #           (mpos), position
+    #           (s), tile size 
+    # Outputs:  (imgSect), black and white image section
+
+    x, y, c = img.shape      
+
+    # get target position from the previous match, use this as the 
+    # position of a possible reference feature in the next image
+    yp, xp = np.round(mpos).astype(int)
+    xs = int(np.clip(xp-l, 0, x)); xe = int(np.clip(xp+l, 0, x))
+    ys = int(np.clip(yp-l, 0, y)); ye = int(np.clip(yp+l, 0, y))
+    sect = img[xs:xe, ys:ye]
+
+    # NOTE turn into black and white to minimise the effect of colour
+    if bw:
+        sectImg = np.mean(sect, axis = 2).astype(np.uint8)
+    else:
+        sectImg = sect
+
+    return(sectImg)
 
