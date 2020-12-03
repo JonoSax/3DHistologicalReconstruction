@@ -76,7 +76,8 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     # use the first image as the reference for colour normalisation
     # NOTE use the small image as it is faster but pretty much the 
     # same results
-    imgref = cv2.imread(imgsmall[1])
+    try: imgref = cv2.imread(imgsmall[1])
+    except: imgref = None
     
     # serialised
     if cpuNo is False:
@@ -215,6 +216,13 @@ def maskMaker(idir, imgMasked = None, plotting = False):
     hist = histinfo[0]
     diffback = np.diff(hist)
     background = histinfo[1][np.argmax(diffback)-1]
+
+    '''
+    plt.plot(histinfo[1][1:], histinfo[0]); 
+    plt.xlabel('pixelValue')
+    plt.ylabel('pixelCount')
+    plt.show()  
+    '''
 
     # accentuate the colour
     im_accentuate = img_lowPassFilter.copy()
@@ -398,44 +406,6 @@ def bounder(im_id):
 
     return(extractA)
 
-def masterMaskMaker(name, maskShapes, masksStore): 
-
-    # for specific specimens, a master mask (combining all the masks together)
-    # is useful to reduce outlier mask outlines
-    if name.find("H653") >=0 or name.find("1029a") >= 0:
-        # Standardise the size of the mask to create a mastermask
-        maskShapes = np.array(maskShapes)
-        yM, xM = np.max(maskShapes, axis = 0)
-        fieldO = np.zeros([yM, xM]).astype(np.uint8)
-        maskAll = fieldO.copy()
-        for m in masksStore:
-            field = fieldO.copy()
-            mask = masksStore[m]
-            y, x = mask.shape
-            ym0 = int((yM - y) / 2)
-            xm0 = int((xM - x) / 2)
-
-            # replace the mask with a centred and standardised sized version
-            field[ym0:(ym0 + y), xm0:(xm0 + x)] += mask
-            masksStore[m] = field
-            maskAll += field 
-
-        # create a master mask which is made of only the masks which appear in at least
-        # 1/3 of all the other masks --> this is to reduce the appearance of random masks
-        masterMask = maskAll > len(masksStore) / 3
-
-    else:
-        maskShapes = None        # if not doing a master mask don't need the shapes
-        masterMask = 1
-
-    # ------------------------------------------------------------------
-
-    # apply the master mask to all the specimen masks 
-    for m in masksStore:
-        masksStore[m] *= masterMask  
-
-    return(masksStore, maskShapes)
-
 def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
 
     # this applies the mask created to the lower resolution and full 
@@ -471,14 +441,12 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
         # get the bounding positional information
         extract = bounder(mask[:, :, 0])
 
+        id = 0
         for n in extract:
 
             if mask is None or imgbig is None or imgsmall is None:
                 print("\n\n!!! " + name + " failed!!!\n\n")
                 break
-
-            # create a a name
-            newid = name + "_" + str(n)
 
             # get the co-ordinates
             x, y = extract[n]
@@ -490,6 +458,9 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
             # area, it probably isn't a sample and is not useful
             if maskE.size < mask.size * 0.2 / len(extract):
                 continue
+
+            # create a a name
+            newid = name + "_" + str(id)
 
             # extract only the image which contains the sample
             imgsmallsect = imgsmall[y[0]:y[1], x[0]:x[1], :]
@@ -509,6 +480,8 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
             # write the new images
             cv2.imwrite(imgMasked + newid + ".png", imgsmallsect)
             cv2.imwrite(imgMasked + newid + ".tif", imgbigsect)
+
+            id += 1
             
             # save the new image dimensions
             tifShape[newid] = imgbigsect.shape
@@ -544,15 +517,15 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
     dataSource = '/Volumes/USB/Test/'
     dataSource = '/Volumes/USB/H750A_7.0/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/Storage/H710C_6.1/'
 
     name = ''
     size = 3
-    cpuNo = 2
+    cpuNo = False
         
     specID(dataSource, name, size, cpuNo)
