@@ -22,10 +22,13 @@ else:
 
 # object which contains the reference and target positions between a single matching pair
 class sampleFeatures:
-    def __init__(self, ref = None, tar = None, fit = None, shape = None):
+    def __init__(self, ref = None, tar = None, fit = None):
         self.ref = ref
         self.tar = tar
         self.fit = fit
+
+    def __repr__(self):
+        return repr((self.ref, self.tar, self.fit))
 
 def align(data, size = 0, cpuNo = False, saving = True, prefix = "tif", refName = None, errorThreshold = 100):
 
