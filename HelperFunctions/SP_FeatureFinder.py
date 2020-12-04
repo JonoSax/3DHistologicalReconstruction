@@ -209,6 +209,11 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
         matchedInfo[fn].refP = refAdj
         matchedInfo[fn].tarP = tarAdj
         matchedInfo[fn].ID = fn
+
+        # ensure that the feat number is a standard length
+        fn = str(fn)
+        while len(fn) < 4:
+            fn = "0" + fn
         
         # create feature dictionary
         name = "feat_" + str(fn) + "_scl_" + str(kp.res)
@@ -258,8 +263,6 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin = 20, dist = 50
 
     dictToTxt(matchRefDict, dataDest + name_ref + ".reffeat", shape = img_refMaster.shape, fit = False)
     dictToTxt(matchTarDict, dataDest + name_tar + ".tarfeat", shape = img_tarMaster.shape, fit = False)
-
-# ------------ HARD CODED SPECIMEN SPECIFIC FEATURES ------------
 
 def imgPlacement(name_spec, img_ref, img_tar):
 
