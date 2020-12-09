@@ -114,7 +114,7 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = Fal
 
         # find spatially coherent sift features between corresponding images
         startAllFeatSearch = time()
-        matchedInfo = allFeatSearch(refImg, tarImg, dist = dist, cpuNo = True, gridNo=30, tol = 0.03, scales = [0.2, 0.5, 1])[0]
+        matchedInfo = allFeatSearch(refImg, tarImg, dist = dist, cpuNo = True, gridNo=30, tol = 0.03, scales = [0.2, 0.3, 0.5, 1])[0]
         allFeatSearchTime = time() - startAllFeatSearch
 
         # featMatchimg = nameFeatures(refImg, tarImg, matchedInfo, combine = True)
@@ -230,39 +230,14 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = Fal
         if featureNo > 0:
             print("Number of " + str(1+n) + "/" + str(samples) + " linked features = " + str(featureNo))
 
+    '''
     # create a panda data frame of all the features found for plotting
-    df = dictToDF(allMatchedInfo, ["X", "Y", "Zs", "ID"])
-
-    '''
-    # create feature dictionaries per sample
-    # NOTE try and make this something which saves every iteration
-    for s in range(samples-1):
-
-        refN = nameFromPath(imgs[s], 3)
-        tarN = nameFromPath(imgs[s+1], 3)
-
-        # get the features of the reference image
-        ref = df[df["Zs"] == s]
-
-        # get the features of the target image
-        tar = df[df["Zs"] == s+1]
-
-        refD = {}
-        for x, y, s, ID in np.array(ref):
-            refD[int(ID)] = np.array([x, y])
-        dictToTxt(refD, destFeat + refN + ".reffeat", fit = False, shape = refImg.shape)
-        
-        tarD = {}
-        for x, y, s, ID in np.array(tar):
-            tarD[str(int(ID))] = np.array([x, y])
-        dictToTxt(tarD, destFeat + tarN + ".tarfeat", fit = False, shape = tarImg.shape)
-    '''
-    # plot the position of the features through the samples
-    
+    df = dictToDF(allMatchedInfo, ["X", "Y", "Zs", "ID"])    
 
     if plotting:
         px.line_3d(df, x="X", y="Y", z="Zs", color="ID", title = "All features, unaligned").show()
         # plotFeatureProgress(df, imgs, destImg + 'CombinedRough.jpg', sz, 2)
+    '''
 
 def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMin = 0, featsMax = None):
 
@@ -313,28 +288,15 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMi
     featCheck = featCounts[np.where(featCounts[:, 1] > featsMin)]
     df = pd.concat([dfAll[dfAll["ID"] == f] for f in featCheck[:, 0]])
 
-
     # only select the features which have more than the featMin requirements
 
-    # serialised feature extraction (for debugging)
-    '''
+    # serialised feature extraction 
+    # NOTE this has to be serialised so that the right reference image is used
     for n, img in enumerate(imgs):
-        sampdf = df[df["Sample"] == n]
-        featExtractor(destSects, img, sampdf, sz)
-    '''
-
-    # for all the features identified, extract the found features
-    
-    job = []
-    for n, img in enumerate(imgs):
+        print(str(n) + "/" + str(len(imgs)))
         sampdf = df[df["Zs"] == n]
-        j = multiprocessing.Process(target=featExtractor, args = (LSectDir, img, sampdf, sz, ))
-        job.append(j)
-        j.start()
-    for j in job:
-        j.join()
+        featExtractor(LSectDir, img, sampdf, sz)
     
-
     # of the features which are found, perform a smoothing operation and select the 
     # features which best match the criteria for NL deformation, then fix it taking
     # into account the missing samples
@@ -613,6 +575,11 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
         # shortest feature
         featPosID = list(np.unique(dfNew[dfNew["Zs"] >= s].ID))
         featPos = list(np.c_[dfNew[dfNew["Zs"] == s].X, dfNew[dfNew["Zs"] == s].Y])
+        if len(featPosID) == 0:
+            featPosID = []
+            featPosID.append(-1)
+            featPos = []
+            featPos.append(np.array([-1000, -1000]))
 
     # collate the list of the final features
     finalFeats = np.unique(featAll)
@@ -639,6 +606,11 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     # NOTE I should really add the corner positions for all 
     # samples so that the warping is true, rather than a distorted movement
     # ie create bounds on the images to deform
+
+    # ensure the naming convention is correct 
+    s = str(s)
+    while len(s) < 4:
+        s = "0" + s
 
     name = nameFromPath(imgpath, 1) + "_" + str(s)
     print("Warping " +  name)
@@ -871,7 +843,7 @@ def featExtractor(dest, imgPath, info, sz, zSamp = "Zs"):
     # go through all the info for each sample and extract all the features
     # and save in directories to categorise them into features, named after
     # the sample they were found in
-    for i, d in info.iterrows():
+    for _, d in info.iterrows():
         featSect = getSect(img, np.array([d.X, d.Y]), l, False)
         featdir = dest + str(int(d.ID)) + "/"
         made = dirMaker(featdir)
@@ -912,8 +884,10 @@ def fixFeatures(features, home):
             # contains a space)
             missingSampInfo = np.array([i.split(",")[-1] for i in info[1:-1]]).astype(int)
         except:
+            # info = np.c_[nameFromPath(imgs[:-1], 3), nameFromPath(imgs[1:], 3), np.zeros(len(imgs)-1).astype(int)]
+            missingSampInfo = np.zeros(len(imgs)-1)
             # if there is no missingSampInfo just assume there are no missing samples
-            missingSampInfo = np.c_[nameFromPath(imgs[:-1], 3), nameFromPath(imgs[1:], 3), np.zeros(len(imgs)-1).astype(int)]
+        print("     " + str(int(np.sum(missingSampInfo))) + " missing samples")
         imgID = []
         imgPath = []
         n = 0
@@ -1022,11 +996,17 @@ def smoothFeatures(df, imgs, smooth = 0, zAxis = "Z"):
         ySm = np.linspace(np.array(yp)[0], np.array(yp)[0], len(yp))
         '''
         # perform a cubic spline fitting over the data
-        tck, u = splprep([xp, yp, zp], s = smooth)
-        # num_true_pts = len(z)
-        # u_fine = np.linspace(0,1,num_true_pts)        # interpolating between missing points
-        # x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
-        xSm, ySm, _ = splev(u, tck)
+        try:
+            tck, u = splprep([xp, yp, zp], s = smooth)
+            # num_true_pts = len(z)
+            # u_fine = np.linspace(0,1,num_true_pts)        # interpolating between missing points
+            # x_fine, y_fine, z_fine = interpolate.splev(u_fine, tck)
+            xSm, ySm, _ = splev(u, tck)
+        # if there is an error, ie there aren't enough features to perform a new 
+        # smoothing operation, then just return the previous values
+        except:
+            xSm = xp
+            ySm = yp
     
         ID = np.array(df[df["ID"] == f].ID)
 
@@ -1051,6 +1031,9 @@ if __name__ == "__main__":
     dirHome = '/Volumes/USB/Test/'
     dirHome = '/Volumes/Storage/H653A_11.3/'
     dirHome = '/Volumes/Storage/H710C_6.1/'
+    dirHome = '/Volumes/USB/H671A_18.5/'
+    dirHome = '/Volumes/USB/H710B_6.1/'
+    dirHome = '/Volumes/USB/H750A_7.0/'
 
     # NOTE fork is considered unstable but it is an order of magnitude 
     # faster than using spawn.... HOWEVER this only works with the process
