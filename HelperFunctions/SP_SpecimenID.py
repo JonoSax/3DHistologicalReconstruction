@@ -5,14 +5,13 @@ samples into seperate images.
 
 import numpy as np
 import cv2
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 import os 
 from glob import glob
 from multiprocessing import Pool
 import multiprocessing
-import tifffile as tifi
-from PIL import Image
 from itertools import repeat
+
 if __name__ != "HelperFunctions.SP_SpecimenID":
     from Utilities import *
 else:
@@ -49,8 +48,9 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
 
     # create the directory where the masked files will be created
     imgMasked = datasrc + "masked/"
+    imgMasks = imgMasked + "masks/"
     imgPlots = imgMasked + "plot/"
-    dirMaker(imgMasked)
+    dirMaker(imgMasks)
     dirMaker(imgPlots)
 
     # get all the images 
@@ -61,17 +61,17 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     # serialised
     if cpuNo is False:
         for idir in imgsmall:    
-            maskMaker(idir, imgMasked, True)
+            maskMaker(idir, imgMasks, imgPlots)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasked), repeat(True)))
+            pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasks), repeat(imgPlots)))
     
     print("\n   #--- APPLY MASKS ---#")
     
     # get the directories of the new masks
-    masks = sorted(glob(imgMasked + "*.pbm"))
+    masks = sorted(glob(imgMasks + "*.pbm"))
 
     # use the first image as the reference for colour normalisation
     # NOTE use the small image as it is faster but pretty much the 
@@ -86,12 +86,12 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
         info = []
         for m, iB, iS in zip(masks, imgbig, imgsmall):
             name = nameFromPath(iB)
-            info.append(imgStandardiser(m, iB, iS, imgref))
+            info.append(imgStandardiser(imgMasked, m, iB, iS, imgref))
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            info = pool.starmap(imgStandardiser, zip(masks, imgbig, imgsmall, repeat(imgref)))
+            info = pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, imgbig, imgsmall, repeat(imgref)))
 
         # extract the tif and jpeg info
         tifShape = {}
@@ -126,7 +126,7 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     # create the all.shape information file
     '''
 
-def maskMaker(idir, imgMasked = None, plotting = False):     
+def maskMaker(idir, imgMasked = None, imgplot = None):     
 
     # this function loads the desired image and processes it as follows:
     #   0 - GrayScale image
@@ -137,7 +137,7 @@ def maskMaker(idir, imgMasked = None, plotting = False):
     #   5 - binarising funciton, adaptative
     #   6 - single feature identification with flood fill
     # Inputs:   (img), the image to be processed
-    #           (plotting), boolean whether to show key processing outputs, defaults false
+    #           (imgplot), boolean whether to show key processing outputs, defaults false
     # Outputs:  (im), mask of the image  
 
     #     figure.max_open_warning --> fix this to not get plt warnings
@@ -212,17 +212,33 @@ def maskMaker(idir, imgMasked = None, plotting = False):
 
     # find the colour between the two peak value distributions 
     # this is threshold between the background and the foreground
-    histinfo = np.histogram(img, 20)
-    hist = histinfo[0]
-    diffback = np.diff(hist)
-    background = histinfo[1][np.argmax(diffback)-1]
+    scl = 5
+    histVals, histBins = np.histogram(img, 20)
 
-    '''
-    plt.plot(histinfo[1][1:], histinfo[0]); 
+    # the background is the maximum pixel value
+    backPos = np.argmax(histVals)
+
+    # the end of the foreground is at the inflection point of the pixel count
+    diffback = np.diff(histVals[:backPos])
+    try:
+        forePos = np.where(np.diff(diffback) < 0)[0][-1] + 1
+    except:
+        forePos = backPos - 2
+
+    # find the local minima between the peaks on a higher resolution histogram profile
+    histValsF, histBinsF = np.histogram(img, 100)
+    backVal = (forePos + 1) * 5 + np.argmin(histValsF[(forePos + 1) * 5 :backPos * 5])
+    background = histBinsF[backVal]
+
+    '''    
+    plt.plot(histBins[1:], histVals); 
     plt.xlabel('pixelValue')
     plt.ylabel('pixelCount')
+    plt.title(name + " intensity histogram profile")
+    plt.semilogy(histBins[backPos+1], histVals[backPos], marker="o")
     plt.show()  
     '''
+    
 
     # accentuate the colour
     im_accentuate = img_lowPassFilter.copy()
@@ -247,7 +263,7 @@ def maskMaker(idir, imgMasked = None, plotting = False):
     # threshold to form a binary mask
     v = int((np.median(img_smooth) + np.mean(img_smooth))/2)
     im_binary = (((img_smooth<v) * 255).astype(np.uint8)/255).astype(np.uint8) #; im = ((im<=200) * 0).astype(np.uint8)  
-    im_binary = cv2.dilate(im_binary, (5, 5), iterations=10)      # build edges back up
+    im_binary = cv2.dilate(im_binary, (5, 5), iterations=20)      # build edges back up
 
     # ----------- single feature ID -----------
     
@@ -276,7 +292,7 @@ def maskMaker(idir, imgMasked = None, plotting = False):
     # perform an errosion on a flipped version of the image
     # what happens is that all the erosion/dilation operations work from the top down
     # so it causes an accumulation of "fat" at the bottom of the image. this removes it
-    im_id = cv2.rotate(cv2.dilate(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 5), cv2.ROTATE_180)
+    im_id = cv2.rotate(cv2.dilate(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 10), cv2.ROTATE_180)
     
     # segment out the image
     extract = bounder(im_id)
@@ -285,23 +301,42 @@ def maskMaker(idir, imgMasked = None, plotting = False):
     cv2.imwrite(imgMasked + name + ".pbm", im_id)
     print("     " + name + " Masked")
     # plot the key steps of processing
-    if plotting:
+    if imgplot is not None:
         # create sub plotting capabilities
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+        # fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+        
+        f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
 
-        ax1.imshow(im_accentuate, cmap = 'gray')
-        ax1.set_title('accentuated colour')
+        # ax1.subplot(3, 1, 1)
+        ax1.semilogy(histBinsF[1:], histValsF)
+        ax1.semilogy(histBinsF[backVal+1], histValsF[backVal], marker="o", color = [0, 0, 1])
+        ax1.semilogy(histBins[1:], histVals)
+        ax1.semilogy(histBins[forePos +1], histVals[forePos], marker="o", color = [1, 0, 0])
+        ax1.semilogy(histBins[backPos +1], histVals[backPos], marker="o", color = [1, 0, 0])
+        ax1.title.set_text("Histogram profile")
+        ax1.set(xlabel='Pixel bin', ylabel='Pixel count')
+
+        '''
+        plt.subplot(3, 2, 3)
+        plt.imshow(255-im_accentuate, cmap = 'gray')
+        plt.axis("off")
+        plt.title('accentuated colour')
+        '''
 
         # turn the mask into an RGB image (so that the circle point is clearer)
         im_binary3d = (np.ones([im_binary.shape[0], im_binary.shape[1], 3]) * np.expand_dims(im_binary * 255, -1)).astype(np.uint8)
         for point in points:
             cv2.circle(im_binary3d, tuple(point), 100, (255, 0, 0), 20)
 
+        # ax2.subplot(3, 2, 4)
         ax2.imshow(im_binary3d)
-        ax2.set_title("centreFind Mask")
+        ax2.axis("off")
+        ax2.title.set_text("centreFind Mask")
 
+        # ax3.subplot(3, 2, 5)
         ax3.imshow(im_id, cmap = 'gray')
-        ax3.set_title("identified sample ")
+        ax3.axis("off")
+        ax3.title.set_text("identified sample ")
 
         # imgMod = imgO * np.expand_dims(im_id, -1)
         imgMod = imgO * im_id
@@ -314,10 +349,14 @@ def maskMaker(idir, imgMasked = None, plotting = False):
                 cv2.line(imgMod, (x[i], y[i]), (x[0], y[1]), (255, 0, 0), 10)
 
 
+        # ax4.subplot(3, 2, 6)
         ax4.imshow(imgMod, cmap = 'gray') 
-        ax4.set_title("masked image")
+        ax4.axis("off")
+        ax4.title.set_text("masked image")
+        f.tight_layout(pad = 0.1)
         # plt.show()
-        fig.savefig(imgMasked + 'plot/' + name + ".jpg")
+        plt.savefig(imgplot + name + ".jpg")
+        plt.clf()
 
 def bounder(im_id):
     
@@ -406,7 +445,7 @@ def bounder(im_id):
 
     return(extractA)
 
-def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
+def imgStandardiser(destPath, maskpath, imgbigpath, imgsmallpath, imgref):
 
     # this applies the mask created to the lower resolution and full 
     # resolution images and creates information needed for the alignment
@@ -424,11 +463,10 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
     name = nameFromPath(imgsmallpath, 3)
     print(name + " modifying")
     imgsmall = cv2.imread(imgsmallpath)
-    imgbig = cv2.imread(imgbigpath)
+    imgbig = 1 #cv2.imread(imgbigpath)
     tifShape = {}
     jpegShape = {}
-    imgMasked = regionOfPath(maskpath)
-    ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
+    # ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
 
     # ----------- HARD CODED SPECIMEN SPECIFIC MODIFICATIONS -----------
 
@@ -466,25 +504,25 @@ def imgStandardiser(maskpath, imgbigpath, imgsmallpath, imgref):
             imgsmallsect = imgsmall[y[0]:y[1], x[0]:x[1], :]
 
             # adjust for the original size image
-            xb, yb = (extract[n]/ratio).astype(int)
-            imgbigsect = imgbig[yb[0]:yb[1], xb[0]:xb[1], :]
+            # xb, yb = (extract[n]/ratio).astype(int)
+            # imgbigsect = imgbig[yb[0]:yb[1], xb[0]:xb[1], :]
 
             # expand the dims so that it can multiply the original image
             maskS = cv2.resize(maskE, (imgsmallsect.shape[1], imgsmallsect.shape[0])).astype(np.uint8)
-            maskB = cv2.resize(maskE, (imgbigsect.shape[1], imgbigsect.shape[0])).astype(np.uint8)
+            # maskB = cv2.resize(maskE, (imgbigsect.shape[1], imgbigsect.shape[0])).astype(np.uint8)
 
             # apply the mask to the images 
             imgsmallsect *= maskS
-            imgbigsect *= maskB
+            # imgbigsect *= maskB
 
             # write the new images
-            cv2.imwrite(imgMasked + newid + ".png", imgsmallsect)
-            cv2.imwrite(imgMasked + newid + ".tif", imgbigsect)
+            cv2.imwrite(destPath + newid + ".png", imgsmallsect)
+            # cv2.imwrite(imgMasked + newid + ".tif", imgbigsect)
 
             id += 1
             
             # save the new image dimensions
-            tifShape[newid] = imgbigsect.shape
+            # tifShape[newid] = imgbigsect.shape
             jpegShape[newid] = imgsmallsect.shape
 
             print("     " + newid + " made")
@@ -514,7 +552,6 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/IndividualImages/'
     dataSource = '/Volumes/USB/H653A_11.3/'
-    dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
@@ -522,10 +559,11 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H750A_7.0/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/Storage/H710C_6.1/'
 
     name = ''
     size = 3
-    cpuNo = False
+    cpuNo = 6
         
     specID(dataSource, name, size, cpuNo)
