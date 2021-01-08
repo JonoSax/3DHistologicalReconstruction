@@ -38,7 +38,7 @@ def ds(f, scale, targetDir):
     print(sampName + " being resized")
 
     # read in the image 
-    img = tifi.imread(f)
+    img = cv2.cvtColor(tifi.imread(f), cv2.COLOR_BGR2RGB)
 
     # resize the image
     img = cv2.resize(img, (int(img.shape[1] * scale),  int(img.shape[0] * scale)))
