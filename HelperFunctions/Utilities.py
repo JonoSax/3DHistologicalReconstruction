@@ -13,6 +13,11 @@ from PIL import Image
 import multiprocessing
 from itertools import repeat
 import pandas as pd
+from time import time
+import shutil
+
+# os.system('python HelperFunctions/setup.py build_ext --inplace')
+# from cythonTools import findangle2
 
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 0.625, 0.3125, 0.15625]
@@ -79,30 +84,43 @@ def listToTxt(data, dir, **kwargs):
 
     f.close()
 
-def dirMaker(dir):
+def dirMaker(dir, remove = False):
 
     '''
     creates directories (including sub-directories)
 
     Input:    \n
     (dir), path to be made
+    (remove), if true, if the directory already exists remove
 
     Output:   \n
     (), all sub-directories necessary are created\n
     (made), boolean whether this is the first time the directory has been made
     '''
 
+    def make():
+        dirToMake = ""
+        for d in range(dir.count("/")):
+            dirToMake += str(dirSplit[d] + "/")
+            try:
+                os.mkdir(dirToMake)
+                made = True
+            except:
+                made = False
+
+        return(made)
+
     # ensure that the exact directory being specified exists, if not create it
-    made = False     # boolean if the directory was successfully made for the first time
     dirSplit = dir.split("/")
-    dirToMake = ""
-    for d in range(dir.count("/")):
-        dirToMake += str(dirSplit[d] + "/")
-        try:
-            os.mkdir(dirToMake)
-            made = True
-        except:
-            pass
+
+    made = make()
+
+    # if the directory exists and the user want to create a clean directory, remove the 
+    # dir and create a new one
+    if made == False and remove == True:
+        shutil.rmtree(dir)
+        made = make()
+    
     return(made)
 
 def txtToList(dir):
@@ -406,6 +424,7 @@ def maskCover(dir, dirTarget, masks, small = True):
             # inverse colours of mask areas
             imgR[y, x, :] = 255 - imgR[y, x, :]
 
+    # NOTE this doesn't need to use PIL, can just to cv2.imwrite
     imgR = Image.fromarray(imgR)
     if small:
         imgR.save(dirTarget + ".jpeg")
@@ -593,59 +612,54 @@ def hist_match(source, template):
 
 def findangle(point1, point2, point3 = None):
 
-        # this function finds the anti-clockwise angle between three points, where point2 
-        # is connected to both point1 and point2
-        # Inputs:   (point1, 2), the positions of the points of interet
-        #           (point3), an optional point, if not input then defaults to the horizontal 
-        #           along the x-axis
+    # this function finds the anti-clockwise angle between three points, where point2 
+    # is connected to both point1 and point2
+    # Inputs:   (point1, 2), the positions of the points of interet
+    #           (point3), an optional point, if not input then defaults to the horizontal 
+    #           along the x-axis
 
-        # create copies to prevent modifications to dictionaries
-        p1 = point1.copy()
-        p2 = point2.copy()
+    def dotpro(vector1, vector2 = [0, 1]):
 
-        def dotpro(vector1, vector2 = [0, 1]):
+        # find the dot product of vectors
+        # vector2 if not inputted defaults to the horizontal 
 
-            # find the dot product of vectors
-            # vector2 if not inputted defaults to the horizontal 
+        unit_vector_1 = vector1 / np.linalg.norm(vector1)
+        unit_vector_2 = vector2 / np.linalg.norm(vector2)
+        dot_product = np.dot(unit_vector_1, unit_vector_2)
+        if (dot_product * 1 != dot_product).all():
+            return(np.inf)      # if there is any kind of error, just return a silly number
+        return dot_product
 
-            unit_vector_1 = vector1 / np.linalg.norm(vector1)
-            unit_vector_2 = vector2 / np.linalg.norm(vector2)
-            dot_product = np.dot(unit_vector_1, unit_vector_2)
-            if (dot_product * 1 != dot_product).all():
-                return(np.inf)      # if there is any kind of error, just return a silly number
-            return dot_product
+    # makes point2 the origin
+    p1 = point1 - point2
+    if point3 is None:
+        p3 = [0, 1]
+    else:
+        p3 = point3 - point2
 
-        # makes point2 the origin
-        p1 -= p2
-        if point3 is None:
-            p3 = [0, 1]
-        else:
-            p3 = point3.copy()
-            p3 -= p2
+    # get the dot product of the two vectors created or defaulted 
+    dp1 = dotpro(p1)
+    dp3 = dotpro(p3)
 
-        # get the dot product of the two vectors created or defaulted 
-        dp1 = dotpro(p1)
-        dp3 = dotpro(p3)
+    # if there is an error in the dotproduct calculation, return a silly angle
+    if dp1 == np.inf or dp3 == np.inf:
+        return(np.inf)
 
-        # if there is an error in the dotproduct calculation, return a silly angle
-        if dp1 == np.inf or dp3 == np.inf:
-            return(np.inf)
+    # find the angle of the vectors relative to each other
+    angle3 = np.arccos(dp3)
+    angle1 = np.arccos(dp1)
 
-        # find the angle of the vectors relative to each other
-        angle3 = np.arccos(dp3)
-        angle1 = np.arccos(dp1)
+    # adjust the angles relative to their position on the local grids
+    if p1[0] < 0:
+        angle1 = 2*np.pi - angle1
 
-        # adjust the angles relative to their position on the local grids
-        if p1[0] < 0:
-            angle1 = 2*np.pi - angle1
-
-        # adjust the angles 
-        if p3[0] < 0:
-            angle3 = 2*np.pi - angle3
-        
-        angle = abs(angle1 - angle3)
-        
-        return(angle)
+    # adjust the angles 
+    if p3[0] < 0:
+        angle3 = 2*np.pi - angle3
+    
+    angle = abs(angle1 - angle3)
+    
+    return(angle)
 
 def uniqueKeys(dictL):
 
@@ -676,7 +690,7 @@ def uniqueKeys(dictL):
 
     return(dictMod, commonKeys)
 
-def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True):
+def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True, maxFeats = 200):
 
     '''
     ---------- NOTE the theory underpinning this function ----------
@@ -781,7 +795,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
         qs = {}
         for n, m in enumerate(matchInfos):
             qs[n] = multiprocessing.Queue()
-            job[n] = multiprocessing.Process(target=findgoodfeatures, args = (m, allInfo, dist, tol, anchorPoints, distCheck, qs[n], ))
+            job[n] = multiprocessing.Process(target=findgoodfeatures, args = (m, allInfo, dist, tol, anchorPoints, distCheck, maxFeats, qs[n], ))
             job[n].start()
         matchInfoNs = []
         for n in job:
@@ -795,21 +809,17 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
 
     # Serialised
     else:
-        for matchInfo in matchInfos:
+        for m in matchInfos:
 
             # find features which are spatially coherent relative to the best feature for both 
             # the referenc and target image and with the other constrains
-            matchInfoN = findgoodfeatures(matchInfo, allInfo, dist, tol, anchorPoints, distCheck)
+            matchInfoN = findgoodfeatures(m, allInfo, dist, tol, anchorPoints, distCheck, maxFeats)
 
             # Store the features found and if more features are found with a different combination
             # of features then save that instead
             if len(matchInfoN) > len(infoStore): 
                 # re-initialise the matches found
                 infoStore = matchInfoN
-
-            # if there are no more features to search through, break
-            if (len(allInfo) < 3): # or (len(infoStore) > 200): 
-                break
                 
             # print(str(fits) + " = " + str(len(matchInfoN)) + "/" + str(len(resInfo)))
                 
@@ -845,7 +855,7 @@ def findbestfeatures(allInfo, dist):
 
     return(matchInfo)
 
-def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, q = None):
+def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, maxFeats = 200, q = None):
 
     # find new features in the ref and target tissue which are positioned 
     # in approximately the same location RELATIVE to the best features found already
@@ -899,6 +909,9 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, q =
                 newrefang = findangle(mi1.refP, mi2.refP, i.refP)
                 newtarang = findangle(mi1.tarP, mi2.tarP, i.tarP)
 
+                newrefang2 = findangle2(mi1.refP, mi2.refP, i.refP)
+                newtarang2 = findangle2(mi1.tarP, mi2.tarP, i.tarP)
+
                 # store the difference of this new point relative to all the ponts
                 # previously found 
                 # NOTE this works on the assumption that the scale of the images
@@ -930,6 +943,10 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, q =
             # add the features
             matchInfoN.append(i)
             noFeatFind = 0
+
+            # if the max number of feats to search for is exceeded, break
+            if len(matchInfoN) >= maxFeats:
+                break
         else:
             # if more than 5% of all the features are investigated and there are no
             # new features found, break the matching process (unlikely to find anymore
@@ -1063,7 +1080,7 @@ def drawLine(img, point0, point1, blur = 2, colour = [0, 0, 255]):
     
     return(img)
 
-def dictToDF(info, title, min = 3, feats = None):
+def dictToDF(info, title, min = 1, feats = None):
 
     # create a pandas data frame from a dictionary of feature objects
     # Inputs:   (info), dictionary
@@ -1181,3 +1198,32 @@ def getSect(img, mpos, l, bw = True):
 
     return(sectImg)
 
+if __name__ == "__main__":
+
+    dtype = np.float
+
+    point1 = np.array([0, 0], dtype = dtype, ndmin = 1)
+    point2 = np.array([0, 1.5], dtype = dtype, ndmin = 1)
+    point3 = np.array([2.243, 1.5], dtype = dtype, ndmin = 1)
+
+    print("\nstarting py")
+    pyStart = time()
+    for i in range(int(1e4)):
+        findangle(point1, point2, point3)
+    pyFinish = time() - pyStart
+
+    print("\nstarting c")
+    cStart = time()
+    ang = findangle2(point1, point2, point3)
+    cFinish = time() - cStart
+
+    if findangle(point1, point2, point3) - ang != 0:
+        print("\n\nSOMETHINGS WRONG WITH C CALCULATIONS\n\n")
+
+    '''
+    for i in range(int(1e5)):
+        findangle2(point1, point2, point3)
+    '''
+
+    print("\nc = " + str(cFinish))
+    print("py = " + str(pyFinish))
