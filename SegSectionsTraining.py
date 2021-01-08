@@ -10,6 +10,7 @@ import cv2
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.layers import Flatten, Dropout, Dense
 from tensorflow.keras.models import Model
+from matplotlib import pyplot as plt
 
 # this script takes the names classified by Hanna Allerkamp and turns them into
 # categories
@@ -136,8 +137,24 @@ def modelTrainer(src, modelName, gpu = 0, epochs = 100, batch_size = 64):
         class_mode='binary',
     )
 
+    # create checkpoints, save every epoch
+    checkpoint_path = "training/cp-{epoch:04d}.ckpt"
+    checkpoint_dir = os.path.dirname(checkpoint_path)
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(
+        filepath=checkpoint_path, 
+        verbose=1, 
+        save_weights_only=True,
+        save_freq=batch_size)
+
+
     # train the model 
-    r = model.fit(train_generator, validation_data=valid_generator, epochs=epochs)
+    r = model.fit(x = train_generator, 
+        validation_data=valid_generator, 
+        epochs=epochs, 
+        callbacks=[cp_callback])
+
+    # save the entire model
+    model.save('saved_model')
 
     print("done\n\n")
 
@@ -247,20 +264,21 @@ def dataOrganiser(imgDirs, destDir, l, ratios = [0.8, 0.1, 0.1]):
     '''
 
     # create destination dirs
-    testDir = destDir + "test/"; dirMaker(testDir)
-    trainDir = destDir + "train/"; dirMaker(trainDir)
-    valDir = destDir + "val/"; dirMaker(valDir)
+    testDir = destDir + "test/"
+    trainDir = destDir + "train/"
+    valDir = destDir + "val/"
 
     trainR, valR, testR = ratios
     if np.sum(ratios) != 1:
         print("!!! Ensure ratios sum to 1 !!!")
         return
 
+    # ensure each directory is empty 
     label = ["decidua", "myometrium", "villous"]
     for lb in label:
-        dirMaker(testDir + lb + "/")
-        dirMaker(trainDir + lb + "/")
-        dirMaker(valDir + lb + "/")
+        dirMaker(testDir + lb + "/", True)
+        dirMaker(trainDir + lb + "/", True)
+        dirMaker(valDir + lb + "/", True)
 
     for n, lb in enumerate(label):
         imgStore = []
@@ -287,9 +305,6 @@ def dataOrganiser(imgDirs, destDir, l, ratios = [0.8, 0.1, 0.1]):
                 # move images ot testdir
                 copyfile(i, testDir + lb + "/" + str(n) + ".png")
 
-
-
-
 if __name__ == "__main__":
 
 
@@ -298,10 +313,60 @@ if __name__ == "__main__":
     destDir = '/Volumes/Storage/H653A_11.3/3/FeatureSectionsFinal/'
     infoDir = ""
 
+
+    imgDirs = '/eresearch/uterine/jres129/BoydCollection/SpecimenSections/H653A_11.3/linearSect/'
+    destDir = '/people/jres129/Masters/Segmentation/'
+    infoDir = '/people/jres129/Masters/Segmentation/'
+
+    # from all of the images get their corresponding labels
     labels = getLabels(imgDirs, infoDir)
 
-    # dataOrganiser(imgDirs, destDir, labels)
+    # oragnise the data for TF usage
+    dataOrganiser(imgDirs, destDir, labels)
 
-    modelTrainer(destDir, "VGG16")
+    # train the model
+    modelTrainer(destDir, "VGG16", epochs=10)
+
+    # get the labels
+    vals = os.listdir(destDir + 'test/')
+    
+    # from the testing data enable evaluation
+    # NOTE labels dont' seem to match???
+    evalStore = []
+    evalID = []
+    for v, va in enumerate(vals):
+        testImgs = glob(destDir + 'test/' + va + '/*')[:20]
+        for t in testImgs:
+            evalStore.append(cv2.imread(t))
+            evalID.append(v)
+
+    evalStore = np.array(evalStore)
+    evalID = np.array(evalID)
+    new_model = tf.keras.models.load_model('saved_model')
+    new_model.summary()
+
+    imgssrc = glob('/Volumes/Storage/H653A_11.3/3/NLAlignedSamplesFinal/*')
+
+    sc = 100
+    l = 136
+
+    # segment the image
+    # NOTE this can be massively parallelised (on HPC)
+    for i in imgssrc:
+        img = cv2.imread(i)
+        h, w, c = img.shape
+
+        hrange = int(np.floor(h/sc))
+        wrange = int(np.floor(w/sc))
+
+        # create a segmentation mask
+        predict = np.zeros([hrange, wrange])
+        for x in range(wrange-int(np.ceil(l/sc))):
+            for y in range(hrange-int(np.ceil(l/sc))):
+                print(str(x) + " " + str(y))
+                sect = img[y*sc:y*sc+l, x*sc:x*sc+l]
+                predict[y, x] = np.argmax(new_model.predict(np.expand_dims(sect, 0)))
+
+        plt.imshow(predict); plt.show()
     
     
