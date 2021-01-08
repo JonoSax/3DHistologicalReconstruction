@@ -1,4 +1,5 @@
 venvSegmentation/
+venvSegmentation3_8/
 .vscode/
 Data.nosync/
 testing.py
@@ -11,3 +12,14 @@ archaicFunc.py
 HelperFunctions/__pycache__/
 HelperFunctions/NotFunctional/
 .idea
+testingNLDeform.py
+testingremap.py
+dog.png
+checkerboard.png
+nonRigidAlignFeatFix.py
+testimgs/
+Cython/
+build/
+saved_model/
+training/
+
