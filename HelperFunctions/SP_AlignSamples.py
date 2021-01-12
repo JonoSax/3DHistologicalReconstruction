@@ -21,6 +21,9 @@ else:
     from HelperFunctions.SP_SampleAnnotator import featChangePoint
 
 # object which contains the reference and target positions between a single matching pair
+
+# NOTE try and covert from dictionaries to Panda DF?
+
 class sampleFeatures:
     def __init__(self, ref = None, tar = None, fit = None):
         self.ref = ref
@@ -48,7 +51,7 @@ def align(data, size = 0, cpuNo = False, saving = True, prefix = "tif", refName 
     segInfo = src + '/info/'
 
     # get the sample slices of the specimen to be processed
-    samples = sorted(glob(dataSegmented + "*." + prefix))
+    samples = sorted(glob(dataSegmented + "*." + prefix))[4:]
 
     aligner(samples, segInfo, dataSegmented, alignedSamples, saving, refName, cpuNo, errorThreshold)
 
@@ -89,7 +92,7 @@ def aligner(samples, featureInfoPath, srcImgPath, destImgPath, saving = True, re
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    shiftFeatures(samples, featureInfoPath, destImgPath, errorThreshold)
+    # shiftFeatures(samples, featureInfoPath, destImgPath, errorThreshold)
 
     # get the field shape required for all specimens to fit
     info = sorted(glob(featureInfoPath + "*feat"))[:len(sampleNames)]
@@ -429,9 +432,6 @@ def transformSamples(samplePath, segSamples, maxShape, shift, segInfo, dest, sav
     jpgShapesdir = segInfo + "all.jpgshape"
     translateNetdir = segInfo + "all.translated"
     rotateNetdir = segInfo + "all.rotated"
-
-    # load the whole specimen info
-    translateAll = txtToDict(translateNetdir, float)[0]
     
     '''
     # load the tif shapes
@@ -459,11 +459,17 @@ def transformSamples(samplePath, segSamples, maxShape, shift, segInfo, dest, sav
     except: pass
 
     # find the scale of the image change
-    shapeR = np.round(field.shape[0] / imgShape, 2)
+    shapeR = int(np.round(field.shape[0] / imgShape, 2))
     
-    # get the translations and set 0, 0 to be the position of minimum translation
-    translateNet = shift - translateAll[sample]
+    # adjust the maxShape for the image scale
+    maxShape *= [shapeR, shapeR, 1]
+    shift *= shapeR
 
+    # get the translations and set 0, 0 to be the position of minimum translation
+    # load the whole specimen info
+    translateAll = txtToDict(translateNetdir, float)[0]
+    translateNet = shift - translateAll[sample] * shapeR
+    
     # get the anlge and centre of rotation used to align the samples
     w = rotateNet[sample][0]
     centre = rotateNet[sample][1:] * shapeR
@@ -500,23 +506,70 @@ def transformSamples(samplePath, segSamples, maxShape, shift, segInfo, dest, sav
     # LOAD IN THE ACTUAL WARPED IMAGE
     plotPoints(dest + sample + '_alignedAnnotatedUpdated.jpg', warped, centreMod, specInfo, si = 10)
 
-    # this takes a while so optional
-    if saving:
-        if refImg is not None:
-            for c in range(warped.shape[2]):
-                warped[:, :, c] = hist_match(warped[:, :, c], refImg[:, :, c])
-
-        cv2.imwrite(dest + sample + '.tif', warped)                               # saves the adjusted image at full resolution 
-    
     # create a condensed image version
     imgr = cv2.resize(warped, (int(warped.shape[1]/shapeR), int(warped.shape[0]/shapeR)))
     
     # normalise the image ONLY if there is a reference image and the full scale
     # image hasn't already been normalised
+    
+    imgO = imgr.copy()
     if refImg is not None:
         for c in range(warped.shape[2]):
-            imgr[:, :, c] = hist_match(imgr[:, :, c], refImg[:, :, c])   
+            imgr[:, :, c], normColourKey = hist_match(imgr[:, :, c], refImg[:, :, c])   
 
+            # this takes a while so optional
+            if saving:
+                warped[:, :, c] = hist_match(warped[:, :, c], refImg[:, :, c], normColourKey)
+
+    '''
+    colours = ['b', 'g', 'r']
+    z = [np.arange(10), np.zeros(10)]
+    ylim = 0.2
+
+    # ----- Plot the origianl vs reference histogram plots -----
+
+    blkDsh, = plt.plot(z[0], z[1], "k:")    # targetO
+    blkDot, = plt.plot(z[0], z[1], "k--")    # targetMod
+    blkLn, = plt.plot(z[0], z[1], "k")    # reference
+    
+    for c, co in enumerate(colours):
+        o = np.histogram(imgO[:, :, c], 32, (0, 256))   # original
+        r = np.histogram(refImg[:, :, c], 32, (0, 256)) # reference
+        v = np.histogram(imgr[:, :, c], 32, (0, 256))   # modified
+        v = np.ma.masked_where(v == 0, v)
+
+        maxV = np.sum(r[0][1:])        # get the sum of all the points
+        plt.plot(o[1][2:], o[0][1:]/maxV, co + ":", linewidth = 2)
+        plt.plot(v[1][2:], v[0][1:]/maxV, co + "--", linewidth = 2)
+        plt.plot(r[1][2:], r[0][1:]/maxV, co, linewidth = 1)
+
+    plt.legend([blkDsh, blkDot, blkLn], ["TargetOrig", "TargetMod", "Reference"])
+    plt.ylim([0, ylim])
+    plt.xlabel("Pixel value", fontsize = 14)
+    plt.ylabel("Pixel distribution",  fontsize = 14)
+    plt.title("Histogram of colour profiles",  fontsize = 18)
+    plt.show()
+
+    # ----- Plot the modified vs reference histogram plots -----
+    
+    for c, co in enumerate(colours):
+        v = np.histogram(imgr[:, :, c], 32, (0, 256))[0][1:]   # modified
+        v = np.ma.masked_where(v == 0, v)
+        plt.plot(v/maxV, co + "--", linewidth = 2)
+        r = np.histogram(refImg[:, :, c], 32, (0, 256))[0][1:] # reference
+        plt.plot(r/maxV, co, linewidth = 1)
+
+    z = np.arange(10)
+
+    plt.legend([blkDsh, blkLn], ["TargetMod", "Reference"])
+    plt.ylim([0, ylim])
+    plt.xlabel("Pixel value", fontsize = 14)
+    plt.ylabel("Pixel distribution",  fontsize = 14)
+    plt.title("Histogram of colour profiles\n modified vs reference",  fontsize = 18)
+    plt.show()
+    '''
+    
+    if saving:  cv2.imwrite(dest + sample + '.tif', warped)
     cv2.imwrite(dest + sample + '.png', imgr)
 
     print("Done translation of " + sample)
@@ -808,4 +861,4 @@ if __name__ == "__main__":
     size = 3
     cpuNo = False
 
-    align(dataSource, size, cpuNo, False, "png")
+    align(dataSource, size, cpuNo, False, "tif", "001_0")
