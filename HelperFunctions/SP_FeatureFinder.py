@@ -24,6 +24,8 @@ else:
     from HelperFunctions.Utilities import *
     from HelperFunctions.SP_SampleAnnotator import featChangePoint, matchMaker
 
+# NOTE try and covert from dictionaries to Panda DF?
+
 # for each fitted pair, create an object storing their key information
 class feature:
     def __init__(self, refP = None, tarP = None, dist = None, size = None, res = -1, ID = None):
@@ -66,7 +68,6 @@ TODO:
         the tissue are so repetitive that there is almost guaranteed to be a good match 
         in a non-spatially relevant area of the tissue which causes a false match
 '''
-
 
 def featFind(dataHome, name, size, cpuNo = False):
     
@@ -355,7 +356,11 @@ def imgPlacement(name_spec, img_ref, img_tar):
         
     return(xrefDif, yrefDif, xtarDif, ytarDif, img_refF, img_tarF)
     
-def allFeatSearch(imgRef, imgTar, matchedInfo = [], scales = [0.2, 0.3, 0.5, 0.8, 1], dist = 1, featMin = 20, name_ref = "", name_tar = "", gridNo = 1, sc = 20, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True):
+def allFeatSearch(imgRef, imgTar, matchedInfo = [], 
+    scales = [0.2, 0.3, 0.5, 0.8, 1], dist = 1, featMin = 20, 
+    name_ref = "", name_tar = "", gridNo = 1, sc = 20, cpuNo = False, 
+    tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True, 
+    maxFeats = 200):
 
     '''
     Find the spatially cohesive features in an image
@@ -375,6 +380,7 @@ def allFeatSearch(imgRef, imgTar, matchedInfo = [], scales = [0.2, 0.3, 0.5, 0.8
         (tol)
         (spawnPoints)
         (anchorPoints)
+        (maxFeats)
 
     Outputs:    
         (matchedInfo), feature positions
@@ -481,7 +487,7 @@ def allFeatSearch(imgRef, imgTar, matchedInfo = [], scales = [0.2, 0.3, 0.5, 0.8
             if len(resInfo) > 0:
                 matchedInfo += deepcopy(manualPoints)
                 # matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist)
-                matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist * scl, cpuNo, tol, spawnPoints, anchorPoints, distCheck)
+                matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist * scl, cpuNo, tol, spawnPoints, anchorPoints, distCheck, maxFeats)
 
                 for n, m in enumerate(matchedInfo):
                     matchedInfo[n].dist = 0.01 * n # preserve the order of the features
