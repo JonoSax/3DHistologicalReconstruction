@@ -560,55 +560,91 @@ def dictToArray(d, type = float):
 
     return(l)
 
-def hist_match(source, template):
-    """
-    Courtesy of https://stackoverflow.com/questions/31490167/how-can-i-transform-the-histograms-of-grayscale-images-to-enforce-a-particular-r/31493356#31493356
-    Adjust the pixel values of a layer of image
+def hist_match(target, reference, normColourKey = None):
 
-    Arguments:
-    -----------
-        source: np.ndarray
-            Image to transform; the histogram is computed over the flattened
-            array
-        template: np.ndarray
-            Template image; can have different dimensions to source
-    Returns:
-    -----------
-        matched: np.ndarray
-            The transformed output image
-    """
+    '''
+    Redistribute the colour profile of a target image to match that 
+    of a reference image
 
-    oldshape = source.shape
-    source = source.ravel()
-    template = template.ravel()
+        Inputs:\n
 
-    # get the set of unique pixel values and their corresponding indices and
-    # counts
-    s_values, bin_idx, s_counts = np.unique(source, return_inverse=True,
-                                            return_counts=True)
-    t_values, t_counts = np.unique(template, return_counts=True)
+    target: Image to transform\n
+    reference image: image to modify the source to \n
+    normColourKey, The dictionary which maps the colours of the image to the 
+    normalised image colours \n
+    
+        Outputs:\n
+    normChannel: image normalised to match the reference image\n
+    normColourKey: array of the values associated with the change
+    '''
 
-    # remove the effect of black (it is working on a masked image)
-    s_counts[0] = 0
-    t_counts[0] = 0
+    # if no colour key provided
+    if normColourKey is None:
+        oldshape = target.shape
+        target = target.ravel()
+        reference = reference.ravel()
 
-    # take the cumsum of the counts and normalize by the number of pixels to
-    # get the empirical cumulative distribution functions for the source and
-    # template images (maps pixel value --> quantile)
-    s_quantiles = np.cumsum(s_counts).astype(np.float64)
-    s_quantiles /= s_quantiles[-1]
-    t_quantiles = np.cumsum(t_counts).astype(np.float64)
-    t_quantiles /= t_quantiles[-1]
+        # get the set of unique pixel values and their corresponding indices and
+        # counts
+        s_values, bin_idx, s_counts = np.unique(target, return_inverse=True,
+                                                return_counts=True)
+        t_values, t_counts = np.unique(reference, return_counts=True)
 
-    # interpolate linearly to find the pixel values in the template image
-    # that correspond most closely to the quantiles in the source image
-    interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+        # remove the effect of black (it is working on a masked image)
+        s_counts[0] = 0
+        t_counts[0] = 0
 
-    normChannel = (interp_t_values[bin_idx].reshape(oldshape)).astype(np.uint8)
+        # take the cumsum of the counts and normalize by the number of pixels to
+        # get the empirical cumulative distribution functions for the target and
+        # reference images (maps pixel value --> quantile)
+        s_quantiles = np.cumsum(s_counts).astype(np.float64)
+        s_quantiles /= s_quantiles[-1]
+        t_quantiles = np.cumsum(t_counts).astype(np.float64)
+        t_quantiles /= t_quantiles[-1]
 
+        # interpolate linearly to find the pixel values in the reference image
+        # that correspond most closely to the quantiles in the target image
+        interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+
+        # normalise the colour
+        normChannel = (interp_t_values[bin_idx].reshape(oldshape)).astype(np.uint8)
+
+        # create the colour key, first column is the actual pixel value 
+        # and the second column is the new pixel value
+        normColourKey = np.vstack((s_values, interp_t_values)).T
+
+    else:
+
+        # NOTE TBC but i need to find a way to make the target image 
+        # modified --> loop through and do it in cython????
+
+        ar = 0
+        ns = 0
+        av = np.zeros(256)      # store the interpreted values in an array
+        for nr, nv in normColourKey:
+
+            n = 0
+            while nr != ar + n:
+                n += 1
+            
+            # interpret between n values
+            interp = np.linspace(ns, nv, n + 1)
+            for n_a, a in enumerate(interp):
+                av[ar + n_a] = a
+
+            # store the previous value to interpret between
+            ns = nv
+
+            # iterate through ar
+            ar += 1 + n
+
+        # fill the rest of the array with 255
+        av[ar:] = 255
+        av = np.round(av).astype(np.uint8)
+        
     # return the image with normalised distribtution of pixel values and 
     # in the same data type as np.uin8
-    return normChannel
+    return (normChannel, normColourKey)
 
 def findangle(point1, point2, point3 = None):
 
@@ -1197,6 +1233,28 @@ def getSect(img, mpos, l, bw = True):
         sectImg = sect
 
     return(sectImg)
+
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
 
 if __name__ == "__main__":
 
