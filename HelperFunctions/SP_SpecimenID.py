@@ -54,8 +54,8 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     dirMaker(imgPlots)
 
     # get all the images 
-    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
-    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
+    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))[153:]
+    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))[153:]
     
     print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
     # serialised
@@ -306,7 +306,7 @@ def maskMaker(idir, imgMasked = None, imgplot = None):
         # fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
         
         f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-
+        _, ax1 = plt.subplots(1, 1)
         # ax1.subplot(3, 1, 1)
         ax1.semilogy(histBinsF[1:], histValsF)
         ax1.semilogy(histBinsF[backVal+1], histValsF[backVal], marker="o", color = [0, 0, 1])
@@ -314,7 +314,7 @@ def maskMaker(idir, imgMasked = None, imgplot = None):
         ax1.semilogy(histBins[forePos +1], histVals[forePos], marker="o", color = [1, 0, 0])
         ax1.semilogy(histBins[backPos +1], histVals[backPos], marker="o", color = [1, 0, 0])
         ax1.title.set_text("Histogram profile")
-        ax1.set(xlabel='Pixel bin', ylabel='Pixel count')
+        ax1.set(xlabel='Pixel bin (start)', ylabel='Pixel count')
 
         '''
         plt.subplot(3, 2, 3)
@@ -564,6 +564,6 @@ if __name__ == "__main__":
 
     name = ''
     size = 3
-    cpuNo = 6
+    cpuNo = False
         
     specID(dataSource, name, size, cpuNo)
