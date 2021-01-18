@@ -31,17 +31,31 @@ def specID(dataHome, name, size, cpuNo = False):
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
 
+    refimg = 'H653A_009_1'
+
     # gets the images for processing
-    sectionSelecter(name, datasrc, cpuNo)
+    sectionSelecter(name, datasrc, cpuNo, refimg)
 
 
-def sectionSelecter(spec, datasrc, cpuNo = False):
+def sectionSelecter(spec, datasrc, cpuNo = False, refimgname = None):
 
-    # this function creates a mask which is trying to selectively surround
-    # ONLY the target tissue
-    # Inputs:   (spec), the specific sample being processed
-    #           (datasrc), the location of the jpeg images (as extracted 
-    #               by tif2pdf)
+    '''
+    This function creates a mask which is trying to selectively surround
+    ONLY the target tissue and normalises the image colours
+
+        Inputs:
+
+    (spec), the specific sample being processed\n
+    (datasrc), the location of the jpeg images (as extracted)\n
+    (cpuNo), number of cores to use for parallelisations\n
+    (refimg), the reference image to use for colour normalisations. If set to None
+    will not perform this\n
+
+        Outputs:\n
+
+    (), create the down-sampled and full scale tif images with their respecitve 
+    samples extracted and with their colours normalised against a reference image 
+    '''
 
     imgsmallsrc = datasrc + "images/"
     imgbigsrc = datasrc + "tifFiles/"
@@ -54,10 +68,11 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     dirMaker(imgPlots)
 
     # get all the images 
-    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))[153:]
-    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))[153:]
+    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
+    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
     
     print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
+    '''
     # serialised
     if cpuNo is False:
         for idir in imgsmall:    
@@ -67,6 +82,7 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
             pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasks), repeat(imgPlots)))
+    
     
     print("\n   #--- APPLY MASKS ---#")
     
@@ -81,50 +97,36 @@ def sectionSelecter(spec, datasrc, cpuNo = False):
     
     # serialised
     if cpuNo is False:
-        tifShape = {}
-        jpegShape = {}
-        info = []
         for m, iB, iS in zip(masks, imgbig, imgsmall):
-            name = nameFromPath(iB)
-            info.append(imgStandardiser(imgMasked, m, iB, iS, imgref))
+            imgStandardiser(imgMasked, m, iB, iS, imgref)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            info = pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, imgbig, imgsmall, repeat(imgref)))
+            pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, imgbig, imgsmall, repeat(imgref)))
 
-        # extract the tif and jpeg info
-        tifShape = {}
-        jpegShape = {}
-        for i in info:
-            tifShape.update(i[0])
-            jpegShape.update(i[1])
-    
-    dictToTxt(tifShape, datasrc + "info/all.tifshape")
-    dictToTxt(jpegShape, datasrc + "info/all.jpgshape")
     print('Info Saved')
-    
-    # NOTE this takes ages on the tifs.....
     '''
+
     print("\n   #--- NORMALISE COLOURS ---#")
     # NOTE this is done seperately from the masking so that the colour 
     # normalisation is done on masked images, rather than images on slides
     # get all the masked images 
     imgsmallmasked = sorted(glob(imgMasked + "*png"))
     imgbigmasked = sorted(glob(imgMasked + "*tif")) 
+    refimg = cv2.imread(getSampleName(imgMasked, refimgname))
 
-    imgref = cv2.imread(imgsmallmasked[1])
-
-    if cpuNo is False:
-        # normalise the colours of the images
-        for imgtar in imgsmallmasked + imgbigmasked:
-            imgNormColour(imgtar, imgref)
-    else:
-        with Pool(processes=cpuNo) as pool: 
-            pool.starmap(imgNormColour, zip(imgsmallmasked + imgbigmasked, repeat(imgref)))
+    # if there is a reference image, normalise colours
+    if refimg is not None:
+        if cpuNo is False:
+            # normalise the colours of the images
+            for imgtarS, imgtarF in zip(imgsmallmasked, imgbigmasked):
+                imgNormColour(imgtarS, refimg, imgtarF)
+        else:
+            with Pool(processes=cpuNo) as pool: 
+                pool.starmap(imgNormColour, zip(imgsmallmasked, repeat(refimg), imgbigmasked))
 
     # create the all.shape information file
-    '''
 
 def maskMaker(idir, imgMasked = None, imgplot = None):     
 
@@ -189,8 +191,6 @@ def maskMaker(idir, imgMasked = None, imgplot = None):
         img[:int(cols*0.07), :] = np.median(img)
         img[-int(cols*0.1):, :] = np.median(img)
 
-
-    
     # ----------- low pass filter -----------
 
     # low pass filter
@@ -238,7 +238,6 @@ def maskMaker(idir, imgMasked = None, imgplot = None):
     plt.semilogy(histBins[backPos+1], histVals[backPos], marker="o")
     plt.show()  
     '''
-    
 
     # accentuate the colour
     im_accentuate = img_lowPassFilter.copy()
@@ -455,7 +454,6 @@ def imgStandardiser(destPath, maskpath, imgbigpath, imgsmallpath, imgref):
     #           (imgsmallpath), path of the reduced sized image
     #           (imgref), reference image for colour normalisation
     # Outputs:  (), saves image at destination with standard size and mask if inputted
-    #           (jpgShapes, tifShapes), image shapes of the small and large images
 
     # get info to place all the images into a standard size to process (if there
     # is a mask)
@@ -463,10 +461,8 @@ def imgStandardiser(destPath, maskpath, imgbigpath, imgsmallpath, imgref):
     name = nameFromPath(imgsmallpath, 3)
     print(name + " modifying")
     imgsmall = cv2.imread(imgsmallpath)
-    imgbig = 1 #cv2.imread(imgbigpath)
-    tifShape = {}
-    jpegShape = {}
-    # ratio = np.round(imgsmall.shape[0]/imgbig.shape[0], 2)
+    imgbig = tifi.imread(imgbigpath)
+    ratio = int(np.round(imgbig.shape[0] / imgsmall.shape[0], 2))  # get the upscale size of the images
 
     # ----------- HARD CODED SPECIMEN SPECIFIC MODIFICATIONS -----------
 
@@ -504,46 +500,65 @@ def imgStandardiser(destPath, maskpath, imgbigpath, imgsmallpath, imgref):
             imgsmallsect = imgsmall[y[0]:y[1], x[0]:x[1], :]
 
             # adjust for the original size image
-            # xb, yb = (extract[n]/ratio).astype(int)
-            # imgbigsect = imgbig[yb[0]:yb[1], xb[0]:xb[1], :]
+            xb, yb = np.array(extract[n]) *  ratio
+            imgbigsect = imgbig[yb[0]:yb[1], xb[0]:xb[1], :]
 
             # expand the dims so that it can multiply the original image
             maskS = cv2.resize(maskE, (imgsmallsect.shape[1], imgsmallsect.shape[0])).astype(np.uint8)
-            # maskB = cv2.resize(maskE, (imgbigsect.shape[1], imgbigsect.shape[0])).astype(np.uint8)
+            maskB = cv2.resize(maskE, (imgbigsect.shape[1], imgbigsect.shape[0])).astype(np.uint8)
 
             # apply the mask to the images 
             imgsmallsect *= maskS
-            # imgbigsect *= maskB
+            imgbigsect *= maskB
 
             # write the new images
             cv2.imwrite(destPath + newid + ".png", imgsmallsect)
-            # cv2.imwrite(imgMasked + newid + ".tif", imgbigsect)
+            tifi.imwrite(destPath + newid + ".tif", imgbigsect)
 
             id += 1
-            
-            # save the new image dimensions
-            # tifShape[newid] = imgbigsect.shape
-            jpegShape[newid] = imgsmallsect.shape
 
             print("     " + newid + " made")
 
-    return([tifShape, jpegShape])
+def imgNormColour(imgtarSmallpath, imgref, imgtarFullpath = None):
 
-def imgNormColour(imgtarpath, imgref):
+    '''
+    Normalises all the colour channels of an image
 
-    # normalises all the colour channels of an image
-    # Inputs:   (imgtarpath), image path to change
-    #           (imgref), image as array which has the colour properties to match
-    # Outputs:  (), re-saves the image
+        Inputs:\n
 
-    print("Normalising " + imgtarpath.split("/")[-1])
-    imgtar = cv2.imread(imgtarpath)
+    (imgtarSmalldir), downsampled image path to normalise the colours for
+    (imgref), image as array which has the colour properties to match
+    (imgtarFullpath), full scale tif image to normalise the colour for
+
+        Outputs:\n  
+
+    (), over-writes the old images wit the new ones
+    '''
+
+    print("Normalising " + nameFromPath(imgtarSmallpath, 3))
+    imgtarSmall = cv2.imread(imgtarSmallpath)
+
+    # if converting the tif image as well, load it and create a reference image 
+    # using rgb (tifi) not bgr (cv2)
+    if imgtarFullpath is not None: 
+        imgtarFull = tifi.imread(imgtarFullpath)
+        imgrefRGB = cv2.cvtColor(imgref, cv2.COLOR_BGR2RGB)
 
     for c in range(3):
-        imgtar[:, :, c] = hist_match(imgtar[:, :, c], imgref[:, :, c])
+        imgtarSmall[:, :, c], normColourKey = hist_match(imgtarSmall[:, :, c], imgref[:, :, c])   
 
-    cv2.imwrite(imgtarpath, imgtar)
+        # if there is a full scale image, those colours as well
+        if imgtarFullpath is not None:
 
+            # performing a full image normalisations
+            imgtarFull[:, :, c], _ = hist_match(imgtarFull[:, :, c], imgrefRGB[:, :, c])
+
+            # using the normcolourkey 
+            # imgtarFull[:, :, c] = hist_match(imgtarFull[:, :, c], imgref[:, :, c], normColourKey)
+
+    cv2.imwrite(imgtarSmallpath, imgtarSmall)
+    if imgtarFullpath is not None:
+        tifi.imwrite(imgtarFullpath, imgtarFull)
 
 if __name__ == "__main__":
 
@@ -551,7 +566,6 @@ if __name__ == "__main__":
 
     dataSource = '/Volumes/USB/Testing1/'
     dataSource = '/Volumes/USB/IndividualImages/'
-    dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H671B_18.5/'
     dataSource = '/Volumes/Storage/H653A_11.3/'
     dataSource = '/Volumes/USB/H1029A_8.4/'
@@ -561,6 +575,7 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/Storage/H710C_6.1/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
 
     name = ''
     size = 3
