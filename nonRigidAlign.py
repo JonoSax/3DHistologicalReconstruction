@@ -1,8 +1,8 @@
 import multiprocessing
-from copy import copy
 from glob import glob
 from itertools import repeat
 from time import time
+from copy import copy as cp
 
 import cv2
 import matplotlib.pyplot as plt
@@ -43,38 +43,43 @@ def nonRigidAlign(dirHome, size, cpuNo):
     home = dirHome + str(size)
 
     imgsrc = home + "/alignedSamples/"
-    destRigidAlign = home + "/RealignedSamplesFinal/"
+    destRigidAlign = home + "/RealignedSamples/"
     dirfeats = home + "/infoNL/"
-    destNLALign = home + "/NLAlignedSamplesFinal/"
-    destFeatSections = home + "/FeatureSectionsFinal/"
+    destNLALign = home + "/NLAlignedSamples/"
+    destFeatSections = home + "/FeatureSections/"
     
     dirMaker(destRigidAlign)
     dirMaker(dirfeats)
     dirMaker(destNLALign)
     dirMaker(destFeatSections)
 
-    imgs = sorted(glob(imgsrc + "*.png"))
-
     sect = 200           # the proporptional area of the image to search for features
     dist = 20           # distance between the sift features
-    featsMin = 10       # min number of samples a feature must pass through for use to NL deform
+    featsMin = 3       # min number of samples a feature must pass through for use to NL deform
 
     # Find the continuous features throught the samples
-    # contFeatFinder(imgs, dirfeats, destRigidAlign, cpuNo = True, plotting = True, sz = sect, dist = dist)
+    # contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = True, plotting = True, sz = sect, dist = dist)
     
     # perform a rigid alignment on the tracked features
-    # aligner(imgs, dirfeats, imgsrc, destRigidAlign, cpuNo = False, errorThreshold=100)
+    aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = False, errorThreshold=100)
     
     featsMax = 20       # max number of samples which meet criteria to be used
     distFeats = 300     # distance (pixels) between the final features
     selectCriteria = 'smooth'       # criteria used to select features (either based on the *smooth*, ie how smooth the 
                                     # the feature is at it moves throught the specimen or *length*, ie priorities longer features)
 
-    # perform a non-linear deformation on the samples based on a smoothed trajectory of the features
-    # through the samples
-    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, dist = distFeats, sz = sect, featsMin = featsMin, featsMax = featsMax, selectCriteria = selectCriteria)
+    featShaper(destRigidAlign, featsMin = featsMin, dist = distFeats, \
+        maxfeat = featsMax, selectCriteria = selectCriteria, plot = False)
+    
+    # extract sections and deform the downsampled images
+    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, \
+        scl = 1, sz = sect, prefix = "png")
 
-def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = False, sz = 100, dist = 20):
+    # extract sections and deform the FULL SCALE images
+    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, \
+        scl = 5, sz = sect, prefix = "tif")
+
+def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, plotting = False, sz = 100, dist = 20):
 
     '''
     This function takes images and finds features that are continuous
@@ -94,6 +99,10 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = Fal
     based on the featsMax, where that is the minimum number of features found but at 
     least that many features exist through the most linked connections
     '''
+
+    # ALWAYS use the downscaled version of the images to find continuity 
+    # of features
+    imgs = sorted(glob(imgsrc + "*.png"))
 
     # intialise objects to store and track info
     matchedInfo = []
@@ -193,7 +202,7 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = Fal
             allMatchedInfo[c.ID][sampleNo] = c
 
             # create the continued features
-            cont = copy(c)
+            cont = cp(c)
             cont.refP = cont.tarP
             cont.tarP = None
             continuedFeatures.append(cont)
@@ -247,28 +256,15 @@ def contFeatFinder(imgs, destFeat, destImg = None, cpuNo = False, plotting = Fal
         # plotFeatureProgress(df, imgs, destImg + 'CombinedRough.jpg', sz, 2)
     '''
 
-def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMin = 0, featsMax = None, selectCriteria = 'smooth'):
-
+def featShaper(diralign, featsMin = 5, dist = 100, maxfeat = 20, selectCriteria = "smooth", plot = False):
     '''
-    This function takes the continuous feature sets found in contFeatFinder
-    and uses them to non-rigidly warp the 
+    This function modifies the identified features to create continuity of features
 
-    Inputs:   
-        (diralign), directory of all the aligned info and images
-        (dirNLdest), path to save the NL deformed info
-        (dirSectdest), path to save the feature sections
-        (scl), resolution scale factor
-        (s), section size used for feature finding
-    
-    Outputs:  
-        (), warp the images and save
+        Inputs:\n
+    (df), data frame containing the features
     '''
 
-    LSectDir = dirSectdest + "linearSect/"
-    NLSectDir = dirSectdest + "NLSect/"
-
-    # get the image paths
-    imgs = sorted(glob(diralign + "*.png"))
+    print("\n--- Creating continuity of features ---")
 
     # get the new dictionaries, load them into a pandas dataframe
     refFeats = sorted(glob(diralign + "*.reffeat"))
@@ -280,7 +276,7 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMi
     # it just has to iteratue through the samples, not the ref/tar feat files
     # NOTE I also know that you can save a dataframe as a CSV but this needs to 
     # have ref and tar files for the aligner and it seems silly to store the 
-    # data twice for the save of reading it in slightly faster.... 
+    # data twice for the sake of reading it in slightly faster.... 
     for n, r in enumerate(refFeats + [tarFeats[-1]]):
         info = txtToDict(r, float)[0]
         infopd = pd.DataFrame.from_dict(info, orient = 'index', columns = ['X', 'Y'])
@@ -290,64 +286,95 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, dist = 100, sz = 0, featsMi
         
     # combine into a single df
     dfAll = pd.concat(infopds)
-    # px.line_3d(dfAll, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features").show()
+    if plot:    px.line_3d(dfAll, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features").show()
 
     # only get the features which meet the minimum sample pass threshold
     featCounts = np.c_[np.unique(dfAll.ID, return_counts = True)]
     featCheck = featCounts[np.where(featCounts[:, 1] > featsMin)]
-    df = pd.concat([dfAll[dfAll["ID"] == f] for f in featCheck[:, 0]])
-
-    # only select the features which have more than the featMin requirements
-
-    # serialised feature extraction 
-    # NOTE this has to be serialised so that the right reference image is used
-    
-    for n, img in enumerate(imgs):
-        print(str(n) + "/" + str(len(imgs)))
-        sampdf = df[df["Zs"] == n]
-        featExtractor(LSectDir, img, sampdf, sz)
-    '''
-
-    # of the features which are found, perform a smoothing operation and select the 
-    # features which best match the criteria for NL deformation, then fix it taking
-    # into account the missing samples
+    dfAllCont = pd.concat([dfAll[dfAll["ID"] == f] for f in featCheck[:, 0]])
 
     # smooth the features
-    featsSm = smoothFeatures(df, imgs, 1e3, zAxis = "Zs")
+    featsSm = smoothFeatures(dfAllCont, 1e3, zAxis = "Zs")
 
     # select the best features
-    dfSelectR, dfSelectSM, targetIDs = featureSelector(df, featsSm, featsMin = featsMin, dist = dist, maxfeat = featsMax, cond = selectCriteria)
+    dfSelectR, dfSelectSM, targetIDs = featureSelector(dfAllCont, featsSm, featsMin = featsMin, dist = dist, maxfeat = maxfeat, cond = selectCriteria)
 
     # fix the features for the missing samples
     dfSelectRFix = fixFeatures(dfSelectR, regionOfPath(diralign, 2))
     dfSelectSMFix = fixFeatures(dfSelectSM, regionOfPath(diralign, 2))
 
     # re-smooth the fixed features
-    dfSelectSMFix2 = smoothFeatures(dfSelectSMFix, imgs, smooth = 1e3)
+    dfSelectSMFix2 = smoothFeatures(dfSelectSMFix, smooth = 1e3)
 
     # 3D plot the smoothed and rough selected features 
-    px.line_3d(dfSelectRFix, x="X", y="Y", z="Z", color="ID", title = "Raw selected features " + selectCriteria).show()
+    if plot:    px.line_3d(dfSelectRFix, x="X", y="Y", z="Z", color="ID", title = "Raw selected features " + selectCriteria).show()
     # px.line_3d(dfSelectSMFix, x="X", y="Y", z="Z", color="ID", title = "Smoothed selected + fix features").show()
-    px.line_3d(dfSelectSMFix2, x="X", y="Y", z="Z", color="ID", title = "All Smoothed selected features " + selectCriteria).show()    
+    if plot:    px.line_3d(dfSelectSMFix2, x="X", y="Y", z="Z", color="ID", title = "All Smoothed selected features " + selectCriteria).show()    
     
+    # save the data frames as csv files
+    dfAllCont.to_csv(diralign + "all.csv")
+    dfSelectRFix.to_csv(diralign + "rawFeatures.csv")
+    dfSelectSMFix2.to_csv(diralign + "smoothFeatures.csv")
+
+def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, sz = 0, prefix = "png"):
+
+    '''
+    This transforms the images based on the feature transforms
+
+    Inputs:   
+        (diralign), directory of all the aligned info and images
+        (dirNLdest), path to save the NL deformed info
+        (dirSectdest), path to save the feature sections
+        (scl), resolution scale factor
+        (sz), section size 
+        (prefix), image type used
+    
+    Outputs:  
+        (), warp the images and save
+    '''
+
+    print("\n--- NL deformation of " + prefix + " images ---")
+
+    # set the destination of the feature sections based on the prefix
+    LSectDir = dirSectdest + "linearSect_" + prefix + "/"
+
+    dfAllCont = pd.read_csv(diralign + "all.csv")
+    dfSelectRFix = pd.read_csv(diralign + "rawFeatures.csv")
+    dfSelectSMFix2 = pd.read_csv(diralign + "smoothFeatures.csv")
+
+    # get the image paths
+    imgs = sorted(glob(diralign + "*" + prefix))
+    
+    # serialised feature extraction 
+    # NOTE this has to be serialised so that the right reference image is used
+    
+    print("Extracting features")
+    for n, img in enumerate(imgs):
+        print(str(n) + "/" + str(len(imgs)))
+        sampdf = dfAllCont[dfAllCont["Zs"] == n].copy()
+        sampdf.X *= scl; sampdf.Y *= scl        # scale the positions based on image size
+        featExtractor(LSectDir, img, sampdf, sz, prefix = prefix)
+
     # create the dictionary which relates the real Z number to the sample image available
     key = np.c_[np.unique(dfSelectRFix.Z), [np.unique(dfSelectRFix[dfSelectRFix["Z"] == f].Zs)[0] for f in np.unique(dfSelectRFix.Z)]].astype(int)
 
     # Warp images to create smoothened feature trajectories
     # NOTE the sparse image warp is already highly parallelised so not MP functions
+    
     for Z, Zs in key:
         imgPath = imgs[Zs]
         ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix2, dirNLdest, border = 5, smoother = 0, order = 1, plot = True)
 
+    '''
+    # get the feature extraction from the modified images
     imgsMod = sorted(glob(dirNLdest + "*.png"))
 
     # for all the NL features SELECTED, extract the feature sections
     for n, img in enumerate(imgsMod):
         sampdf = dfSelectSMFix2[dfSelectSMFix2["Z"] == n]
         featExtractor(NLSectDir, img, sampdf, sz, zSamp = "Z")
-
-    # plotFeatureProgress([dfSelectR, dfSelectSM], imgsMod, dirNLdest + 'CombinedSmooth.jpg', sz, [3])
     '''
+    # plotFeatureProgress([dfSelectR, dfSelectSM], imgsMod, dirNLdest + 'CombinedSmooth.jpg', sz, [3])
     
 def featMatching(m, tarImg, refImg, prevImg = None, sz = 100, q = None):
 
@@ -602,7 +629,7 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
 
     return(dfFinalR, dfFinalSm, finalFeats)
 
-def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5, order = 2, plot = False):
+def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5, order = 2, plot = False, scl = 1):
 
     # perform the non-rigid warp
     # Inputs:   (s), number of the sample
@@ -620,6 +647,7 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     # ie create bounds on the images to deform
 
     # ensure the naming convention is correct 
+    prefix = imgpath.split(".")[-1]       # get image prefix
     samp = str(s)
     while len(samp) < 4:
         samp = "0" + samp
@@ -628,7 +656,10 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     print("Warping " +  name)
 
     # load the correct ID images
-    img = cv2.imread(imgpath)
+    if prefix == "tif":
+        img = tifi.imread(imgpath)
+    else:
+        img = cv2.imread(imgpath)
     x, y, c = img.shape
 
     # get the sample specific feature info
@@ -638,9 +669,9 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     # merge the info of the features which have the same ID
     allInfo = pd.merge(rawInfo, smoothInfo, left_on = 'ID', right_on = 'ID')
 
-    # get the common feature positions
-    rawFeats = np.c_[allInfo.X_x, allInfo.Y_x]
-    smFeats = np.c_[allInfo.X_y, allInfo.Y_y]
+    # get the common feature positions and scale if it necessary 
+    rawFeats = np.c_[allInfo.X_x, allInfo.Y_x] * scl
+    smFeats = np.c_[allInfo.X_y, allInfo.Y_y] * scl
 
     # if there is no information regarding the positions to warp images,
     # assume images don't need warping therefore save the original image as final
@@ -657,8 +688,13 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     tfsmPoints = np.expand_dims(smf.astype(float), 0)
     tftarImg = np.expand_dims(img, 0).astype(float)
 
-    # perform non-rigid deformation on the original sized image
-    imgMod, imgFlow = sparse_image_warp(tftarImg, tfrawPoints, tfsmPoints, num_boundary_points=border, regularization_weight=smoother, interpolation_order=order)
+    # perform non-rigid deformation on the image
+    # NOTE for tif uses excessive memory, consider using HPC...
+    imgMod, imgFlow = sparse_image_warp(tftarImg, tfrawPoints, tfsmPoints, \
+        num_boundary_points=border, \
+            regularization_weight=smoother, \
+                interpolation_order=order)
+
     # print("error = " + str(np.round(np.log(np.sum(np.abs(imgMod - img)/3)), 2)))
 
     # convert the image and flow field into something useful
@@ -711,7 +747,10 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
         # cv2.imshow("Flow + Imgmod", np.hstack([imgFlow, imgMod])); cv2.waitKey(0)
 
     # save the images
-    cv2.imwrite(dest + name + ".png", imgMod)
+    if prefix == "tif":
+        tifi.imwrite(dest + name + ".tif", imgMod)
+    else:
+        cv2.imwrite(dest + name + ".png", imgMod)
 
 def plotFeatureProgress(dfs, imgAll, dirdest, sz = 0, annos = [3]):
 
@@ -823,7 +862,7 @@ def drawPoints(img, df, sampleNos, zAxis = "Z", annos = 3, l = 0):
         
     return(img)
 
-def featExtractor(dest, imgPath, info, sz, zSamp = "Zs"):
+def featExtractor(dest, imgPath, info, sz, zSamp = "Zs", prefix = "png", ref = True):
 
     '''
     This function takes an image and all the feature positions as a pandas data 
@@ -834,7 +873,9 @@ def featExtractor(dest, imgPath, info, sz, zSamp = "Zs"):
     (dest), home directory to save the information\n
     (imgPath), the path to the single sample to extract the sections from\n
     (info), the pandas data frame of that sample info\n
-    (sz), the size of the segment used to identify that feature
+    (sz), the size of the segment used to identify that feature\n
+    (prefix), if the prefix is png or tif process differently to ensure 
+    colour scheme is consistent and loading efficiently\n
 
         Outputs: \n
     (), saves the section in the directory as its feature name\n
@@ -844,11 +885,14 @@ def featExtractor(dest, imgPath, info, sz, zSamp = "Zs"):
     samp = np.array(info[zSamp])[0]
 
     # get info
-    img = cv2.imread(imgPath)
+    if prefix == "tif":
+        img = tifi.imread(imgPath)
+    else:
+        img = cv2.imread(imgPath)
+
     x, y, c = img.shape
     l = tile(sz, x, y)/2
     
-
     # go through all the info for each sample and extract all the features
     # and save in directories to categorise them into features, named after
     # the sample they were found in
@@ -856,10 +900,16 @@ def featExtractor(dest, imgPath, info, sz, zSamp = "Zs"):
         featSect = getSect(img, np.array([d.X, d.Y]), l, False)
         featdir = dest + str(int(d.ID)) + "/"
         made = dirMaker(featdir)
+
         if made:
-            firstSamp = drawPoints(img.copy(), info[info["ID"] == d.ID], 1, zSamp, 3, l)
-            cv2.imwrite(featdir + "_referenceImage.png", firstSamp) #, [int(cv2.IMWRITE_JPEG_QUALITY), 20])
-        cv2.imwrite(featdir + nameFromPath(imgPath, 3) + ".png", featSect)
+            if ref and prefix != "tif":
+                firstSamp = drawPoints(img.copy(), info[info["ID"] == d.ID], 1, zSamp, 3, l)
+                cv2.imwrite(featdir + "_referenceImage." + prefix, firstSamp) #, [int(cv2.IMWRITE_JPEG_QUALITY), 20])
+        
+        if prefix == "tif":
+            tifi.imwrite(featdir + nameFromPath(imgPath, 3) + "." + prefix, featSect)
+        else:
+            cv2.imwrite(featdir + nameFromPath(imgPath, 3) + "." + prefix, featSect)
 
 def fixFeatures(features, home):
 
@@ -891,11 +941,15 @@ def fixFeatures(features, home):
             # read in only the missing samp info (ignore heading and final line which 
             # contains a space)
             missingSampInfo = np.array([i.split(",")[-1] for i in info[1:-1]]).astype(int)
+            print("     " + str(int(np.sum(missingSampInfo))) + " missing samples")
         except:
             # info = np.c_[nameFromPath(imgs[:-1], 3), nameFromPath(imgs[1:], 3), np.zeros(len(imgs)-1).astype(int)]
             missingSampInfo = np.zeros(len(imgs)-1)
             # if there is no missingSampInfo just assume there are no missing samples
-        print("     " + str(int(np.sum(missingSampInfo))) + " missing samples")
+            print("     No missing sample information")
+
+            # NOTE access findMissingSamples function
+
         imgID = []
         imgPath = []
         n = 0
@@ -921,7 +975,7 @@ def fixFeatures(features, home):
     missingSampDir = info + "missingSamples.csv"
 
     # get all the images
-    imgs = glob(alignedSamples + "*.png")
+    imgs = sorted(glob(alignedSamples + "*.png"))
 
     # get the samp to Z keys
     imgID = makeSampKey(missingSampDir, imgs)
@@ -967,7 +1021,7 @@ def fixFeatures(features, home):
 
     return(featfix)
 
-def smoothFeatures(df, imgs, smooth = 0, zAxis = "Z"):
+def smoothFeatures(df, smooth = 0, zAxis = "Z"):
 
     '''
     Perform a cubic-b-spline smoothing over features
@@ -982,27 +1036,12 @@ def smoothFeatures(df, imgs, smooth = 0, zAxis = "Z"):
 
     # create a new dataframe for the smoothed feature positions
     featsStore = []
-    p = 0       # create data frame count 
+
     for f in np.unique(df["ID"]):
         xp = df[df["ID"] == f].X.astype(float)
         yp = df[df["ID"] == f].Y.astype(float)
         zp = df[df["ID"] == f][zAxis].astype(float)
-        # imgsdf = df[df["ID"] == f].img
-        # if the number of samples the feature passes through is more than 
-        # the number of images being processed, don't include
-        '''
-        if np.max(zp) > len(imgs): 
-            sampRange = np.where(zp < len(imgs))[0]
-            if len(sampRange) < 3:
-                continue
-            xp = xp[sampRange]
-            yp = yp[sampRange]
-            zp = zp[sampRange]
-        '''
-        '''
-        xSm = np.linspace(np.array(xp)[0], np.array(xp)[0], len(xp))
-        ySm = np.linspace(np.array(yp)[0], np.array(yp)[0], len(yp))
-        '''
+
         # perform a cubic spline fitting over the data
         try:
             tck, u = splprep([xp, yp, zp], s = smooth)
@@ -1041,7 +1080,9 @@ if __name__ == "__main__":
     '/Volumes/Storage/H653A_11.3/',
     '/Volumes/USB/H750A_7.0/',
     '/Volumes/USB/H710B_6.1/',
-    '/Volumes/USB/H671B_18.5/']
+    '/Volumes/USB/H671B_18.5/',
+    '/Volumes/USB/H653A_11.3/']
+
 
     # NOTE fork is considered unstable but it is an order of magnitude 
     # faster than using spawn.... HOWEVER this only works with the process
@@ -1052,6 +1093,10 @@ if __name__ == "__main__":
     size = 3
     cpuNo = True
 
+    nonRigidAlign('/Volumes/USB/H653A_11.3/', size, cpuNo)
+
+    '''
     for d in dirHome:
         # d = '/Volumes/USB/H671B_18.5/'
         nonRigidAlign(d, size, cpuNo)
+    '''
