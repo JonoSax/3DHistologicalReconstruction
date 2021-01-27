@@ -434,7 +434,7 @@ def maskCover(dir, dirTarget, masks, small = True):
     # cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
     # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
 
-def nameFromPath(paths, n = 2):
+def nameFromPath(paths, n = 2, prefix = False):
     # this function extracts the names from a path/s
     # Inputs:   (paths), either a list or string of paths 
     #           (n), number of 
@@ -458,8 +458,11 @@ def nameFromPath(paths, n = 2):
 
     names = list()
     for path in paths:
-        # choose the last part of the path and the suffix
-        name = path.split("/")[-1].split(".")[0]
+        # choose the last part of the path 
+        name = path.split("/")[-1]
+        
+        if not prefix:
+            name = name.split(".")[0]
 
         # each '_' indicates a new piece of information in the name
         # if there is at least one underscore then seperate the information
@@ -613,6 +616,10 @@ def hist_match(target, reference, normColourKey = None):
         # and the second column is the new pixel value
         normColourKey = np.vstack((s_values, interp_t_values)).T
 
+        # return the image with normalised distribtution of pixel values and 
+        # in the same data type as np.uin8
+        return (normChannel, normColourKey)
+
     else:
 
         # NOTE TBC but i need to find a way to make the target image 
@@ -641,10 +648,18 @@ def hist_match(target, reference, normColourKey = None):
         # fill the rest of the array with 255
         av[ar:] = 255
         av = np.round(av).astype(np.uint8)
+
+        # this is currently super slow.... cython????
+        normChannel = target.copy()
+        for x in range(target.shape[0]):
+            if x%100 == 0:
+                print(x)
+            for y in range(target.shape[1]):
+                normChannel[x, y] = av[target[x, y]]
         
-    # return the image with normalised distribtution of pixel values and 
-    # in the same data type as np.uin8
-    return (normChannel, normColourKey)
+        # return the image with normalised distribtution of pixel values and 
+        # in the same data type as np.uin8
+        return (normChannel)
 
 def findangle(point1, point2, point3 = None):
 
@@ -856,6 +871,9 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
             if len(matchInfoN) > len(infoStore): 
                 # re-initialise the matches found
                 infoStore = matchInfoN
+
+            if len(infoStore) == maxFeats:
+                break
                 
             # print(str(fits) + " = " + str(len(matchInfoN)) + "/" + str(len(resInfo)))
                 
@@ -945,8 +963,8 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
                 newrefang = findangle(mi1.refP, mi2.refP, i.refP)
                 newtarang = findangle(mi1.tarP, mi2.tarP, i.tarP)
 
-                newrefang2 = findangle2(mi1.refP, mi2.refP, i.refP)
-                newtarang2 = findangle2(mi1.tarP, mi2.tarP, i.tarP)
+                # newrefang2 = findangle2(mi1.refP, mi2.refP, i.refP)
+                # newtarang2 = findangle2(mi1.tarP, mi2.tarP, i.tarP)
 
                 # store the difference of this new point relative to all the ponts
                 # previously found 
@@ -996,7 +1014,7 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
     else:
         q.put(matchInfoN)
 
-def nameFeatures(imgref, imgtar, matchedInfo, txtsz = 0.5, combine = False, width = 3):
+def nameFeatures(imgref, imgtar, matchedInfo, circlesz = 0.5, txtsz = 0.5, combine = False, width = 3):
 
     # this function takes a list of the feature objects and adds them
     # as annotations to both the ref and target images
@@ -1011,7 +1029,7 @@ def nameFeatures(imgref, imgtar, matchedInfo, txtsz = 0.5, combine = False, widt
     # different colour for each resolution used to find features
     colours = [(255, 0, 0), (255, 0, 255), (255, 255, 0), (0, 255, 0), (0, 255, 255), (255, 255, 255)]
     
-    for n, nF in enumerate(matchedInfo):
+    for nF in matchedInfo:
 
         # if there is no match info just assign it to 0 (ie was a manual annotaiton)
         try: md = int(nF.dist); 
@@ -1022,15 +1040,15 @@ def nameFeatures(imgref, imgtar, matchedInfo, txtsz = 0.5, combine = False, widt
 
         # try the name otherwise none
         try: name = nF.ID
-        except: names = "None"
+        except: name = "None"
         
         # mark the feature
         newref = nF.refP.astype(int)
         newtar = nF.tarP.astype(int)
 
         # draw the location of the feature
-        cv2.circle(imgref, tuple(newref.astype(int)), int(txtsz*10), colours[nF.res], int(txtsz*6))
-        cv2.circle(imgtar, tuple(newtar.astype(int)), int(txtsz*10), colours[nF.res], int(txtsz*6))
+        cv2.circle(imgref, tuple(newref.astype(int)), int(circlesz*10), colours[nF.res], int(circlesz*6))
+        cv2.circle(imgtar, tuple(newtar.astype(int)), int(circlesz*10), colours[nF.res], int(circlesz*6))
 
         # add the info about the feature
         text = str(name )#+ ", d: " + str(md) + ", s: " + str(ms))
@@ -1052,6 +1070,7 @@ def nameFeatures(imgref, imgtar, matchedInfo, txtsz = 0.5, combine = False, widt
         cv2.putText(img = imgtar, text = str(text), 
         org = tuple(newtar + np.array([-10, 15])),
         fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
+
 
     # if the combine flag is true, combine the images and draw the lines
     # between the features to connect them
@@ -1255,6 +1274,40 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     # Print New Line on Complete
     if iteration == total: 
         print()
+
+def getSampleName(dirsrc, name):
+
+    '''
+    For a give key word name find the exact path. If it can't naively be found
+    allow user to select from a list of possible names they meant to select
+
+        Inputs:\n
+    name, a part or all of the name of the file the user is looking to select\n
+    dirsrc, the directory in which the file exists\n
+
+        Outputs:\n
+    path, the exact path of the selected file
+    '''
+
+    while True: 
+        samp = glob(dirsrc + "*" + name + "*")
+
+        # if the key word returned only one sample that is the path of interest
+        if len(samp) == 1:
+            return(samp[0])
+            
+        # if the key word return more than one sample
+        if len(samp) > 1:
+            print("For " + name + " which sample are you referring to?")
+            for sa in samp:
+                print(nameFromPath(sa, 3, prefix=True))
+            name = input("Type in one of the above: ")
+        
+        # if the key word return no samples adjust the sampleID
+        if len(samp) == 0:
+            name = input("Key word " + name + " returned no results, check sample exists and type it in here: ")
+
+    
 
 if __name__ == "__main__":
 
