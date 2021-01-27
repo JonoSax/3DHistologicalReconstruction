@@ -2,7 +2,7 @@ from glob import glob
 from HelperFunctions.Utilities import nameFromPath, dirMaker
 import os
 import multiprocessing
-from multiprocessing import Process
+from itertools import repeat
 import time
 import numpy as np
 
@@ -10,8 +10,12 @@ def getFiles(s, size, dataHome):
     # copy the tif files from HPC
 
     print("Starting " + s)
-    dirMaker('/Volumes/USB/tifFiles' + s + '/')
-    os.system('scp -r ' + dataHome + s + '/3/tifFiles/* /Volumes/USB/tifFiles' + s + '/')
+    path = '/Volumes/USB/' + s + str(size) + '/tifFiles/' 
+    dirMaker(path)
+    imgs = sorted(glob(dataHome + s + '/3/tifFiles/*.tif'))
+    for i in imgs:
+        print("     Copying " + nameFromPath(i))
+        os.system('scp -r ' + i + ' ' + path)
     print("Finished " + s)
 
 def pushFiles(s, size, dataHome):
@@ -42,8 +46,10 @@ def pushFiles(s, size, dataHome):
 if __name__ == "__main__":
 
     dataHome = '/Volumes/resabi201900003-uterine-vasculature-marsden135/BoydCollection/'
-    samples = ['H653A_11.3']#['H1029A_8.4', 'H653A_11.3', 'H671A_18.5', 'H671B_18.5', 'H673A_7.6', 'H710B_6.1', 'H710C_6.1', 'H750A_7.0' ]
+    # dataHome = 'jres129@hpc2.bioeng.auckland.ac.nz:/people/jres129/eresearch/uterine/jres129/BoydCollection/'
+    samples = ['H1029A_8.4', 'H671A_18.5', 'H671B_18.5', 'H673A_7.6', 'H710B_6.1', 'H710C_6.1', 'H750A_7.0' ]
 
+    '''
     samples = [
     '/Volumes/Storage/H710C_6.1/',
     '/Volumes/USB/H671A_18.5/',
@@ -51,29 +57,28 @@ if __name__ == "__main__":
     '/Volumes/USB/H750A_7.0/',
     '/Volumes/USB/H710B_6.1/',
     '/Volumes/USB/H671B_18.5/']
+    '''
 
     size = 3
 
-    multiprocessing.set_start_method("fork")
+    multiprocessing.set_start_method('spawn')
 
-    cpuNo = 6
+    cpuNo = 4
 
-    action = "push"
+    action = "pull"
 
     # pull files from HPC
     if action == "pull":
         if cpuNo != 1:
-            jobs = {}
-            for s in samples:
-                jobs[s] = Process(target = getFiles, args = (s, dataHome))
-                jobs[s].start()
 
-            for s in samples:
-                jobs[s].join()
+            with multiprocessing.Pool(processes = cpuNo) as Pool:
+                Pool.starmap(getFiles, zip(samples, repeat(size), repeat(dataHome)))
 
         else:
             for s in samples:
-                getFiles(s, dataHome)
+                getFiles(s, size, dataHome)
+
+        "PID = 47606"
 
     elif action == "push":
 
