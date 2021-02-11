@@ -741,7 +741,7 @@ def uniqueKeys(dictL):
 
     return(dictMod, commonKeys)
 
-def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True, maxFeats = 200):
+def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True, maxFeats = np.inf):
 
     '''
     ---------- NOTE the theory underpinning this function ----------
@@ -1014,7 +1014,7 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
     else:
         q.put(matchInfoN)
 
-def nameFeatures(imgref, imgtar, matchedInfo, circlesz = 0.5, txtsz = 0.5, combine = False, width = 3):
+def nameFeatures(imgref0, imgtar0, matchedInfo, circlesz = 0.5, txtsz = 0.5, combine = False, width = 3):
 
     # this function takes a list of the feature objects and adds them
     # as annotations to both the ref and target images
@@ -1027,52 +1027,48 @@ def nameFeatures(imgref, imgtar, matchedInfo, circlesz = 0.5, txtsz = 0.5, combi
     #               annotated on with the two combined and lines indicating the
     #               locations of corresponding features
     # different colour for each resolution used to find features
-    colours = [(255, 0, 0), (255, 0, 255), (255, 255, 0), (0, 255, 0), (0, 255, 255), (255, 255, 255)]
-    
-    for nF in matchedInfo:
+
+
+    def annotate(img, pos, nF, circlesz, txtsz, colour):
 
         # if there is no match info just assign it to 0 (ie was a manual annotaiton)
         try: md = int(nF.dist); 
         except: md = np.inf; 
-
         try: ms = np.round(nF.size, 2)
         except: ms = np.inf
 
         # try the name otherwise none
         try: name = nF.ID
         except: name = "None"
-        
-        # mark the feature
-        newref = nF.refP.astype(int)
-        newtar = nF.tarP.astype(int)
+                    
+        # make sure it is the correc type
+        pos = pos.astype(int)
 
         # draw the location of the feature
-        cv2.circle(imgref, tuple(newref.astype(int)), int(circlesz*10), colours[nF.res], int(circlesz*6))
-        cv2.circle(imgtar, tuple(newtar.astype(int)), int(circlesz*10), colours[nF.res], int(circlesz*6))
-
+        cv2.circle(img, tuple(pos.astype(int)), int(circlesz*10), colour, int(circlesz*20))
+        
         # add the info about the feature
         text = str(name )#+ ", d: " + str(md) + ", s: " + str(ms))
-        
+                    
         # add the feature number onto the reference image
-        cv2.putText(img = imgref, text = str(name), 
-        org = tuple(newref + np.array([-10, 15])),
-        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
-
-        cv2.putText(img = imgref, text = str(text), 
-        org = tuple(newref + np.array([-10, 15])),
-        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
-
-        # add the feature number onto the reference image
-        cv2.putText(img = imgtar, text = str(name), 
-        org = tuple(newtar + np.array([-10, 15])),
+        cv2.putText(img = img, text = str(name), 
+        org = tuple(pos + np.array([-10, 15])),
         fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (255, 255, 255), thickness = int(txtsz*10))
         
-        cv2.putText(img = imgtar, text = str(text), 
-        org = tuple(newtar + np.array([-10, 15])),
+        cv2.putText(img = img, text = str(text), 
+        org = tuple(pos + np.array([-10, 15])),
         fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz, color = (0, 0, 0), thickness = int(txtsz*4))
 
+        return(img)
+        
+    colours = [(255, 0, 0), (255, 0, 255), (255, 255, 0), (0, 255, 0), (0, 255, 255), (255, 255, 255)]
+    
+    imgref = imgref0.copy()
+    imgtar = imgtar0.copy()
 
-    # if the combine flag is true, combine the images and draw the lines
+    scales = np.arange(np.max([m.res for m in matchedInfo])+1, 0, -1)-1
+
+    # if the combine variable is true, combine the images and draw the lines
     # between the features to connect them
     if combine:
         
@@ -1091,19 +1087,43 @@ def nameFeatures(imgref, imgtar, matchedInfo, circlesz = 0.5, txtsz = 0.5, combi
             plateref = plate.copy(); plateref[:xr, :yr, :] = imgref; imgref = plateref
             platetar = plate.copy(); platetar[:xt, :yt, :] = imgtar; imgtar = platetar
 
-
         # combine the images
         imgCompare = np.hstack([imgref, imgtar])
 
-        for m in matchedInfo:
+        # NOTE still working on make sure the lower res info is appearing last therefore it is ONTOP of 
+        # all of the other points
+        for scl in scales:
+                
+            # get the info at the specific resolution
+            col = colours[scl]
+            info = [matchedInfo[i] for i in list(np.where([m.res == scl for m in matchedInfo])[0])]
+            for i in info:
 
-            point0 = m.refP
-            point1 = m.tarP + [y, 0]
+                refP = i.refP
+                tarP = i.tarP + [y, 0]
 
-            imgCompare = drawLine(imgCompare, point0, point1)
+                imgCompare = annotate(imgCompare, refP, i, circlesz, txtsz, col)
+                imgCompare = annotate(imgCompare, tarP, i, circlesz, txtsz, col)
+                imgCompare = drawLine(imgCompare, refP, tarP, width, colour = col)
 
         return(imgCompare)
+
+    # else just draw the features on each image
     else:
+
+        for scl in scales:
+            
+            # get the info at the specific resolution
+            col = colours[scl]
+            info = [matchedInfo[i] for i in list(np.where([m.res == scl for m in matchedInfo])[0])]
+            for i in info:
+
+                refP = i.refP
+                tarP = i.tarP
+
+                imgref = annotate(imgref, refP, i, circlesz, txtsz, col)
+                imgtar = annotate(imgtar, tarP, i, circlesz, txtsz, col)
+
         return(imgref, imgtar)
 
 def drawLine(img, point0, point1, blur = 2, colour = [0, 0, 255]):
