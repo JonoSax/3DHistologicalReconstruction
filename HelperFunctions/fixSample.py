@@ -16,7 +16,7 @@ if __name__ != "HelperFunctions.fixSample":
     from SP_SampleAnnotator import featSelectArea, featChangePoint
     from SP_AlignSamples import align
 else:
-    from HelperFunctions.Utilities import txtToDict, dictToTxt, nameFromPath
+    from HelperFunctions.Utilities import txtToDict, dictToTxt, nameFromPath, getSampleName
     from HelperFunctions.SP_SampleAnnotator import featSelectArea, featChangePoint
     from HelperFunctions.SP_AlignSamples import align
 
@@ -43,24 +43,7 @@ def fixit(dataHome, size, cpuNo, sampleIDs, segSection = False):
     # search for the key word in the name and verify it exists
     for s in sampleIDs:
 
-        while True: 
-            samp = glob(dataaligned + "*" + s + "*.png")
-
-            # if the key word returned only one sample
-            if len(samp) == 1:
-                samples.append(samp[0])
-                break
-
-            # if the key word return more than one sample
-            if len(samp) > 1:
-                print("For " + s + " which sample are you referring to?")
-                for sa in samp:
-                    print(nameFromPath(sa, 3))
-                s = input("Type in one of the above: ")
-            
-            # if the key word return no samples adjust the sampleID
-            if len(samp) == 0:
-                s = input("Key word " + s + " returned no results, check sample exists and type it in here: ")
+        samples.append(getSampleName(dataaligned, s))
 
     # ensure none are repeated
     samples = np.unique(samples).tolist()
@@ -70,13 +53,10 @@ def fixit(dataHome, size, cpuNo, sampleIDs, segSection = False):
         print("Processing " + nameFromPath(targetSample, 3))
         reannotator(datainfo, datamasked, targetSample)
 
-    # if there are tif tiles already there, then replace those as well
-    saving = len(glob(dataaligned + "*.tif")) > 0
-
     # if there were samples to align, re-align the entire specimen
     if len(samples) > 0:
         print("     Realigning samples")
-        align(dataHome, size, cpuNo, saving, errorThreshold=300)
+        align(dataHome, size, cpuNo, errorThreshold=100)
 
     else:
         print("     No samples to fix")
@@ -107,8 +87,8 @@ def reannotator(infosrc, imgsrc, targetSample, nopts = 8):
     # change the features
     refInfoN, tarInfoN = featChangePoint(None, refImg, tarImg, [refInfo, tarInfo], nopts = nopts, title="Manually move 8 features to perform re-alignment")
 
-    dictToTxt(refInfoN, refPath, fit = False)
-    dictToTxt(tarInfoN, tarPath, fit = False)
+    dictToTxt(refInfoN, refPath, fit = False, shape = refImg.shape)
+    dictToTxt(tarInfoN, tarPath, fit = False, shape = tarImg.shape)
 
 if __name__ == "__main__":
 
