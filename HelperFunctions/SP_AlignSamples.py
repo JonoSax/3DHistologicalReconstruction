@@ -33,7 +33,7 @@ class sampleFeatures:
     def __repr__(self):
         return repr((self.ref, self.tar, self.fit))
 
-def align(data, size = 0, cpuNo = False, errorThreshold = 100):
+def align(data, size = 0, cpuNo = False, errorThreshold = 100, fullScale = False):
 
     # This function will take the extracted sample tif file at the set resolution and 
     # translate and rotate them to minimise the error between slices
@@ -50,13 +50,9 @@ def align(data, size = 0, cpuNo = False, errorThreshold = 100):
     destImgPath = src + '/alignedSamples/'
     featureInfoPath = src + '/info/'
 
-    # get the sample slices of the specimen to be processed
-    smallsamples = sorted(glob(dataSegmented + "*.png"))
-    fullsamples = sorted(glob(dataSegmented + "*.tif"))
+    aligner(dataSegmented, featureInfoPath, destImgPath, cpuNo, errorThreshold, fullScale)
 
-    aligner(smallsamples, fullsamples, featureInfoPath, destImgPath, cpuNo, errorThreshold)
-
-def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThreshold = 100):
+def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThreshold = 100, fullScale = False):
 
     # this function takes all the directories and info and then does the full 
     # rigid alignment and saves where directed:
@@ -79,7 +75,7 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    shiftFeatures(smallSamples, featureInfoPath, destImgPath, errorThreshold)
+    # shiftFeatures(smallSamples, featureInfoPath, destImgPath, errorThreshold)
 
     # get the field shape required for all specimens to fit
     info = sorted(glob(featureInfoPath + "*feat"))[:len(sampleNames)]
@@ -88,36 +84,37 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
         shapes.append(np.array(txtToDict(i, float)[1]['shape'])[:2])
 
     # get all the translations
-    translated = txtToDict(featureInfoPath + "all.translated", float)[0]
+    translated = dictToArray(txtToDict(featureInfoPath + "all.translated", float)[0])
 
     # get the shift of all the info to fit the image on the positive value axis
-    shiftMa = np.max(dictToArray(translated), axis = 0)
-    shiftMi = np.min(dictToArray(translated), axis = 0)
+    shiftMi = -np.max(translated, axis = 0)
+    shiftMa = -np.min(translated, axis = 0) # NOTE negative means the target image 
+                                            # needs to be shifted towards the bottom right
 
     # combine the shapes and translations to calculate the net shape from the origin per image
     maxShape = np.insert(np.ceil(np.max(np.array(shapes) + np.flip(shiftMa) - np.flip(shiftMi), axis = 0)), 2, 3).astype(int)
-
+    # maxShape = np.insert(np.ceil(np.max(shapes[:-1]  + abs(np.diff(np.flip(dictToArray(translated)), axis = 0)), 0)), 2, 3).astype(int)
     # apply the affine transformations to all the images and info
-    if cpuNo is False:
+    if cpuNo == 1:
         # serial transformation
         print("--- Transforming downsampled images ---\n")
         for small in smallSamples:
-            transformSamples(small, "png", maxShape, shiftMa, featureInfoPath, destImgPath, saving = True)
+            transformSamples(small, "png", maxShape, shiftMi, featureInfoPath, destImgPath, saving = True)
 
-        print("\n--- Transforming full scale images ---\n")
-        for full in fullSamples:
-            transformSamples(full, "tif", maxShape, shiftMa, featureInfoPath, destImgPath)
-
+        if fullScale:
+            print("\n--- Transforming full scale images ---\n")
+            for full in fullSamples:
+                transformSamples(full, "tif", maxShape, shiftMa, featureInfoPath, destImgPath)
     else:
         # parallelise with n cores
         print("--- Transforming downsampled images ---\n")
         with Pool(processes=cpuNo) as pool:
             pool.starmap(transformSamples, zip(smallSamples, repeat("png"), repeat(maxShape), repeat(shiftMa), repeat(featureInfoPath), repeat(destImgPath), repeat(True)))
 
-        print("\n--- Transforming full scale images ---\n")
-        with Pool(processes=cpuNo) as pool:
-            pool.starmap(transformSamples, zip(fullSamples, repeat("tif"), repeat(maxShape), repeat(shiftMa), repeat(featureInfoPath), repeat(destImgPath)))
-
+        if fullScale:
+            print("\n--- Transforming full scale images ---\n")
+            with Pool(processes=cpuNo) as pool:
+                pool.starmap(transformSamples, zip(fullSamples, repeat("tif"), repeat(maxShape), repeat(shiftMa), repeat(featureInfoPath), repeat(destImgPath)))
 
     print('Alignment complete')
 
@@ -135,6 +132,9 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
     # load the identified features
     featRef = {}
     featTar = {}
+
+    alignedFeats = alignedSamples + "/feats/"
+    dirMaker(alignedFeats)
 
     # get the feature names of ONLY the feature files
     featNames = sorted(list(set(nameFromPath(glob(src + "*feat"), 3))))
@@ -399,8 +399,8 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
         _, L = uniqueKeys([sampleObj.tar, featsMod.tar])
 
         # save all the original features but transformed to meet fitting criteria 
-        dictToTxt(featRef[rF][0], alignedSamples + rF + ".reffeat", fit = featsO.fit, shape = shapeRef)
-        dictToTxt(sampleObj.tar, alignedSamples + tF + ".tarfeat", fit = featsO.fit, shape = shapeTar)
+        dictToTxt(featRef[rF][0], alignedFeats + rF + ".reffeat", fit = featsO.fit, shape = shapeRef)
+        dictToTxt(sampleObj.tar, alignedFeats + tF + ".tarfeat", fit = featsO.fit, shape = shapeTar)
 
         # reasign the sample features after being translated and rotated
         try:    featRef[tF][0] = sampleObj.ref
@@ -428,9 +428,10 @@ def transformSamples(samplePath, prefix, maxShape, shift, segInfo, dest, saving 
         field = tifi.imread(samplePath)
     else:
         field = cv2.imread(samplePath)
+        # field = (np.ones(field.shape) * 255).astype(np.uint8)
 
-    refdir = dest + sample + ".reffeat"
-    tardir = dest + sample + ".tarfeat"
+    refdir = dest + 'feats/' + sample + ".reffeat"
+    tardir = dest + 'feats/' + sample + ".tarfeat"
     translateNetdir = segInfo + "all.translated"
     rotateNetdir = segInfo + "all.rotated"
 
@@ -451,8 +452,8 @@ def transformSamples(samplePath, prefix, maxShape, shift, segInfo, dest, saving 
     # get the translations and set 0, 0 to be the position of minimum translation
     # load the whole specimen info
     translateAll = txtToDict(translateNetdir, float)[0]
-    translateNet = shiftR - translateAll[sample] * shapeR
-    
+    translateNet = -(shiftR + translateAll[sample] * shapeR)
+    print("     " + str(translateNet))
     # get the anlge and centre of rotation used to align the samples
     w = rotateNet[sample][0]
     centre = rotateNet[sample][1:] * shapeR
@@ -464,7 +465,7 @@ def transformSamples(samplePath, prefix, maxShape, shift, segInfo, dest, saving 
     # adjust the points for the transformed shifted image 
     for sI in specInfo:
         for f in specInfo[sI]:
-            specInfo[sI][f] = specInfo[sI][f] * shapeR + shiftR
+            specInfo[sI][f] = specInfo[sI][f] * shapeR - shiftR
 
     # get place the image with the new transform
     yp, xp = translateNet.astype(int)
@@ -473,7 +474,7 @@ def transformSamples(samplePath, prefix, maxShape, shift, segInfo, dest, saving 
     newField[xp:(xp+fx), yp:(yp+fy), :] += field
 
     # apply the rotational transformation to the image
-    centreMod = centre + translateNet 
+    centreMod = centre -shiftR 
 
     rot = cv2.getRotationMatrix2D(tuple(centreMod), float(w), 1)
     warped = cv2.warpAffine(newField, rot, (maxShapeR[1], maxShapeR[0]))
@@ -489,7 +490,6 @@ def transformSamples(samplePath, prefix, maxShape, shift, segInfo, dest, saving 
         cv2.imwrite(dest + sample + ".png", warped)
 
     print("Done translation of " + sample)
-
 
 def translatePoints(feats, bestfeatalign = False):
 
@@ -769,13 +769,14 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H750A_7.0/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
-    dataSource = '/Volumes/USB/Test/'
     dataSource = '/Volumes/Storage/H710C_6.1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/USB/Testing/'
+    dataSource = ''
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
     size = 3
-    cpuNo = 6
+    cpuNo = 1
 
     align(dataSource, size, cpuNo)
