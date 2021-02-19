@@ -54,30 +54,30 @@ def nonRigidAlign(dirHome, size, cpuNo):
     dirMaker(destFeatSections)
 
     sect = 200           # the proporptional area of the image to search for features
-    dist = 20           # distance between the sift features
-    featsMin = 3       # min number of samples a feature must pass through for use to NL deform
+    dist = 50           # distance between the sift features
+    featsMin = 10       # min number of samples a feature must pass through for use to NL deform
 
     # Find the continuous features throught the samples
-    # contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = True, plotting = True, sz = sect, dist = dist)
+    contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, plotting = True, sz = sect, dist = dist)
     
     # perform a rigid alignment on the tracked features
-    aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = False, errorThreshold=100)
+    aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = 1, errorThreshold=100)
     
     featsMax = 20       # max number of samples which meet criteria to be used
     distFeats = 300     # distance (pixels) between the final features
-    selectCriteria = 'smooth'       # criteria used to select features (either based on the *smooth*, ie how smooth the 
+    selectCriteria = 'length'       # criteria used to select features (either based on the *smooth*, ie how smooth the 
                                     # the feature is at it moves throught the specimen or *length*, ie priorities longer features)
 
-    featShaper(destRigidAlign, featsMin = featsMin, dist = distFeats, \
-        maxfeat = featsMax, selectCriteria = selectCriteria, plot = False)
+    # with all the features found, find their trajectory and adjust to create continuity 
+    # between samples
+    featShaper(destRigidAlign, featsMin = featsMin, dist = distFeats, maxfeat = featsMax, selectCriteria = selectCriteria, plot = True)
     
     # extract sections and deform the downsampled images
-    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, \
-        scl = 1, sz = sect, prefix = "png")
+    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, scl = 1, sz = sect, prefix = "png")
 
     # extract sections and deform the FULL SCALE images
-    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, \
-        scl = 5, sz = sect, prefix = "tif")
+    # nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, \
+    #    scl = 5, sz = sect, prefix = "tif")
 
 def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, plotting = False, sz = 100, dist = 20):
 
@@ -109,8 +109,6 @@ def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, plotting = F
     allMatchedInfo = {}
     featNo = 0
 
-    prevImg1 = None
-    prevImg2 = None
     continuedFeatures = []
 
     # sequantially identify new previous features in each sample
@@ -129,8 +127,8 @@ def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, plotting = F
         # find spatially coherent sift features between corresponding images
         startAllFeatSearch = time()
         matchedInfo = allFeatSearch(refImg, tarImg, dist = dist, \
-            cpuNo = cpuNo, gridNo=30, tol = 0.03, featMin = 50, \
-                scales = [0.3, 0.6, 0.8, 1], maxFeats = 150)[0]
+            cpuNo = True, gridNo=3, tol = 0.03, featMin = 50, \
+                scales = [0.2, 0.4, 0.6, 0.8, 1], maxFeats = 150)[0]
         allFeatSearchTime = time() - startAllFeatSearch
 
         # featMatchimg = nameFeatures(refImg, tarImg, matchedInfo, combine = True)
@@ -156,7 +154,7 @@ def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, plotting = F
             qs = {}
             for n, m in enumerate(continuedFeatures + matchedInfo):
                 qs[n] = multiprocessing.Queue()
-                j = multiprocessing.Process(target=featMatching, args = (m, tarImg, refImg, None, sz, qs[n]))
+                j = multiprocessing.Process(target=featMatching, args = (m, tarImg, refImg, sz, qs[n]))
                 job.append(j)
                 j.start()
             for j in job:
@@ -182,7 +180,7 @@ def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, plotting = F
 
         # ensure that the features found are still spaitally cohesive
         startMatchMaker = time()
-        confirmedFeatures = matchMaker(confirmInfos, dist = dist, tol = 1, cpuNo = cpuNo, distCheck=True, spawnPoints=10)
+        confirmedFeatures = matchMaker(confirmInfos, dist = dist, tol = 1, cpuNo = True, distCheck=True, spawnPoints=10)
         matchMakerTime = time() - startMatchMaker
 
         # featMatchimg = nameFeatures(refImg, tarImg, continuedFeatures, combine = True)
@@ -267,8 +265,8 @@ def featShaper(diralign, featsMin = 5, dist = 100, maxfeat = 20, selectCriteria 
     print("\n--- Creating continuity of features ---")
 
     # get the new dictionaries, load them into a pandas dataframe
-    refFeats = sorted(glob(diralign + "*.reffeat"))
-    tarFeats = sorted(glob(diralign + "*.tarfeat"))
+    refFeats = sorted(glob(diralign + "feats/*.reffeat"))
+    tarFeats = sorted(glob(diralign + "feats/*.tarfeat"))
     infopds = []
 
     # read in the ref and tar files and concat into a single padas data frame
@@ -286,12 +284,12 @@ def featShaper(diralign, featsMin = 5, dist = 100, maxfeat = 20, selectCriteria 
         
     # combine into a single df
     dfAll = pd.concat(infopds)
-    if plot:    px.line_3d(dfAll, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features").show()
 
     # only get the features which meet the minimum sample pass threshold
     featCounts = np.c_[np.unique(dfAll.ID, return_counts = True)]
     featCheck = featCounts[np.where(featCounts[:, 1] > featsMin)]
     dfAllCont = pd.concat([dfAll[dfAll["ID"] == f] for f in featCheck[:, 0]])
+    if plot:    px.line_3d(dfAllCont, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features with min continuity").show()
 
     # smooth the features
     featsSm = smoothFeatures(dfAllCont, 1e3, zAxis = "Zs")
@@ -354,16 +352,16 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, sz = 0, prefix = "
         sampdf = dfAllCont[dfAllCont["Zs"] == n].copy()
         sampdf.X *= scl; sampdf.Y *= scl        # scale the positions based on image size
         featExtractor(LSectDir, img, sampdf, sz, prefix = prefix)
-
     # create the dictionary which relates the real Z number to the sample image available
+    
     key = np.c_[np.unique(dfSelectRFix.Z), [np.unique(dfSelectRFix[dfSelectRFix["Z"] == f].Zs)[0] for f in np.unique(dfSelectRFix.Z)]].astype(int)
 
     # Warp images to create smoothened feature trajectories
     # NOTE the sparse image warp is already highly parallelised so not MP functions
-    
+
     for Z, Zs in key:
         imgPath = imgs[Zs]
-        ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix2, dirNLdest, border = 5, smoother = 0, order = 1, plot = True)
+        ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix2, dirNLdest, border = 5, smoother = 0, order = 1, annotate = False)
 
     '''
     # get the feature extraction from the modified images
@@ -376,9 +374,9 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, sz = 0, prefix = "
     '''
     # plotFeatureProgress([dfSelectR, dfSelectSM], imgsMod, dirNLdest + 'CombinedSmooth.jpg', sz, [3])
     
-def featMatching(m, tarImg, refImg, prevImg = None, sz = 100, q = None):
+def featMatching(m, tarImg, refImg, sz = 100, q = None):
 
-    # Identifies the location of a feature in the next slice
+    # Identifies the location of a visually similar feature in the next slice
     # Inputs:   (m), feature object of the previous point
     #           (tarImg), image of the next target sample
     #           (refImg), image of the current target sample
@@ -415,7 +413,7 @@ def featMatching(m, tarImg, refImg, prevImg = None, sz = 100, q = None):
 
     n = 0
     errorStore = np.inf
-    shiftAccum = 0
+
     while True:
 
         # get the feature sections
@@ -428,13 +426,14 @@ def featMatching(m, tarImg, refImg, prevImg = None, sz = 100, q = None):
         # apply conditions: section has informaiton, ref and tar and the same size and threshold area is not empty
         if tarSect.size == 0 or \
             tarSect.shape != refSect.shape or \
-                (np.sum((tarSect == 0) * 1) / tarSect.size) > 0.6 or \
-                    n > 10:
+                (np.sum((tarSect == 0) * 1) / tarSect.size) > 0.6 or n > 10:
             tarP = None
             break
         else:
             shift, error, _ = pcc(refSect, tarSect, upsample_factor=5)
             # tarP -= np.flip(shift)
+
+            # perform shifting until the position of the image with the minimal error is found
             if error - errorStore > 0:
                 # print("Shift = " + str(shiftAccum) + " error = " + str(error))
                 break
@@ -442,25 +441,11 @@ def featMatching(m, tarImg, refImg, prevImg = None, sz = 100, q = None):
             errorStore = error
 
     # save specific feature for debugging
-    if tarP is not None and m.ID == -1:
-
-        # get the new feature 
-        tarSectNew = getSect(tarImg, tarP, l)
+    if tarP is not None and False:#and np.sum(np.abs(np.diff(tarAccum, axis = 0))) > 50 :#m.ID == -1:
 
         print("ShiftAll = " + str(shift))
         print("ID = " + str(m.ID))
 
-        # ensure the name of the id is standardised 
-        sampName = str(m.Samp)
-        while len(sampName) < 4:
-            sampName = "0" + sampName
-
-        plt.imshow(np.hstack([refSect, tarSect, tarSectNew])); plt.show()
-
-        cv2.imwrite('/Volumes/Storage/H653A_11.3/3/RealignedSamplesVSmallN/featMatchR'+str(m.ID)+'sampO'+str(sampName)+'.jpg', refSect)
-        cv2.imwrite('/Volumes/Storage/H653A_11.3/3/RealignedSamplesVSmallN/featMatch'+str(m.ID)+'sampO'+str(sampName)+'.jpg', tarSect)
-        cv2.imwrite('/Volumes/Storage/H653A_11.3/3/RealignedSamplesVSmallN/featMatch'+str(m.ID)+'sampM'+str(sampName)+'.jpg', tarSectNew)
-        
         '''
         a, b = moveImg(refSect, tarSectOrig, shift)
         ax1 = plt.subplot(2, 2, 1)
@@ -544,7 +529,8 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
         while len(sampsdfBoth) < 3 and n < extraLen:
             sampdf = dfR[dfR["Zs"] == s + extraLen]
 
-            # create a data frame which contains the 
+            # create a data frame which contains the features in the current sample as well
+            # as the samples further on in the specimen 
             sampHere, sampExtra = dfR[dfR["Zs"] == s + extraLen - n], dfR[dfR["Zs"] == s]
             sampsdfBoth = pd.merge(sampHere, sampExtra, left_on = "ID", right_on = "ID")
 
@@ -629,7 +615,7 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
 
     return(dfFinalR, dfFinalSm, finalFeats)
 
-def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5, order = 2, plot = False, scl = 1):
+def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5, order = 2, annotate = False, scl = 1):
 
     # perform the non-rigid warp
     # Inputs:   (s), number of the sample
@@ -704,7 +690,8 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
 
     # print("Max Flow = " + str(np.max(Flow)) + " Min Flow = " + str(np.min(Flow)))
 
-    if plot:
+    # add annotations to the image to show the feature position changes
+    if annotate:
         # convert Flow tensor into a 3D array so that it can be saved
         # /displayed as some kind of image. 
         imgFlow = np.zeros(imgMod.shape).astype(np.uint8)
@@ -719,8 +706,8 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
             rawP = r.astype(int)
             smP = t.astype(int)
             
-            cv2.circle(imgMod, tuple(rawP), 8, [0, 0, 255], 4)
-            cv2.circle(imgMod, tuple(smP), 8, [255, 0, 0], 4)
+            cv2.circle(imgMod, tuple(rawP), 12, [0, 0, 255], 8)
+            cv2.circle(imgMod, tuple(smP), 12, [255, 0, 0], 8)
 
             # add featue ID to image
             cv2.putText(imgMod, str(id), tuple(smP + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, [255, 255, 255], 5)
@@ -794,21 +781,22 @@ def plotFeatureProgress(dfs, imgAll, dirdest, sz = 0, annos = [3]):
         # save the linked feature images
         cv2.imwrite(dirdest, imgAll)
 
-def drawPoints(img, df, sampleNos, zAxis = "Z", annos = 3, l = 0):
+def drawPoints(img, df, sampleNos, zAxis = "Z", annos = 3, l = 0, shape = None):
 
     '''
     This function draws the feature positions (1), connecting lines + text (2) and bounding boxes
     (3) for all the features. Using different level flags you can control to what extent 
     the annotations are.
 
-    Inputs: 
-        (img), image to annotate on
-        (df), pandas dataframe which stores information
-        (sampleNos), number of samples in the image
-        (l), length of the sides to draw for the bounding boxes
-        (annos), draws features circles (1), connecting lines + numbering also (2) and bounding
-        boxes also (3). 0 is no annotations. The different levels of annotations also 
-        changes the colour of the lines etc
+        Inputs: \n
+    (img), image to annotate on\n
+    (df), pandas dataframe which stores information\n
+    (sampleNos), number of samples in the image\n
+    (l), length of the sides to draw for the bounding boxes\n
+    (annos), draws features circles (1), connecting lines + numbering also (2) and bounding
+    boxes also (3). 0 is no annotations. The different levels of annotations also 
+    changes the colour of the lines etc\n
+    (shape), tuple of the shape to force the image into a ceratin shape
     
     Outputs:
         (imgAnno), annotated image
@@ -816,6 +804,9 @@ def drawPoints(img, df, sampleNos, zAxis = "Z", annos = 3, l = 0):
 
     x, y, c = img.shape
     y /= sampleNos
+
+    # ensure that the bounding boxes around the features is proporptional to the image size
+    blur = int(np.ceil(np.sqrt(x * y / 2e6)))
 
     for samp, i in enumerate(np.unique(df["ID"])):
         featdf = df[df["ID"] == i]
@@ -838,10 +829,10 @@ def drawPoints(img, df, sampleNos, zAxis = "Z", annos = 3, l = 0):
 
             if annos > 2:
                 # draw bounding boxes showing the search area of the features
-                img = drawLine(img, tar - l, tar + [l, -l], blur = 2, colour=[int(85 * annos), 255, 0])
-                img = drawLine(img, tar - l, tar + [-l, l], blur = 2, colour=[int(85 * annos), 255, 0])
-                img = drawLine(img, tar + l, tar - [l, -l], blur = 2, colour=[int(85 * annos), 255, 0])
-                img = drawLine(img, tar + l, tar - [-l, l], blur = 2, colour=[int(85 * annos), 255, 0])
+                img = drawLine(img, tar - l, tar + [l, -l], blur = blur, colour=[int(85 * annos), 255, 0])
+                img = drawLine(img, tar - l, tar + [-l, l], blur = blur, colour=[int(85 * annos), 255, 0])
+                img = drawLine(img, tar + l, tar - [l, -l], blur = blur, colour=[int(85 * annos), 255, 0])
+                img = drawLine(img, tar + l, tar - [-l, l], blur = blur, colour=[int(85 * annos), 255, 0])
 
             # label the images with their id and the number of features present
             if annos > 4:
@@ -860,6 +851,10 @@ def drawPoints(img, df, sampleNos, zAxis = "Z", annos = 3, l = 0):
         for s in np.unique(df[zAxis]):
             cv2.putText(img, "Samp_" + str(int(s)) + " no_" + str(len(df[df[zAxis] == s])), tuple(np.array([y * s, 0]).astype(int) + [50, 100]), cv2.FONT_HERSHEY_SIMPLEX, 3, [255, 255, 255], 6)
         
+    # resize the image
+    if shape is not None:
+        img = cv2.resize(img, shape)
+
     return(img)
 
 def featExtractor(dest, imgPath, info, sz, zSamp = "Zs", prefix = "png", ref = True):
@@ -892,6 +887,9 @@ def featExtractor(dest, imgPath, info, sz, zSamp = "Zs", prefix = "png", ref = T
 
     x, y, c = img.shape
     l = tile(sz, x, y)/2
+
+    # create a constant shape
+    shape = (2000, int(2000 * x/y))
     
     # go through all the info for each sample and extract all the features
     # and save in directories to categorise them into features, named after
@@ -902,9 +900,12 @@ def featExtractor(dest, imgPath, info, sz, zSamp = "Zs", prefix = "png", ref = T
         made = dirMaker(featdir)
 
         if made:
-            if ref and prefix != "tif":
-                firstSamp = drawPoints(img.copy(), info[info["ID"] == d.ID], 1, zSamp, 3, l)
-                cv2.imwrite(featdir + "_referenceImage." + prefix, firstSamp) #, [int(cv2.IMWRITE_JPEG_QUALITY), 20])
+            if ref:
+                firstSamp = drawPoints(img.copy(), info[info["ID"] == d.ID], 1, zSamp, 3, l, shape)
+                if prefix == "tif":
+                    cv2.imwrite(featdir + "_referenceImage.jpg", cv2.cvtColor(firstSamp, cv2.COLOR_BGR2RGB)) 
+                else:   
+                    cv2.imwrite(featdir + "_referenceImage.jpg", firstSamp) 
         
         if prefix == "tif":
             tifi.imwrite(featdir + nameFromPath(imgPath, 3) + "." + prefix, featSect)
@@ -972,7 +973,7 @@ def fixFeatures(features, home):
     info = home + "info/"
 
     # get the csv file on the missing samples
-    missingSampDir = info + "missingSamples.csv"
+    missingSampDir = info + "missingSamples1.csv"
 
     # get all the images
     imgs = sorted(glob(alignedSamples + "*.png"))
