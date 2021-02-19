@@ -33,7 +33,7 @@ class sampleFeatures:
     def __repr__(self):
         return repr((self.ref, self.tar, self.fit))
 
-def align(data, size = 0, cpuNo = False, errorThreshold = 100, fullScale = False):
+def align(data, size, cpuNo = 1, errorThreshold = 100, fullScale = False):
 
     # This function will take the extracted sample tif file at the set resolution and 
     # translate and rotate them to minimise the error between slices
@@ -75,7 +75,7 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    # shiftFeatures(smallSamples, featureInfoPath, destImgPath, errorThreshold)
+    shiftFeatures(featureInfoPath, destImgPath, errorThreshold)
 
     # get the field shape required for all specimens to fit
     info = sorted(glob(featureInfoPath + "*feat"))[:len(sampleNames)]
@@ -118,16 +118,20 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
 
     print('Alignment complete')
 
-def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
+def shiftFeatures(src, alignedSamples, errorThreshold = 100):
 
-    # Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
-    # Inputs:   (featNames), the samples being aligned
-    #           (src)
-    #           (alignedSamples)
-    #           (errorThreshold), the maximum error value which is tolerated before 
-    #               removing features
-    # Outputs:  (translateAll), the translation information to be applied per image
-    #           (rotateNet), the rotation information to be applied per image
+    '''
+    Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
+        
+        Inputs:   \n
+    (src), the directory of the samples being aligned\n
+    (alignedSamples), destination directory  \n
+    (errorThreshold), the maximum error value which is tolerated before removing features \n
+    
+        Outputs:  \n
+    (translateAll), the translation information to be applied per image\n
+    (rotateNet), the rotation information to be applied per image
+    '''
 
     # load the identified features
     featRef = {}
@@ -177,6 +181,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
         try:    sampleObj.ref = deepcopy(featRef[tF][0])
         except: sampleObj.ref = deepcopy(featTar[tF][0])    # for final match just use the same features
         sampleObj.tar = deepcopy(featTar[tF][0])
+
         shapeTar = featTar[tF][1]['shape']
         shapeRef = featRef[rF][1]['shape']
 
@@ -190,9 +195,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
 
         # set the initial attempt positional ranges to remove features in the case of 
         # refitting attempts
-        atmpR = 1
         atmp = 0
-        lastFt = []
         n = 0
         featsMod = deepcopy(featsO)
         translateSum = np.zeros(2).astype(float)
@@ -219,7 +222,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
             featsMod = deepcopy(featsO)
             refit = False
             manualFit = False
-            
+
             # mimimise the error per feature of the currently selected feature
             while True:        
 
@@ -230,7 +233,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                 errorCc = errorC
 
                 # get the translation vector
-                translation, feattmp, err = translatePoints(featsMod, bestfeatalign = False)
+                translation, feattmp, _ = translatePoints(featsMod, bestfeatalign = False)
                 
                 # keep track of a temporary translation
                 translateSum += translation
@@ -246,7 +249,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                 # store the last n changes in error
                 errorStore = np.insert(errorStore, 0, errN)
                 errorStore = np.delete(errorStore, -1)
-                
+
                 # sometimes the calcultions get stuck, ossiclating between two errrors
                 # of the same magnitude but opposite sign
                 if errorC + errorCc == 0:
@@ -261,7 +264,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                     featsO.fit = True
 
                 # positions have converged 
-                elif np.round(np.sum(np.diff(errorStore)), 2) <= 0:
+                elif np.round(np.sum(np.diff(errorStore)), 5) <= 0:
                     # if the final error is below a threshold, it is complete
                     # but use the previously fit features
                     if errO < errorThreshold:
@@ -276,8 +279,8 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                         # print("     Modifying feat, err/feat = " + str(int(errO)))
                         # denseMatrixViewer([featsMod[rF], featsMod[tF], centre[tF]], True)
                         
-                        # there have to be at least 3 points left to enable good fitting practice
-                        # if there aren't going to be 3 left do a manual fitting process
+                        # there have to be at least 8 points left to enable good fitting practice
+                        # if there aren't going to be 8 left do a manual fitting process
                         if len(featsMod.tar) < 3: 
                             manualFit = True
 
@@ -292,7 +295,7 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                         atmp += 1
                         break
 
-                # if there are only 3 features remaining for the fitting process
+                # if there are only 8 features remaining for the fitting process
                 # then it will require manual fitting
                 elif errCnt > 10:
                     refit = True
@@ -313,13 +316,13 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                 # denseMatrixViewer([dictToArray(featsMod.ref), dictToArray(featsMod.tar), centre], True)
 
                 # change the original positions used
-                feats = featChangePoint(regionOfPath(src, 2), rF, tF, nopts=8, title = "Select eight features on each image")
-                
+                reffeats, tarfeats = featChangePoint(regionOfPath(src, 2), rF, tF, nopts=8, title = "Select eight features on each image")
+                _, commonFeats = uniqueKeys([reffeats, tarfeats, featRef[rF][0], featTar[tF][0]])
                 # go through all the annotations and see if there have actually been any changes made
                 same = True
                 for cf in commonFeats:
                     # check if any of the annotations have changed
-                    if (feats.refP[cf] != featRef[rF][0][cf]).all() or (feats.tarP[cf] != featTar[tF][0][cf]).all():
+                    if (reffeats[cf] != featRef[rF][0][cf]).all() or (tarfeats[cf] != featTar[tF][0][cf]).all():
                         same = False 
                         break
 
@@ -329,13 +332,13 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
                     break
 
                 # update the master dictionary as these are the new features saved
-                featRef[rF][0] = feats.refP
-                featTar[tF][0] = feats.tarP
+                featRef[rF][0] = reffeats
+                featTar[tF][0] = tarfeats
 
                 # updated the featO features for a new fitting procedure based on these new
                 # modified features
-                featsO.ref = feats.refP
-                featsO.tar = feats.tarP
+                featsO.ref = reffeats
+                featsO.tar = tarfeats
                 atmp = 0
             
             # if there are enough feature available but alignment didn't converge to 
@@ -374,7 +377,6 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
         # continue fitting until convergence with the already fitted results
         while abs(errN) > 1e-8:
             rotationAdjustment, featToMatch, errN, cent, MxErrPnt = rotatePoints(featToMatch, bestfeatalign = False, plot = False, centre = centre)
-            rotated = rotationAdjustment
             rotateSum += rotationAdjustment
             # print("Fit: " + str(n) + " FINAL FITTING: " + str(errN))
             n += 1
@@ -388,15 +390,12 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
         for ft in sampleObj.tar:
             sampleObj.tar[ft] -= translateSum    
 
+        # rotate the features, both the reference and target, on the sample
         sampleObj.ref = objectivePolar(rotateSum, centre, False, sampleObj.ref) 
         sampleObj.tar = objectivePolar(rotateSum, centre, False, sampleObj.tar) 
 
         # denseMatrixViewer([featRef[rF][0], sampleObj.tar, featsMod.ref, featsMod.tar, centre], True)
         # denseMatrixViewer([featsMod.ref, featsMod.tar, centre], True)
-
-        # featsMod.ref
-
-        _, L = uniqueKeys([sampleObj.tar, featsMod.tar])
 
         # save all the original features but transformed to meet fitting criteria 
         dictToTxt(featRef[rF][0], alignedFeats + rF + ".reffeat", fit = featsO.fit, shape = shapeRef)
@@ -405,6 +404,8 @@ def shiftFeatures(featPaths, src, alignedSamples, errorThreshold = 100):
         # reasign the sample features after being translated and rotated
         try:    featRef[tF][0] = sampleObj.ref
         except: print("Finished fitting")
+
+        # plt.imshow(np.hstack(standardImgSize(matrix)[0])); plt.show()
 
     # save the tif shapes, translation and rotation information
     dictToTxt(translateAll, src + "all.translated")
@@ -453,8 +454,8 @@ def transformSamples(samplePath, prefix, maxShape, shift, segInfo, dest, saving 
     # load the whole specimen info
     translateAll = txtToDict(translateNetdir, float)[0]
     translateNet = -(shiftR + translateAll[sample] * shapeR)
-    print("     " + str(translateNet))
-    # get the anlge and centre of rotation used to align the samples
+
+    # get the angle and centre of rotation used to align the samples
     w = rotateNet[sample][0]
     centre = rotateNet[sample][1:] * shapeR
     # make destinate directory
@@ -577,49 +578,9 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
     # reassign this as the new feature
     featsMod.tar = tarM
     
-    if plot: denseMatrixViewer([dictToArray(refN), dictToArray(refP), centre], True)
+    if plot: denseMatrixViewer([dictToArray(tarM), dictToArray(refP), centre], True)
 
     return(rotationStore, featsMod, err, centre, MxErrPnt)
-
-def plotPoints(dir, imgO, cen, points, si = 50):
-
-    # plot circles on annotated points
-    # Inputs:   (dir), either a directory (in which case load the image) or the numpy array of the image
-    #           (imgO), image directory
-    #           (cen), rotational centre
-    #           (points), dictionary or array of points which refer to the co-ordinates on the image
-    # Outputs:  (), saves downsampled jpg image with the points annotated
-
-    # load the image
-    if type(imgO) is str:
-            imgO = cv2.imread(imgO)
-
-    img = imgO.copy()
-    colours = [(0, 0, 255), (0, 255, 255), (255, 0, 255), (255, 255, 255)]
-    sizes = [1, 0.8, 0.6, 0.4]
-
-    # for each set of points add to the image
-    for n, pf in enumerate(points):
-
-        point = points[pf]
-
-        if type(point) is dict:
-            point = dictToArray(point)
-
-        for p in point:       # use the target keys in case there are features not common to the previous original 
-            pos = tuple(np.round(p).astype(int))
-            img = cv2.circle(img, pos, int(si * sizes[n]), tuple(colours[n]), int(si * sizes[n]/2)) 
-        
-    # plot of the rotation as well using opposite colours
-    cen = cen.astype(int)
-    # img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
-    img = cv2.circle(img, tuple(cen), int(si * sizes[n] * 0.8), (255, 0, 0), int(si * sizes[n] * 0.8/2)) 
-
-    # resize the image
-    x, y, c = img.shape
-    imgResize = cv2.resize(img, (2000, int(2000 * x/y)))
-
-    cv2.imwrite(dir, imgResize, [cv2.IMWRITE_JPEG_QUALITY, 80])
 
 def objectiveCartesian(pos, *args):
 
@@ -667,7 +628,6 @@ def objectivePolar(w, centre, *args):
 
     if type(w) is np.ndarray:
         w = w[0]
-
     
     tarN = {}
 
@@ -680,13 +640,6 @@ def objectivePolar(w, centre, *args):
     # find the centre of the target from the annotated points
     tarA = (tarA).astype(float)
     centre = (centre).astype(float)
-
-    # debugging stuff --> shows that the rotational transformation is correct on the features
-    # so it would suggest that the centre point on the image is not being matched up well
-    
-    # create an array to contain all the points found and rotated
-    m = 1
-    plotting = False
 
     # process per target feature
     tarNames = list(tar)
@@ -757,6 +710,47 @@ def findCentre(pos, typeV = float):
 
     return(centre)
 
+def plotPoints(dir, imgO, cen, points, si = 50):
+
+    # plot circles on annotated points
+    # Inputs:   (dir), either a directory (in which case load the image) or the numpy array of the image
+    #           (imgO), image directory
+    #           (cen), rotational centre
+    #           (points), dictionary or array of points which refer to the co-ordinates on the image
+    # Outputs:  (), saves downsampled jpg image with the points annotated
+
+    # load the image
+    if type(imgO) is str:
+            imgO = cv2.imread(imgO)
+
+    img = imgO.copy()
+    colours = [(0, 0, 255), (0, 255, 255), (255, 0, 255), (255, 255, 255)]
+    sizes = [1, 0.8, 0.6, 0.4]
+
+    # for each set of points add to the image
+    for n, pf in enumerate(points):
+
+        point = points[pf]
+
+        if type(point) is dict:
+            point = dictToArray(point)
+
+        for p in point:       # use the target keys in case there are features not common to the previous original 
+            pos = tuple(np.round(p).astype(int))
+            img = cv2.circle(img, pos, int(si * sizes[n]), tuple(colours[n]), int(si * sizes[n]/2)) 
+        
+    # plot of the rotation as well using opposite colours
+    cen = cen.astype(int)
+    # img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
+    img = cv2.circle(img, tuple(cen), int(si * sizes[n] * 0.8), (255, 0, 0), int(si * sizes[n] * 0.8/2)) 
+
+    # resize the image
+    x, y, c = img.shape
+    if (img.shape[:2] > np.array([2000, 2000])).all():
+        img = cv2.resize(img, (2000, int(2000 * x/y)))
+
+    cv2.imwrite(dir, img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn')
 
@@ -770,9 +764,9 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/Storage/H710C_6.1/'
-    dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/Testing/'
     dataSource = ''
+    dataSource = '/Volumes/USB/H653A_11.3/'
 
     # dataTrain = dataHome + 'FeatureID/'
     name = ''
