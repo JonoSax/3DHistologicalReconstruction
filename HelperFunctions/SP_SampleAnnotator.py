@@ -220,8 +220,8 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
             featInfos = [matchRef, matchTar]
 
     else:
-        dictToTxt(matchRef, matchRefdir, fit = False)
-        dictToTxt(matchTar, matchTardir, fit = False)
+        dictToTxt(matchRef, matchRefdir, shape = imgref.shape, fit = False)
+        dictToTxt(matchTar, matchTardir, shape = imgtar.shape, fit = False)
         
         # if the input was a list of dictionaries, return a list of dictionaries
         featInfos = [matchRef, matchTar]
