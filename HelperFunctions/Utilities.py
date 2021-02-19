@@ -13,7 +13,7 @@ from PIL import Image
 import multiprocessing
 from itertools import repeat
 import pandas as pd
-from time import time
+from time import time, time_ns
 import shutil
 
 # os.system('python HelperFunctions/setup.py build_ext --inplace')
@@ -827,7 +827,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
     matchInfos = []
     # get the two best features from within a select range of the data
     for fits in range(spawnPoints):
-        matchInfos.append(findbestfeatures(allInfo[fits:fits+spawnPoints], dist))
+        matchInfos.append(findbestfeatures(allInfo[fits:], dist))
 
     # if the feature matching has to be performed sequentially (ie for non-rigid defomation)
     # then this step can definitely be parallelised
@@ -916,6 +916,9 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
 
     matchInfoN = []
 
+    new = []
+    old = []
+
     # append the already found matching info
     matchInfoN += matchInfo
 
@@ -946,6 +949,41 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
         # print("FEAT BEING PROCESSED")
         angdist = []
         ratiodist = []
+
+        newrefang = np.zeros(len(matchInfoN[:r]))
+        newtarang = np.zeros(len(matchInfoN[:r]))
+        
+        # calculate all the info per anchor point
+        for n, mi in enumerate(matchInfoN[:r]):
+
+            if (mi.refP).any() == np.inf:
+                print("TO INFINITY AND BEYOND")
+
+            newrefang[n] = findangle(mi.refP, i.refP)
+            newtarang[n] = findangle(mi.tarP, i.tarP)
+
+            # get the distances of the new points to the best feature
+            newrefdist = np.sqrt(np.sum((mi.refP - i.refP)**2))
+            newtardist = np.sqrt(np.sum((mi.tarP - i.tarP)**2))
+
+            if newrefdist - newrefdist == 0 and newtardist - newtardist == 0:
+                # finds how much larger the largest distance is compared to the smallest distance
+                ratiodist.append((newtardist/newrefdist)**(1-((newrefdist>newtardist)*2)) - 1)
+            else:
+                ratiodist.append(np.inf)
+
+        # calculate all the relative angles between features
+        for n1 in range(len(matchInfoN[:r])):
+            for n2 in range(len(matchInfoN[:r])):
+
+                # if the features are repeated, don't use it
+                if n1 >= n2:
+                    continue
+
+                angdist.append(abs((newrefang[n1] - newrefang[n2]) - (newtarang[n1] - newtarang[n2])))
+        
+        '''
+
         # use, up to, the top n best features: this is more useful/only used if finding
         # LOTS of features as this fitting procedure has a O(n^2) time complexity 
         # so limiting the search to this sacrifices limited accuracy for significant 
@@ -954,14 +992,14 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
             for n2, mi2 in enumerate(matchInfoN[:r]):
 
                 # if the features are repeated, don't use it
-                if n1 == n2:
+                if n1 >= n2:
                     continue
 
                 # find the angle for the new point and all the previously found point
                 if (mi1.refP).any() == np.inf:
                     print("TO INFINITY AND BEYOND")
-                newrefang = findangle(mi1.refP, mi2.refP, i.refP)
-                newtarang = findangle(mi1.tarP, mi2.tarP, i.tarP)
+                newrefang = findangle(mi1.refP, i.refP, mi2.refP)
+                newtarang = findangle(mi1.tarP, i.tarP, mi2.tarP)
 
                 # newrefang2 = findangle2(mi1.refP, mi2.refP, i.refP)
                 # newtarang2 = findangle2(mi1.tarP, mi2.tarP, i.tarP)
@@ -981,6 +1019,7 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
                 ratiodist.append((newtardist/newrefdist)**(1-((newrefdist>newtardist)*2)) - 1)
             else:
                 ratiodist.append(np.inf)
+        '''
 
         # if the new feature is than 5 degress off and within 5% distance each other 
         # from all the previously found features then append 
@@ -1008,13 +1047,13 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
             noFeatFind += 1
             if noFeatFind > int(len(allInfo) * tol):
                 break
-
+        
     if type(q) is type(None):
         return(matchInfoN)
     else:
         q.put(matchInfoN)
 
-def nameFeatures(imgref0, imgtar0, matchedInfo, circlesz = 0.5, txtsz = 0.5, combine = False, width = 3):
+def nameFeatures(imgref0, imgtar0, matchedInfo, scalesAll, circlesz = 0.5, txtsz = 0.5, combine = False, width = 3):
 
     # this function takes a list of the feature objects and adds them
     # as annotations to both the ref and target images
@@ -1066,7 +1105,8 @@ def nameFeatures(imgref0, imgtar0, matchedInfo, circlesz = 0.5, txtsz = 0.5, com
     imgref = imgref0.copy()
     imgtar = imgtar0.copy()
 
-    scales = np.arange(np.max([m.res for m in matchedInfo])+1, 0, -1)-1
+    scaleIdx = np.unique([m.res for m in matchedInfo])
+    scales = [scalesAll[s] for s in scaleIdx]
 
     # if the combine variable is true, combine the images and draw the lines
     # between the features to connect them
@@ -1078,6 +1118,10 @@ def nameFeatures(imgref0, imgtar0, matchedInfo, circlesz = 0.5, txtsz = 0.5, com
         # if the images aren't the same size, ensure they are both put into
         # a shape which fits both
         if (imgref.shape != imgtar.shape):
+
+            [imgref, imgtar], y = standardImgSize([imgref, imgtar])
+
+            '''
             x, y, c  = np.max(np.array([imgref.shape, imgtar.shape]), axis = 0)
             plate = np.zeros([x, y, c]).astype(np.uint8)
 
@@ -1086,17 +1130,21 @@ def nameFeatures(imgref0, imgtar0, matchedInfo, circlesz = 0.5, txtsz = 0.5, com
 
             plateref = plate.copy(); plateref[:xr, :yr, :] = imgref; imgref = plateref
             platetar = plate.copy(); platetar[:xt, :yt, :] = imgtar; imgtar = platetar
+            '''
 
         # combine the images
         imgCompare = np.hstack([imgref, imgtar])
 
-        # NOTE still working on make sure the lower res info is appearing last therefore it is ONTOP of 
-        # all of the other points
-        for scl in scales:
-                
+        # plot per scale
+        for n, scl in zip(scaleIdx, scales):
+            
             # get the info at the specific resolution
-            col = colours[scl]
-            info = [matchedInfo[i] for i in list(np.where([m.res == scl for m in matchedInfo])[0])]
+            col = colours[n]
+
+            cv2.putText(imgCompare, "Scl: " + str(scl), tuple([60, 200 + 100*n]), cv2.FONT_HERSHEY_SIMPLEX, int(6*txtsz), [255, 255, 255], int(14*txtsz))
+            cv2.putText(imgCompare, "Scl: " + str(scl), tuple([60, 200 + 100*n]), cv2.FONT_HERSHEY_SIMPLEX, int(6*txtsz), col, int(6*txtsz))
+                
+            info = [matchedInfo[i] for i in list(np.where([m.res == n for m in matchedInfo])[0])]
             for i in info:
 
                 refP = i.refP
@@ -1106,16 +1154,26 @@ def nameFeatures(imgref0, imgtar0, matchedInfo, circlesz = 0.5, txtsz = 0.5, com
                 imgCompare = annotate(imgCompare, tarP, i, circlesz, txtsz, col)
                 imgCompare = drawLine(imgCompare, refP, tarP, width, colour = col)
 
+
+        # put text for the number of features
+        cv2.putText(img = imgCompare, text = str("Feats found = " + str(len(matchedInfo))), 
+            org = (60, 80),
+            fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*6, color = (255, 255, 255), thickness = int(txtsz*14))
+        cv2.putText(img = imgCompare, text = str("Feats found = " + str(len(matchedInfo))), 
+        org = (60, 80),
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = txtsz*6, 
+        color = (0, 0, 0), thickness = int(txtsz*6))
+
         return(imgCompare)
 
     # else just draw the features on each image
     else:
 
-        for scl in scales:
+        for n, scl in zip(scaleIdx, scales):
             
             # get the info at the specific resolution
-            col = colours[scl]
-            info = [matchedInfo[i] for i in list(np.where([m.res == scl for m in matchedInfo])[0])]
+            col = colours[n]
+            info = [matchedInfo[i] for i in list(np.where([m.res == n for m in matchedInfo])[0])]
             for i in info:
 
                 refP = i.refP
@@ -1326,6 +1384,27 @@ def getSampleName(dirsrc, name):
         # if the key word return no samples adjust the sampleID
         if len(samp) == 0:
             name = input("Key word " + name + " returned no results, check sample exists and type it in here: ")
+
+def standardImgSize(imgs):
+
+    '''
+    From a list of images, standardise the size of all the images
+    '''
+
+    shapes = []
+    for i in imgs:
+        shapes.append(i.shape)
+
+    x, y, c  = np.max(np.array(shapes), axis = 0)
+    plate = np.zeros([x, y, c]).astype(np.uint8)
+
+    normImgs = []
+    for i in imgs:
+        xr, yr, c = i.shape
+
+        plateref = plate.copy(); plateref[:xr, :yr, :] = i; normImgs.append(plateref)
+
+    return(normImgs, yr)
 
     
 
