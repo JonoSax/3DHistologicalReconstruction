@@ -40,9 +40,6 @@ size = 3
 # resolution of the smaller image to be extratcted from the full scale image
 res = 0.2
 
-# NOTE depreceated, needs to be removed
-name = ''
-
 # number of cores to use. If set to False then will serialise and allow
 # for debugging (if 1 is used it still processes with the multiprocessing
 # functions) 
@@ -54,7 +51,7 @@ if __name__ == "__main__":
     
     print("\n----------- WSILoad ---------")
     # extract the tif file of the specified size
-    # WSILoad(dataHome, name, size, cpuNo)
+    WSILoad(dataHome, size, cpuNo)
     
     print("\n----------- smallerTif -----------")
     # create jpeg images of all the tifs and a single collated pdf
@@ -62,7 +59,7 @@ if __name__ == "__main__":
 
     print("\n----------- specID -----------")
     # extract the invidiual sample from within the slide
-    specID(dataHome, name, size, cpuNo)
+    specID(dataHome, size, cpuNo)
 
     print("\n----------- featFind -----------")
     # identify corresponding features between samples 
