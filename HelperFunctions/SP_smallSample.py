@@ -5,9 +5,9 @@ import multiprocessing
 from multiprocessing import Pool
 from itertools import repeat
 import numpy as np
-
 from tifffile.tifffile import imagej_description
-if __name__ != "HelperFunctions.SP_AlignSamples":
+
+if __name__ != 'HelperFunctions.SP_smallSample':
     from Utilities import nameFromPath, dirMaker
 else:
     from HelperFunctions.Utilities import nameFromPath, dirMaker
@@ -29,6 +29,10 @@ def downsize(dataHome, size, scale = 0.3, cpuNo = False):
     dirMaker(targetDir)
 
     unrotated = len(glob(tifFiles + "_rotatedImgs*")) != 1
+    if unrotated:
+        print("     ROTATING")
+    else:
+        print("     NOT rotating")
 
     imgsRotated = []
     if cpuNo == 1:
@@ -36,7 +40,7 @@ def downsize(dataHome, size, scale = 0.3, cpuNo = False):
             imgsRotated.append(ds(f, scale, targetDir, unrotated))
     else:
         with Pool(processes=cpuNo) as pool:
-            imgsRotated = pool.starmap(ds, zip(files, repeat(scale), repeat(targetDir)))
+            imgsRotated = pool.starmap(ds, zip(files, repeat(scale), repeat(targetDir), repeat(unrotated)))
             
     f = open(tifFiles + "_rotatedImgs.txt", "w")
     for i in imgsRotated:
@@ -97,6 +101,6 @@ if __name__ == "__main__":
     size = 3
     name = ''
     scale = 0.2
-    cpuNo = 1
+    cpuNo = 2
 
     downsize(dataSource, size, scale, cpuNo)
