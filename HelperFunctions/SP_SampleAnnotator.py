@@ -22,6 +22,7 @@ import numpy as np
 # import tensorflow as tf
 from glob import glob
 import matplotlib.pyplot as plt
+from matplotlib.widgets import RectangleSelector
 import tifffile as tifi
 from multiprocessing import Pool, cpu_count
 from copy import deepcopy
@@ -312,7 +313,7 @@ def sectionExtract(path, segSections, feats, x, y, ref = None):
 
     return(segShapes)
 
-def roiselector(img, title = "Matching"):
+def roiselectorOG(img, title = "Matching"):
 
     # function which calls the gui and get the co-ordinates 
     # Inputs    (img), numpy array image of interest
@@ -348,6 +349,90 @@ def roiselector(img, title = "Matching"):
     x = x * scale
 
     return(x, y)
+
+def roiselector(img, title = "Matching"):
+
+    # function which calls the gui and get the co-ordinates 
+    # Inputs    (img), numpy array image of interest
+    # Outputs   (xme, yme), x and y positions on the original image of the points selected
+    # ensure that the image is scaled to a resolution which can be used in the sceen
+    
+    xc, yc, c = img.shape
+    r = xc/yc
+    # if the height is larger than the width
+    if xc > yc/2:
+        size = 700
+        sizeY = int(size / r)
+        sizeX = int(size)
+
+    # if the width is larger than the height
+    else:
+        size = 1200
+        sizeY = int(size) 
+        sizeX = int(size * r)
+
+    scale = yc / sizeY
+
+    # perform a search over a reduced size area
+    imgr = cv2.resize(img, (sizeY, sizeX))
+    x, y = annotatorGUI(imgr, title)
+
+    # get the postions
+    # y = np.array([roi[1], roi[1] + roi[3]])
+    # x = np.array([roi[0], roi[0] + roi[2]])
+
+    # scale the positions back to their original size
+    y = y * scale
+    x = x * scale
+
+    return(x, y)
+
+def annotatorGUI(img, title):
+
+    def line_select_callback(eclick, erelease):
+        """
+        Callback for line selection.
+
+        *eclick* and *erelease* are the press and release events.
+        """
+        # get the click positions
+        x1, y1 = eclick.xdata, eclick.ydata
+        x2, y2 = erelease.xdata, erelease.ydata
+
+        # turn selection into point
+        global allPos
+        allPos = np.array([np.mean([x1, x2]), np.mean([y1, y2])])
+
+        print("x1: " + str(x1) + " x2: " +str(x2))
+
+        
+
+    def toggle_selector(event):
+        print(' Key pressed.')
+        if event.key == 'enter':
+            toggle_selector.RS.set_active(False)
+            fig.canvas.mpl_disconnect(toggle_selector)
+            plt.close()
+            return
+            # toggle_selector.RS.set_active(True)
+
+    fig, ax = plt.subplots()
+    plt.imshow(img)
+    ax.set_title(title)
+
+    # drawtype is 'box' or 'line' or 'none'
+    toggle_selector.RS = RectangleSelector(ax, line_select_callback,
+                                        drawtype='box', useblit=True,
+                                        button=[1, 3],  # disable middle button
+                                        minspanx=1, minspany=1,
+                                        spancoords='pixels',
+                                        interactive=True)
+
+    # get the positions by creating a global variable to access the callback function
+    fig.canvas.mpl_connect('key_press_event', toggle_selector)
+    plt.show()
+
+    return(allPos)
 
 def annotateImg(imgs, info, ts):
 
