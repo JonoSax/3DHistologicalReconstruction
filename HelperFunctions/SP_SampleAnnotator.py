@@ -17,6 +17,8 @@ to allow a user to select points. The functionionality of each funcitons is as f
 
 '''
 
+import matplotlib
+matplotlib.use('TkAgg')
 import cv2
 import numpy as np
 # import tensorflow as tf
