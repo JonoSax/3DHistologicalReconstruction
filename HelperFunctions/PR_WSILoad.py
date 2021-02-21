@@ -18,10 +18,10 @@ else:
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
-def WSILoad(dataTrain, name, size, cpuNo = False):
+def WSILoad(dataTrain, size, cpuNo = False):
 
     # this is the function called by main. Organises the inputs for findFeats
-    ndpis = sorted(glob(dataTrain + name + "*.nd*"))
+    ndpis = sorted(glob(dataTrain + "*.nd*"))
 
     # ensure all ndpi files have at least a two digit category number (prevents 
     # false identification)
@@ -43,7 +43,7 @@ def WSILoad(dataTrain, name, size, cpuNo = False):
         else:
             print(name + " well named")
 
-    specimens = sorted(glob(dataTrain + "*.*"))
+    specimens = sorted(glob(dataTrain + "*.ndpi"))
     # load(dataTrain, '', size)
 
     if cpuNo > 1: 
@@ -112,21 +112,28 @@ def ndpiLoad(mag, src, dest):
 
     name = nameFromPath(src)
 
-    extractedName = glob(dirSRC + name + "*.tif")[0]    # NOTE, use of z0 is to prevent 
+    extractedName = dirSRC + name + "_x" + str(mag) + "_3z0.tif"    # NOTE, use of z0 is to prevent 
                                                                 # duplication of the same file, however 
                                                                 # if there is z shift then this will fail
 
     imgDir = dest + nameSRC + "_" + str(mag) + ".tif"
-    os.rename(extractedName, imgDir)
+    try:
+        os.rename(extractedName, imgDir)
+
+    except:
+        print("     " + name + " didn't work, trying glob")
+        extractedName = glob(dirSRC + name + "*.tif")[0]
+        # extractedName = getSampleName(dirSRC, name)
+        os.rename(extractedName, imgDir)
 
     
 if __name__ == "__main__":
 
     dataTrain = '/Volumes/USB/IndividualImages/temporaryH653/'
-    dataTrain = '/Volumes/USB/Testing/'
+    dataTrain = '/Volumes/USB/H653A_11.3/'
     name = ''
-    size = 5
-    cpuNo = 1
+    size = 2.5
+    cpuNo = 3
 
-    WSILoad(dataTrain, name, size, cpuNo)
+    WSILoad(dataTrain, size, cpuNo)
     
