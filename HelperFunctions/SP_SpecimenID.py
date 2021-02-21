@@ -26,18 +26,18 @@ entire image, rather than segmenting the image into grids
 '''
 
 # NOTE can probably depreciate specID and make sectionSelecter the main function
-def specID(dataHome, name, size, cpuNo = False):
+def specID(dataHome, size, cpuNo = False):
 
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
 
-    refimg = 'H653A_009_1'
+    refimg = 'H653A_0009_1.png'
 
     # gets the images for processing
-    sectionSelecter(name, datasrc, cpuNo, refimg)
+    sectionSelecter(datasrc, cpuNo, refimg)
 
 
-def sectionSelecter(spec, datasrc, cpuNo = False, refimgname = None):
+def sectionSelecter(datasrc, cpuNo = False, refimgname = None):
 
     '''
     This function creates a mask which is trying to selectively surround
@@ -68,11 +68,10 @@ def sectionSelecter(spec, datasrc, cpuNo = False, refimgname = None):
     dirMaker(imgPlots)
 
     # get all the images 
-    imgsmall = sorted(glob(imgsmallsrc + spec + "*.png"))
-    imgbig = sorted(glob(imgbigsrc + spec + "*.tif"))
+    imgsmall = sorted(glob(imgsmallsrc + "*.png"))
+    imgbig = sorted(glob(imgbigsrc + "*.tif"))
     
     print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
-    '''
     # serialised
     if cpuNo is False:
         for idir in imgsmall:    
@@ -82,7 +81,6 @@ def sectionSelecter(spec, datasrc, cpuNo = False, refimgname = None):
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
             pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasks), repeat(imgPlots)))
-    
     
     print("\n   #--- APPLY MASKS ---#")
     
@@ -106,14 +104,13 @@ def sectionSelecter(spec, datasrc, cpuNo = False, refimgname = None):
             pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, imgbig, imgsmall, repeat(imgref)))
 
     print('Info Saved')
-    '''
-
+    
     print("\n   #--- NORMALISE COLOURS ---#")
     # NOTE this is done seperately from the masking so that the colour 
     # normalisation is done on masked images, rather than images on slides
     # get all the masked images 
     imgsmallmasked = sorted(glob(imgMasked + "*png"))
-    imgbigmasked = sorted(glob(imgMasked + "*tif")) 
+    imgbigmasked = sorted(glob(imgMasked + "*tif"))
     refimg = cv2.imread(getSampleName(imgMasked, refimgname))
 
     # if there is a reference image, normalise colours
@@ -128,7 +125,7 @@ def sectionSelecter(spec, datasrc, cpuNo = False, refimgname = None):
 
     # create the all.shape information file
 
-def maskMaker(idir, imgMasked = None, imgplot = None):     
+def maskMaker(idir, imgMasked = None, imgplot = False):     
 
     # this function loads the desired image and processes it as follows:
     #   0 - GrayScale image
@@ -300,12 +297,11 @@ def maskMaker(idir, imgMasked = None, imgplot = None):
     cv2.imwrite(imgMasked + name + ".pbm", im_id)
     print("     " + name + " Masked")
     # plot the key steps of processing
-    if imgplot is not None:
+    if imgplot:
         # create sub plotting capabilities
         # fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
         
         f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-        _, ax1 = plt.subplots(1, 1)
         # ax1.subplot(3, 1, 1)
         ax1.semilogy(histBinsF[1:], histValsF)
         ax1.semilogy(histBinsF[backVal+1], histValsF[backVal], marker="o", color = [0, 0, 1])
@@ -352,7 +348,7 @@ def maskMaker(idir, imgMasked = None, imgplot = None):
         ax4.imshow(imgMod, cmap = 'gray') 
         ax4.axis("off")
         ax4.title.set_text("masked image")
-        f.tight_layout(pad = 0.1)
+        f.tight_layout(pad = 1)
         # plt.show()
         plt.savefig(imgplot + name + ".jpg")
         plt.clf()
@@ -501,7 +497,7 @@ def imgStandardiser(destPath, maskpath, imgbigpath, imgsmallpath, imgref):
 
             # adjust for the original size image
             xb, yb = np.array(extract[n]) *  ratio
-            imgbigsect = imgbig[yb[0]:yb[1], xb[0]:xb[1], :]
+            imgbigsect = imgbig[:, :, :3][yb[0]:yb[1], xb[0]:xb[1], :]
 
             # expand the dims so that it can multiply the original image
             maskS = cv2.resize(maskE, (imgsmallsect.shape[1], imgsmallsect.shape[0])).astype(np.uint8)
@@ -574,8 +570,8 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710B_6.1/'
-    dataSource = '/Volumes/Storage/H710C_6.1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
 
     name = ''
     size = 3
