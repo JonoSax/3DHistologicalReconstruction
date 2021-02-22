@@ -37,7 +37,7 @@ def specID(dataHome, size, cpuNo = False):
     sectionSelecter(datasrc, cpuNo, refimg)
 
 
-def sectionSelecter(datasrc, cpuNo = False, refimgname = None):
+def sectionSelecter(datasrc, cpuNo = 1, refimgname = None):
 
     '''
     This function creates a mask which is trying to selectively surround
@@ -70,10 +70,10 @@ def sectionSelecter(datasrc, cpuNo = False, refimgname = None):
     # get all the images 
     imgsmall = sorted(glob(imgsmallsrc + "*.png"))
     imgbig = sorted(glob(imgbigsrc + "*.tif"))
-    
+
     print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
     # serialised
-    if cpuNo is False:
+    if cpuNo == 1:
         for idir in imgsmall:    
             maskMaker(idir, imgMasks, imgPlots)
 
@@ -92,16 +92,15 @@ def sectionSelecter(datasrc, cpuNo = False, refimgname = None):
     # same results
     try: imgref = cv2.imread(imgsmall[1])
     except: imgref = None
-    
     # serialised
-    if cpuNo is False:
-        for m, iB, iS in zip(masks, imgbig, imgsmall):
-            imgStandardiser(imgMasked, m, iB, iS, imgref)
+    if cpuNo == 1:
+        for m in masks:
+            imgStandardiser(imgMasked, m, imgsmallsrc, imgbigsrc, imgref)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, imgbig, imgsmall, repeat(imgref)))
+            pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, repeat(imgsmallsrc), repeat(imgbigsrc), repeat(imgref)))
 
     print('Info Saved')
     
@@ -115,7 +114,7 @@ def sectionSelecter(datasrc, cpuNo = False, refimgname = None):
 
     # if there is a reference image, normalise colours
     if refimg is not None:
-        if cpuNo is False:
+        if cpuNo == 1:
             # normalise the colours of the images
             for imgtarS, imgtarF in zip(imgsmallmasked, imgbigmasked):
                 imgNormColour(imgtarS, refimg, imgtarF)
@@ -440,7 +439,7 @@ def bounder(im_id):
 
     return(extractA)
 
-def imgStandardiser(destPath, maskpath, imgbigpath, imgsmallpath, imgref):
+def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgref):
 
     # this applies the mask created to the lower resolution and full 
     # resolution images and creates information needed for the alignment
@@ -454,7 +453,14 @@ def imgStandardiser(destPath, maskpath, imgbigpath, imgsmallpath, imgref):
     # get info to place all the images into a standard size to process (if there
     # is a mask)
 
-    name = nameFromPath(imgsmallpath, 3)
+    name = nameFromPath(maskpath, 3)
+
+    try:    imgsmallpath = glob(smallsrcPath + name + "*.png")[0]
+    except: print("SMALL IMG SEARCH"); imgsmallpath = getSampleName(smallsrcPath, name + "*")
+    
+    try:    imgbigpath = glob(bigsrcPath + name + "*.tif")[0]
+    except: print("SMALL IMG SEARCH"); imgbigpath = getSampleName(smallsrcPath, name + "*")
+   
     print(name + " modifying")
     imgsmall = cv2.imread(imgsmallpath)
     imgbig = tifi.imread(imgbigpath)
@@ -570,11 +576,11 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710B_6.1/'
-    dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H710C_6.1/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
 
     name = ''
     size = 3
-    cpuNo = False
+    cpuNo = 1
         
-    specID(dataSource, name, size, cpuNo)
+    specID(dataSource, size, cpuNo)
