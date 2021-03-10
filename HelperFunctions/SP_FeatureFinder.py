@@ -8,6 +8,7 @@ faster on C++ --> consider re-writing for speed
 
 '''
 
+import threading as thr
 from random import random
 import numpy as np
 import cv2
@@ -87,7 +88,7 @@ def featFind(dataHome, size, cpuNo = 1, featMin = 20, gridNo = 3, dist = 10):
     dirMaker(imgDest)
 
     # get the downsampled images
-    imgs = sorted(glob(imgsrc + "*.png"))[:20]
+    imgs = sorted(glob(imgsrc + "*.png"))
     imgRef = []
     imgTar = []
 
@@ -134,7 +135,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin, dist):
     It is heavily based on the cv2.SIFT function
     
         Inputs:   \n
-    (imgsrc), source of the pre-processed images (from SP_SpecimenID)\n
+    (*src), source of the images\n
     (dataDest), the location to save the txt files\n
     (imgdest), location to save the images which show the matching process\n
     (gridNo), number of grids (along horizontal axis) to use to analyse images\n
@@ -170,15 +171,13 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin, dist):
     # get the downsampling resolutions for the multi-zoom search
     scales = [0.1, 0.2, 0.3, 0.5, 0.8, 1]
 
-    a = time()
-
     # find all the spatially cohesive features in the samples
     matchedInfo, xrefDif, yrefDif, xtarDif, ytarDif, scl = allFeatSearch(img_refMaster, img_tarMaster, \
         dist = dist, featMin = featMin, scales = scales, \
             name_ref = name_ref, name_tar = name_tar, \
                 gridNo = gridNo)
 
-    print("time for " + imgName + " " + str(time() - a))
+    # print("time for " + imgName + " " + str(time() - a))
     '''
 
     matchedInfo, xrefDif, yrefDif, xtarDif, ytarDif, scl = allFeatSearch(img_refMaster, img_tarMaster, \
@@ -217,13 +216,10 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin, dist):
 
     # ---------- create a combined image of the target and reference image matches ---------
 
-    # make pictures to show the features found
-    txtsz = 0.5
-
     # img_refC = cv2.resize(img_refO, (yr, xr))
     # img_tarC = cv2.resize(img_tarO, (yt, xt))
 
-    imgCombine = nameFeatures(img_refC, img_tarC, matchedInfo, scales, combine = True, txtsz=0)
+    imgCombine = nameFeatures(img_refC, img_tarC, matchedInfo, scales, combine = True, txtsz=0.5)
 
     # plot the triangulation of each feature
     # triangulatorPlot(img_refC, matchedInfo)
@@ -330,7 +326,7 @@ def allFeatSearch(imgRef, imgTar,
     scales = [0.1, 0.2, 0.5, 0.8, 1], dist = 1, featMin = 20, 
     name_ref = "", name_tar = "", gridNo = 1, sc = 20, cpuNo = False, 
     tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True, 
-    maxFeats = 200):
+    maxFeats = 200, angThr = 10, distThr = 0.05):
 
     '''
     Find the spatially cohesive features in an image
@@ -346,11 +342,13 @@ def allFeatSearch(imgRef, imgTar,
         Not necessary but if you know where the image could kind of go is useful...\n
         (gridNo), grid sizes to segment the sift searches\n
         (sc), overlap of sc pixels around the grid for sift searches\n
-        (cpuNo)\n
-        (tol)\n
-        (spawnPoints)\n
-        (anchorPoints)\n
-        (maxFeats)\n
+        (cpuNo), see matchMaker\n
+        (tol), see matchMaker\n
+        (spawnPoints), see matchMaker\n
+        (anchorPoints), see matchMaker\n
+        (maxFeats), see matchMaker\n
+        (angThr), see matchMaker\n
+        (distThr), see matchMaker\n
 
     Outputs:    
         (matchedInfo), feature positions
@@ -416,9 +414,6 @@ def allFeatSearch(imgRef, imgTar,
             cv2.imwrite("SIFT.png", img3)
             cv2.imshow("MATCHES", img3); cv2.waitKey(0)
             '''
-            
-            
-
             # ---------- identify features on the reference and target image ---------
 
             # The reason why a scanning method over the images is implemented, rather than
@@ -471,10 +466,12 @@ def allFeatSearch(imgRef, imgTar,
 
             # find the spatially cohesive features
             if len(resInfo) > 0:
+                
                 matchedInfo += deepcopy(manualPoints)
                 # matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist)
-                matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist * scl, cpuNo, tol, spawnPoints, anchorPoints, distCheck, maxFeats)
-
+                matchedInfo = matchMaker(resInfo, matchedInfo, manualAnno > 0, dist * scl, \
+                    cpuNo, tol, spawnPoints, anchorPoints, distCheck, \
+                        maxFeats, angThr, distThr)
 
 
                 for n, m in enumerate(matchedInfo):
@@ -516,17 +513,23 @@ def allFeatSearch(imgRef, imgTar,
                 # NOTE use these to then perform another round of fitting. These essentially 
                 # become the manual "anchor" points for the spatial coherence to work with. 
                 print("\n\n!!! Not enough matches between " + name_tar + " to " + name_ref + " = " + str(len(matchedInfo)) + "!!!!\n\n")
-                manualPoints = featChangePoint(None, img_ref, img_tar, matchedInfo, nopts = 2, title = "Select 2 pairs of features to assist the automatic process")
+                manualPoints = featChangePoint(None, img_ref, img_tar, matchedInfo, nopts = 4, title = "Select 4 pairs of features to assist the automatic process")
                 manualAnno += 1
                 matchedInfo = []
 
             else:
                 # if automatic process is still not working, just do 
                 # the whole thing manually
-                print("\n\n------- Manually annotating " + name_tar + " to " + name_ref + " -------\n\n")
-                matchedInfo = featChangePoint(None, img_ref, img_tar, matchedInfo, nopts = 8, title = "Automatic process failed, select 8 pairs of features for alignment")
+                # NOTE create an option to delete either the reference or
+                # target image and rematch... 
+
+                print("\n\n------- Manually annotating " + name_tar + " to " + name_ref  + " = " + str(len(matchedInfo)) + "------- !!!!\n\n")
+                matchedInfo = featChangePoint(None, img_ref, img_tar, matchedInfo, nopts = 10, title = "Automatic process failed, select 10 pairs of features for alignment")
                 searching = False
                 break
+
+            print("Current theads: " + str(thr.active_count()))
+            print("Current threadID: " + str(thr.current_thread()))
 
     # plot the features which are accumulated for each resolution
     # plottingFeaturesPerRes(IMGREF, name_ref, matchedInfo, scales, )
@@ -549,7 +552,7 @@ if __name__ == "__main__":
     dataSource = ''
     dataSource = '/Volumes/USB/H653A_11.3/'
 
-    size = 3
-    cpuNo = 6
+    size = 2.5
+    cpuNo = 1
 
     featFind(dataSource, size, cpuNo, 50, 1, 50)
