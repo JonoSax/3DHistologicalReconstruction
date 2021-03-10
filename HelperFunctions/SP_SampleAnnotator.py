@@ -37,7 +37,7 @@ else:
 
 # for each fitted pair, create an object storing their key information
 class feature:
-    def __init__(self, refP = None, tarP = None, dist = None, size = None, res = None):
+    def __init__(self, refP = None, tarP = None, dist = None, size = None, res = None, ID = None):
         # the position of the match on the reference image
         self.refP = refP
 
@@ -52,6 +52,8 @@ class feature:
 
         # the resolution index of the image that was processed
         self.res = res
+
+        self.ID = ID
 
     def __repr__(self):
         return repr((self.dist, self.refP, self.tarP, self.size, self.res))
@@ -194,12 +196,12 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
             y, x = roiselector(imgCombineA, title)
 
             # if the window is closed to skip selecting a feature, keep the feature
-            if np.sum(x) * np.sum(y) == 0:
+            if x * y == 0:
                 yme = featID[0]
                 xme = featID[1]
             else:
-                yme = np.mean(y)
-                xme = np.mean(x)
+                yme = y
+                xme = x
 
             # append reference and target information to the original list
             if featC == 'ref':
@@ -217,7 +219,8 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
         featInfos = []
         if type(featureInfo[0]) is not dict:
             for f in matchRef:
-                featInfos.append(feature(refP = matchRef[f], tarP = matchTar[f], dist = -1, size = 100, res = -1))
+                featInfos.append(feature(refP = matchRef[f], tarP = matchTar[f], \
+                    dist = -1, size = 100, res = -1, ID = None))
             
         else:
             featInfos = [matchRef, matchTar]
@@ -315,43 +318,6 @@ def sectionExtract(path, segSections, feats, x, y, ref = None):
 
     return(segShapes)
 
-def roiselectorOG(img, title = "Matching"):
-
-    # function which calls the gui and get the co-ordinates 
-    # Inputs    (img), numpy array image of interest
-    # Outputs   (xme, yme), x and y positions on the original image of the points selected
-    # ensure that the image is scaled to a resolution which can be used in the sceen
-    
-    xc, yc, c = img.shape
-    r = xc/yc
-    # if the height is larger than the width
-    if xc > yc/2:
-        size = 700
-        sizeY = int(size / r)
-        sizeX = int(size)
-
-    # if the width is larger than the height
-    else:
-        size = 1200
-        sizeY = int(size) 
-        sizeX = int(size * r)
-
-    scale = yc / sizeY
-
-    # perform a search over a reduced size area
-    imgr = cv2.resize(img, (sizeY, sizeX))
-    roi = cv2.selectROI(title, imgr, showCrosshair=True)
-
-    # get the postions
-    y = np.array([roi[1], roi[1] + roi[3]])
-    x = np.array([roi[0], roi[0] + roi[2]])
-
-    # scale the positions back to their original size
-    y = y * scale
-    x = x * scale
-
-    return(x, y)
-
 def roiselector(img, title = "Matching"):
 
     # function which calls the gui and get the co-ordinates 
@@ -376,7 +342,7 @@ def roiselector(img, title = "Matching"):
     scale = yc / sizeY
 
     # perform a search over a reduced size area
-    imgr = cv2.resize(img, (sizeY, sizeX))
+    imgr = cv2.cvtColor(cv2.resize(img, (sizeY, sizeX)), cv2.COLOR_RGB2BGR)
     x, y = annotatorGUI(imgr, title)
 
     # get the postions
@@ -405,12 +371,7 @@ def annotatorGUI(img, title):
         global allPos
         allPos = np.array([np.mean([x1, x2]), np.mean([y1, y2])])
 
-        print("x1: " + str(x1) + " x2: " +str(x2))
-
-        
-
     def toggle_selector(event):
-        print(' Key pressed.')
         if event.key == 'enter':
             toggle_selector.RS.set_active(False)
             fig.canvas.mpl_disconnect(toggle_selector)
@@ -418,7 +379,10 @@ def annotatorGUI(img, title):
             return
             # toggle_selector.RS.set_active(True)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize = (16, 12))
+    global allPos
+    allPos = [0, 0]
+    plt.axis("off")    
     plt.imshow(img)
     ax.set_title(title)
 
@@ -434,7 +398,12 @@ def annotatorGUI(img, title):
     fig.canvas.mpl_connect('key_press_event', toggle_selector)
     plt.show()
 
-    return(allPos)
+    # if a new position was declared return that
+    try:
+        return(allPos)
+    # if no new position declared, return the origin
+    except:
+        return([0, 0])
 
 def annotateImg(imgs, info, ts):
 
