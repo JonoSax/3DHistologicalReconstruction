@@ -10,8 +10,9 @@ import numpy as np
 from glob import glob
 import matplotlib.pyplot as plt
 from skimage.segmentation import flood_fill
-from multiprocessing import Process
-if __name__ == "__main__":
+from multiprocessing import Pool
+from itertools import repeat
+if __name__ != "HelperFunctions.SP_MaskMaker":
     from Utilities import *
 else:
     from HelperFunctions.Utilities import *
@@ -27,19 +28,24 @@ TODO
 # magnification levels of the tif files available
 tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
-def maskMaker(dataTrain, name, size):
+def maskMaker(dataTrain, size, cpuNo = 1):
 
     # this is the function called by main. Organises the inputs for findFeats
-    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
-    
+    specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpa")))
+
+    '''
+    for s in specimens:
+        maskCreator(dataTrain, s, size)
+    '''
+
     # parallelise work
-    jobs = {}
-    for spec in specimens:
-        jobs[spec] = Process(target=maskCreator, args=(dataTrain, spec, size))
-        jobs[spec].start()
-    
-    for spec in specimens:
-        jobs[spec].join()
+    if cpuNo > 1:
+        with Pool(processes=cpuNo) as pool:
+            pool.starmap(maskCreator, zip(repeat(dataTrain), specimens, repeat(size)))
+
+    else:
+        for s in specimens:
+            maskCreator(dataTrain, s, size)
 
 def maskCreator(dataTrain, segmentName = '', size = 0):
 
@@ -58,7 +64,7 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
     maskDir = dataTrain + str(size) + "/maskFiles/" 
     dirMaker(maskDir)
 
-    scale = tifLevels[size] / max(tifLevels)
+    scale = size / max(tifLevels)
     
     for pos, tif in zip(specimenPosDir, tifDir):
 
@@ -73,10 +79,10 @@ def maskCreator(dataTrain, segmentName = '', size = 0):
         # of the identified areas, find the roi between overlapping ares
         targetTissue = roiFinder(name, denseAnnotations)
 
-        maskCover(tif, maskDir + name + '_masked', denseAnnotations) 
+        # maskCover(tif, maskDir + name + '_masked', targetTissue) 
 
         # NOTE this makes the identified vessels during the ACTUAL processing inverted colour
-        maskCover(tif, tifSource + name + "_" + str(size), denseAnnotations, small=False) 
+        maskCover(tif, maskDir + name, targetTissue, small=False) 
 
         # save the mask as a txt file of all the pixel co-ordinates of the target tissue
         listToTxt(targetTissue, maskDir + name + "_" + str(size) + ".mask")
@@ -297,7 +303,7 @@ def roiFinder(name, denseAnnotations):
             print("anno " + str(s) + " not matched from " + name)
 
         # view the roi
-        # denseMatrixViewer(annotatedROI)
+        # denseMatrixViewer([annotatedROI])
 
         targetTissue.append(annotatedROI)
 
@@ -320,11 +326,48 @@ def coordMatch(array1, array2):
 
     return(roi)
 
+def maskCover(dir, dirTarget, masks, small = True):
+
+    # This function adds add the mask outline to the image
+    # Inputs:   (dir), the SPECIFIC name of the tif image the mask was made on
+    #           (dirTarget), the location to save the image
+    #           (masks), list of each array of co-ordinates for all the annotations
+    #           (small), boolean whether to add the mask to a smaller file version (ie jpeg) or to a full version (ie tif)
+    # Outputs:  (), re-saves the image with mask of the vessels drawn over it
+
+    imgR = tifi.imread(dir)
+    hO, wO, cO = imgR.shape
+
+    # if the image is more than 70 megapixels downsample 
+    if (hO * wO >= 100 * 10 ** 6) & small:
+        size = 2000
+        aspectRatio = hO/wO
+        imgR = cv2.resize(imgR, (size, int(size*aspectRatio)))
+
+    h, w, c = imgR.shape
+
+    # scale the kernel to the downsampled image
+    scale = h/hO
+    for mask in masks:
+        maskN = np.unique((mask * scale).astype(int), axis = 0)
+        for x, y in maskN:
+            # inverse colours of mask areas
+            # imgR[y, x, :] = 255 - imgR[y, x, :]
+
+            # make the target tissue green
+            imgR[y, x, :] = [0, 255, 0]
+
+    tifi.imwrite(dirTarget + ".tif", imgR)
+
+    # cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
+
 
 if __name__ == "__main__":
 
-    dataTrain = '/Volumes/Storage/H653A_11.3new/'
+    dataTrain = '/Volumes/USB/H653A_11.3/'
     name = ''
-    size = 3
+    size = 2.5
+    cpuNo = 4
 
-    maskMaker(dataTrain, name, size)
+    maskMaker(dataTrain, size, cpuNo)
