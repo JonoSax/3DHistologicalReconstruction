@@ -31,13 +31,13 @@ def specID(dataHome, size, cpuNo = False):
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
 
-    refimg = 'H653A_0009_1.png'
+    refimg = dataHome + 'refimg.png'
 
     # gets the images for processing
     sectionSelecter(datasrc, cpuNo, refimg)
 
 
-def sectionSelecter(datasrc, cpuNo = 1, refimgname = None):
+def sectionSelecter(datasrc, cpuNo = False, refimgpath = None):
 
     '''
     This function creates a mask which is trying to selectively surround
@@ -66,11 +66,11 @@ def sectionSelecter(datasrc, cpuNo = 1, refimgname = None):
     imgPlots = imgMasked + "plot/"
     dirMaker(imgMasks)
     dirMaker(imgPlots)
-
+    
     # get all the images 
-    imgsmall = sorted(glob(imgsmallsrc + "*.png"))
+    imgsmall = sorted(glob(imgsmallsrc + "*.png"))[:30]
     imgbig = sorted(glob(imgbigsrc + "*.tif"))
-
+    '''
     print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
     # serialised
     if cpuNo == 1:
@@ -81,17 +81,18 @@ def sectionSelecter(datasrc, cpuNo = 1, refimgname = None):
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
             pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasks), repeat(imgPlots)))
-    
+    '''
     print("\n   #--- APPLY MASKS ---#")
     
     # get the directories of the new masks
-    masks = sorted(glob(imgMasks + "*.pbm"))
+    masks = sorted(glob(imgMasks + "*.pbm"))[:30]
 
     # use the first image as the reference for colour normalisation
     # NOTE use the small image as it is faster but pretty much the 
     # same results
-    try: imgref = cv2.imread(imgsmall[1])
-    except: imgref = None
+
+    imgref = cv2.imread(refimgpath)
+    # imgref = None
     # serialised
     if cpuNo == 1:
         for m in masks:
@@ -103,7 +104,7 @@ def sectionSelecter(datasrc, cpuNo = 1, refimgname = None):
             pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, repeat(imgsmallsrc), repeat(imgbigsrc), repeat(imgref)))
 
     print('Info Saved')
-    
+    '''
     print("\n   #--- NORMALISE COLOURS ---#")
     # NOTE this is done seperately from the masking so that the colour 
     # normalisation is done on masked images, rather than images on slides
@@ -114,26 +115,18 @@ def sectionSelecter(datasrc, cpuNo = 1, refimgname = None):
 
     # if there is a reference image, normalise colours
     if refimg is not None:
-        if cpuNo == 1:
+        if cpuNo is False:
             # normalise the colours of the images
             for imgtarS, imgtarF in zip(imgsmallmasked, imgbigmasked):
                 imgNormColour(imgtarS, refimg, imgtarF)
         else:
             with Pool(processes=cpuNo) as pool: 
                 pool.starmap(imgNormColour, zip(imgsmallmasked, repeat(refimg), imgbigmasked))
-
-    # create the all.shape information file
+    '''
 
 def maskMaker(idir, imgMasked = None, imgplot = False):     
 
-    # this function loads the desired image and processes it as follows:
-    #   0 - GrayScale image
-    #   1 - Hard coded specimen specific transforms
-    #   2 - Low pass filter (to remove noise)
-    #   3 - Passes through a tanh filter to accentuate the darks and light, adaptative
-    #   4 - Smoothing function
-    #   5 - binarising funciton, adaptative
-    #   6 - single feature identification with flood fill
+    # this function loads the desired image extracts the target sample:
     # Inputs:   (img), the image to be processed
     #           (imgplot), boolean whether to show key processing outputs, defaults false
     # Outputs:  (im), mask of the image  
@@ -141,7 +134,11 @@ def maskMaker(idir, imgMasked = None, imgplot = False):
     #     figure.max_open_warning --> fix this to not get plt warnings
 
     # use numpy to allow for parallelisation
-    imgO = np.mean(cv2.imread(idir), 2)
+    try:
+        imgO = np.round(np.mean(cv2.imread(idir), 2)).astype(np.uint8)
+    except:
+        print("FAILED: " + idir)
+        return
     # imgO = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY) 
 
     name = nameFromPath(idir)
@@ -187,29 +184,14 @@ def maskMaker(idir, imgMasked = None, imgplot = False):
         img[:int(cols*0.07), :] = np.median(img)
         img[-int(cols*0.1):, :] = np.median(img)
 
-    # ----------- low pass filter -----------
-
-    # low pass filter
-    r = 30
-    f = np.fft.fft2(img.copy())
-    fshift = np.fft.fftshift(f)
-    # magnitude_spectrum = 20*np.log(np.abs(fshift))
-    crow, ccol = int(rows/2), int(cols/2)
-    fshiftL = fshift
-    filterL = np.zeros([rows, cols])
-    filterL[r:-r, r:-r] = 1
-    fshiftL *= filterL
-    f_ishiftL = np.fft.ifftshift(fshiftL)
-    img_backLow = np.fft.ifft2(f_ishiftL)
-    img_lowPassFilter = np.abs(img_backLow)
-    img_lowPassFilter = (img_lowPassFilter / np.max(img_lowPassFilter) * 255).astype(np.uint8)
-
     # ----------- background remove filter -----------
 
     # find the colour between the two peak value distributions 
     # this is threshold between the background and the foreground
-    scl = 5
-    histVals, histBins = np.histogram(img, 20)
+    lBin = 20
+    hBin = len(np.unique(img))
+    rBin = hBin/lBin
+    histVals, histBins = np.histogram(img, lBin)
 
     # the background is the maximum pixel value
     backPos = np.argmax(histVals)
@@ -222,8 +204,8 @@ def maskMaker(idir, imgMasked = None, imgplot = False):
         forePos = backPos - 2
 
     # find the local minima between the peaks on a higher resolution histogram profile
-    histValsF, histBinsF = np.histogram(img, 100)
-    backVal = (forePos + 1) * 5 + np.argmin(histValsF[(forePos + 1) * 5 :backPos * 5])
+    histValsF, histBinsF = np.histogram(img, hBin)
+    backVal = int(np.round((forePos + 1) * rBin + np.argmin(histValsF[int(np.round(forePos + 1) * rBin):int(np.round(backPos * rBin))])))
     background = histBinsF[backVal]
 
     '''    
@@ -236,12 +218,12 @@ def maskMaker(idir, imgMasked = None, imgplot = False):
     '''
 
     # accentuate the colour
-    im_accentuate = img_lowPassFilter.copy()
-    a = 127.5           # this sets the tanh to plateau at 0 and 255 (pixel intensity range)
-    b = a - background  # this moves the threshold point to where the background is found
-    im_accentuate = (a * np.tanh((im_accentuate - a + b) * 3) + a).astype(np.uint8)
-    im_accentuate = (im_accentuate - np.min(im_accentuate)) / (np.max(im_accentuate) - np.min(im_accentuate)) * 255
-
+    im_accentuate = img.copy()
+    b = background
+    im_binary = (((im_accentuate - b) < 0)*1).astype(np.uint8)
+    # im_accentuate = (a * np.tanh((im_accentuate - a + b) * 3) + a).astype(np.uint8)
+    # im_accentuate = (im_accentuate - np.min(im_accentuate)) / (np.max(im_accentuate) - np.min(im_accentuate)) * 255
+    
     # ----------- smoothing -----------
     # plt.imshow(im_accentuate, cmap = 'gray'); plt.show()
     # plt.scatter(histinfo[1][:-1], histinfo[0]); plt.show()
@@ -259,19 +241,23 @@ def maskMaker(idir, imgMasked = None, imgplot = False):
     v = int((np.median(img_smooth) + np.mean(img_smooth))/2)
     im_binary = (((img_smooth<v) * 255).astype(np.uint8)/255).astype(np.uint8) #; im = ((im<=200) * 0).astype(np.uint8)  
     im_binary = cv2.dilate(im_binary, (5, 5), iterations=20)      # build edges back up
-
+    
     # ----------- single feature ID -----------
     
     # create three points to use depending on what works for the flood fill. One 
     # in the centre and then two in the upper and lower quater along the vertical line
     points = []
-    for x in np.arange(0.25, 1, 0.25):
-        for y in np.arange(0.25, 1, 0.25):
-            binPos = np.where(im_binary==1)
-            pointV = binPos[0][np.argsort(binPos[0])[int(len(binPos[0])*y)]]
-            vPos = np.where(binPos[0] == pointV)
-            pointH = binPos[1][vPos[0]][np.argsort(binPos[1][vPos[0]])[int(len(vPos[0])*x)]]
-            points.append(tuple([int(pointH), int(pointV)]))   # centre point
+    try:
+        for x in np.arange(0.25, 1, 0.25):
+            for y in np.arange(0.25, 1, 0.25):
+                binPos = np.where(im_binary==1)
+                pointV = binPos[0][np.argsort(binPos[0])[int(len(binPos[0])*y)]]
+                vPos = np.where(binPos[0] == pointV)
+                pointH = binPos[1][vPos[0]][np.argsort(binPos[1][vPos[0]])[int(len(vPos[0])*x)]]
+                points.append(tuple([int(pointH), int(pointV)]))   # centre point
+    except:
+        print("     " + name + " FAILED")
+        return
 
     # flood fill all the points found and if it is significant (ie more than a 
     # threshold % of the image is filled) keep if
@@ -341,7 +327,6 @@ def maskMaker(idir, imgMasked = None, imgplot = False):
             for i in range(2):
                 cv2.line(imgMod, (x[i], y[i]), (x[1], y[0]), (255, 0, 0), 10)
                 cv2.line(imgMod, (x[i], y[i]), (x[0], y[1]), (255, 0, 0), 10)
-
 
         # ax4.subplot(3, 2, 6)
         ax4.imshow(imgMod, cmap = 'gray') 
@@ -439,7 +424,7 @@ def bounder(im_id):
 
     return(extractA)
 
-def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgref):
+def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgRef):
 
     # this applies the mask created to the lower resolution and full 
     # resolution images and creates information needed for the alignment
@@ -453,26 +438,28 @@ def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgref):
     # get info to place all the images into a standard size to process (if there
     # is a mask)
 
-    name = nameFromPath(maskpath, 3)
+    name = nameFromPath(maskpath)
+    print(name + " modifying")
 
     try:    imgsmallpath = glob(smallsrcPath + name + "*.png")[0]
-    except: print("SMALL IMG SEARCH"); imgsmallpath = getSampleName(smallsrcPath, name + "*")
+    except: print("     SMALL IMG SEARCH"); imgsmallpath = getSampleName(smallsrcPath, name + "*")
     
     try:    imgbigpath = glob(bigsrcPath + name + "*.tif")[0]
-    except: print("SMALL IMG SEARCH"); imgbigpath = getSampleName(smallsrcPath, name + "*")
+    except: print("     BIG IMG SEARCH"); imgbigpath = getSampleName(bigsrcPath, name + "*")
    
-    print(name + " modifying")
     imgsmall = cv2.imread(imgsmallpath)
-    imgbig = tifi.imread(imgbigpath)
+    imgbig = cv2.imread(imgbigpath)
     ratio = int(np.round(imgbig.shape[0] / imgsmall.shape[0], 2))  # get the upscale size of the images
-
-    # ----------- HARD CODED SPECIMEN SPECIFIC MODIFICATIONS -----------
 
     # if there are just normal masks, apply them
     if maskpath is not None:
 
         # read in the raw mask
-        mask = (cv2.imread(maskpath)/255).astype(np.uint8)
+        try:
+            mask = (cv2.imread(maskpath)/255).astype(np.uint8)
+        except:
+            print("     FAILED: " + maskpath)
+            return
 
         # get the bounding positional information
         extract = bounder(mask[:, :, 0])
@@ -492,7 +479,7 @@ def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgref):
 
             # if each of the mask section is less than 20% of the entire mask 
             # area, it probably isn't a sample and is not useful
-            if maskE.size < mask.size * 0.2 / len(extract):
+            if maskE.size < mask.size * 0.2 / len(extract) or np.sum(maskE) == 0:
                 continue
 
             # create a a name
@@ -513,9 +500,12 @@ def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgref):
             imgsmallsect *= maskS
             imgbigsect *= maskB
 
+            if imgRef is not None:
+                imgsmallsect = imgNormColour(imgsmallsect, imgRef)#, imgbigsect)
+
             # write the new images
             cv2.imwrite(destPath + newid + ".png", imgsmallsect)
-            tifi.imwrite(destPath + newid + ".tif", imgbigsect)
+            # tifi.imwrite(destPath + newid + ".tif", imgbigsect)
 
             id += 1
 
@@ -537,14 +527,23 @@ def imgNormColour(imgtarSmallpath, imgref, imgtarFullpath = None):
     (), over-writes the old images wit the new ones
     '''
 
-    print("Normalising " + nameFromPath(imgtarSmallpath, 3))
-    imgtarSmall = cv2.imread(imgtarSmallpath)
+    if type(imgtarFullpath) == str: 
+        print("Normalising " + nameFromPath(imgtarSmallpath, 3))
+        imgtarSmall = cv2.imread(imgtarSmallpath)
+
+        # if the input is an image just re-assing
+    else:
+        imgtarSmall = imgtarSmallpath
 
     # if converting the tif image as well, load it and create a reference image 
     # using rgb (tifi) not bgr (cv2)
-    if imgtarFullpath is not None: 
+    if type(imgtarFullpath) == str: 
         imgtarFull = tifi.imread(imgtarFullpath)
-        imgrefRGB = cv2.cvtColor(imgref, cv2.COLOR_BGR2RGB)
+        
+    elif imgtarFullpath is not None:
+        imgtarFull = imgtarFullpath
+
+    imgRefRGB = cv2.cvtColor(imgref, cv2.COLOR_BGR2RGB)
 
     for c in range(3):
         imgtarSmall[:, :, c], normColourKey = hist_match(imgtarSmall[:, :, c], imgref[:, :, c])   
@@ -553,15 +552,22 @@ def imgNormColour(imgtarSmallpath, imgref, imgtarFullpath = None):
         if imgtarFullpath is not None:
 
             # performing a full image normalisations
-            imgtarFull[:, :, c], _ = hist_match(imgtarFull[:, :, c], imgrefRGB[:, :, c])
+            imgtarFull[:, :, c], _ = hist_match(imgtarFull[:, :, c], imgRefRGB[:, :, c])
 
             # using the normcolourkey 
             # imgtarFull[:, :, c] = hist_match(imgtarFull[:, :, c], imgref[:, :, c], normColourKey)
 
+    '''
     cv2.imwrite(imgtarSmallpath, imgtarSmall)
     if imgtarFullpath is not None:
         tifi.imwrite(imgtarFullpath, imgtarFull)
+    '''
 
+    if imgtarFullpath is not None:
+        return(imgtarSmall, imgtarFull)
+    else:
+        return(imgtarSmall)
+        
 if __name__ == "__main__":
 
     multiprocessing.set_start_method('spawn')
@@ -579,8 +585,7 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
 
-    name = ''
     size = 3
-    cpuNo = 1
+    cpuNo = 4
         
     specID(dataSource, size, cpuNo)
