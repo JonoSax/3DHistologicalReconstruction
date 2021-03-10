@@ -29,23 +29,34 @@ unitDict = {
     'centimeter':1*10**1
 }
 
-def SegLoad(dataTrain, name = '', alwaysProcess = True):
+def SegLoad(dataTrain, cpuNo = 1):
 
     # this is the function called by main. Organises the inputs for findFeats
 
-    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
+    specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpa")))
+    posFileDest = dataTrain + 'posFiles/'
+    pinFileDest = dataTrain + 'pinFiles/'
 
-    # parallelise work
-    jobs = {}
-    for spec in specimens:
-        jobs[spec] = Process(target=readannotations, args=(dataTrain, spec))
-        jobs[spec].start()
+    dirMaker(posFileDest)
+    dirMaker(pinFileDest)
 
-    for spec in specimens:
-        jobs[spec].join()
+    if cpuNo == 1:
+        for s in specimens:
+            readannotations(dataTrain, s, posFileDest, pinFileDest)
+
+    else:
+
+        # parallelise work
+        jobs = {}
+        for spec in specimens:
+            jobs[spec] = Process(target=readannotations, args=(dataTrain, spec))
+            jobs[spec].start()
+
+        for spec in specimens:
+            jobs[spec].join()
 
 
-def readannotations(dataTrain, specimen = '', alwaysProcess = True):
+def readannotations(dataTrain, spec, posFileDest, pinFileDest, alwaysProcess = True):
 
     # This function reads a NDPA file and extracts the co-ordinate of the hand drawn points and converts
     # them into their pixel location equivalents
@@ -64,8 +75,8 @@ def readannotations(dataTrain, specimen = '', alwaysProcess = True):
 
     else:
         # get the directories of all the specimes of interest
-        ndpaNames = sorted(glob(dataTrain + specimen + "*.ndpa"))
-        ndpiNames = sorted(glob(dataTrain + specimen + "*.ndpi"))      # need this for the properties of the image
+        ndpaNames = sorted(glob(dataTrain + spec + "*.ndpa"))
+        ndpiNames = sorted(glob(dataTrain + spec + "*.ndpi"))      # need this for the properties of the image
 
         specDict = dictOfDirs(ndpa = ndpaNames, ndpi = ndpiNames)
 
@@ -77,10 +88,7 @@ def readannotations(dataTrain, specimen = '', alwaysProcess = True):
         #               co-ordinates1
         #               ....
         #       ...
-        for spec in specDict:
-
-            ndpaPath = specDict[spec]['ndpa']
-            ndpiPath = specDict[spec]['ndpi']
+        for ndpaPath, ndpiPath in zip(ndpaNames, ndpiNames):
 
             # get the drawn annotations
             posA = getAnnotations(spec, ndpaPath)
@@ -116,9 +124,9 @@ def readannotations(dataTrain, specimen = '', alwaysProcess = True):
 
             # save the entire list as a txt file per utilities saving structure
             if len(stacks) > 0:
-                listToTxt(stacks, dataTrain + 'posFiles/' + spec + ".pos", Entries = str(len(posSpec)), xDim = str(xDim), yDim = str(yDim))
+                listToTxt(stacks, posFileDest + spec + ".pos", Entries = str(len(posSpec)), xDim = str(xDim), yDim = str(yDim))
             if len(info) > 0:
-                dictToTxt(info, dataTrain + 'pinFiles/' + spec + ".pin")
+                dictToTxt(info, pinFileDest + spec + ".pin")
 
 def readlandmarks(spec, ndpaPath):
     
