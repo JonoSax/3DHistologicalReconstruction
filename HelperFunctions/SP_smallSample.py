@@ -62,13 +62,18 @@ def ds(f, scale, targetDir, unrotated = False):
     print(sampName + " being resized")
     try:
 
-        imgF = tifi.imread(f)
+        try:
+            imgF = tifi.imread(f)
+            convert = True
+        except:
+            imgF = cv2.imread(f)
+            convert = False
 
         # resize the image
         img = cv2.resize(imgF, (int(imgF.shape[1] * scale),  int(imgF.shape[0] * scale)))
 
         # convert the colour for proper saving 
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if convert: img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         # rotate if true
         if rotate:  
