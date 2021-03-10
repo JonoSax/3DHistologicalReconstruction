@@ -8,6 +8,7 @@ import numpy as np
 from glob import glob
 from random import uniform
 from time import time
+import tifffile as tifi
 
 if __name__ != "HelperFunctions.plottingFunctions":
     from Utilities import *
@@ -129,7 +130,6 @@ def imageModGenerator():
     to validate they work.
     '''
 
-
     def imgTransform(img, maxSize, maxRot = 90):
     
         '''
@@ -184,7 +184,8 @@ def imageModGenerator():
 def triangulatorPlot(img, matchedInfo):
 
     '''
-    Plots the features of samples and does the triangulation 
+    Plots the features of samples and visualises the triangulation 
+    calculation
     '''
                 
     def triangulator(img, featurePoints, anchorPoints, feats = 5, crcsz = 5):
@@ -239,6 +240,11 @@ def triangulatorPlot(img, matchedInfo):
 
 def siftTimer():
 
+    '''
+    Timing the SIFT operator for various octave numbers and images
+    resolutions 
+    '''
+
     imgPath = '/Volumes/USB/H653A_11.3/3/masked/H653A_002_0.png'
     imgOrig = cv2.imread(imgPath)
 
@@ -257,8 +263,44 @@ def siftTimer():
 
             print("ImgSz = " + str(np.round(1/n, 2)) + " Octaves = " + str(i) + " Time: " + str(fin) + " feats = " + str(len(s)))
 
+def vesselPositionsOnMaskedImgs():
+
+    '''
+    This is getting the masked positions as manually annotated from 
+    the samples after they have been seperated by specimen ID. 
+    Saved as pixel positions on the full resolution image
+    '''
+
+    src = '/Volumes/USB/H653A_11.3/2.5/'
+    masks = src + 'NLAlignedSamples/'
+
+    downsampleImgs = glob(masks + "*.png")
+    fullImgs = sorted(glob(masks + "*.tif"))
+
+    for d in downsampleImgs:
+
+        name = nameFromPath(d, 3)
+
+        print("Processing " + name)
+
+        # penalise non-green colours
+        img = np.mean(cv2.imread(d) * np.array([-1, 1, -1]), axis = 2)
+
+        maskPos = np.where(img > 50); maskPos = np.c_[maskPos[1], maskPos[0]]
+
+        # ensure the dense reconstructions are the original size
+        maskPos = np.insert(maskPos, 0, np.array([0, 0]), axis = 0)
+        maskPos = np.insert(maskPos, 0, np.flip(img.shape[:2]), axis = 0)
+
+        vessels = denseMatrixViewer([maskPos], plot = False, point = True)[0]
+        cv2.imwrite(masks + name + "_vessels.png", vessels)
+        
+        listToTxt([maskPos], masks + name + "vessels.txt")
+
 if __name__ == "__main__":
 
     # imageModGenerator()
 
-    siftTimer()
+    # siftTimer()
+
+    # vesselPositionsOnMaskedImgs()
