@@ -4,6 +4,7 @@ this script takes feat, bound and segsection information and rotates them to min
 the error between slices
 
 '''
+from matplotlib.pyplot import yscale
 import numpy as np
 import cv2
 from scipy.optimize import minimize
@@ -104,17 +105,17 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
         if fullScale:
             print("\n--- Transforming full scale images ---\n")
             for full in fullSamples:
-                transformSamples(full, "tif", maxShape, shiftMa, featureInfoPath, destImgPath)
+                transformSamples(full, "tif", maxShape, shiftMi, featureInfoPath, destImgPath)
     else:
         # parallelise with n cores
         print("--- Transforming downsampled images ---\n")
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(transformSamples, zip(smallSamples, repeat("png"), repeat(maxShape), repeat(shiftMa), repeat(featureInfoPath), repeat(destImgPath), repeat(True)))
+            pool.starmap(transformSamples, zip(smallSamples, repeat("png"), repeat(maxShape), repeat(shiftMi), repeat(featureInfoPath), repeat(destImgPath), repeat(True)))
 
         if fullScale:
             print("\n--- Transforming full scale images ---\n")
             with Pool(processes=cpuNo) as pool:
-                pool.starmap(transformSamples, zip(fullSamples, repeat("tif"), repeat(maxShape), repeat(shiftMa), repeat(featureInfoPath), repeat(destImgPath)))
+                pool.starmap(transformSamples, zip(fullSamples, repeat("tif"), repeat(maxShape), repeat(shiftMi), repeat(featureInfoPath), repeat(destImgPath)))
 
     print('Alignment complete')
 
@@ -133,6 +134,8 @@ def shiftFeatures(src, alignedSamples, errorThreshold = 100):
     (rotateNet), the rotation information to be applied per image
     '''
 
+    print("--- Shifting features ---")
+
     # load the identified features
     featRef = {}
     featTar = {}
@@ -147,8 +150,7 @@ def shiftFeatures(src, alignedSamples, errorThreshold = 100):
         # load all the features
         featRef[fr] = txtToDict(src + fr + ".reffeat", float)                
         featTar[ft] = txtToDict(src + ft + ".tarfeat", float)
-
-                                            
+                    
     # store the affine transformations
     translateAll = {}
     rotateNet = {}
@@ -446,7 +448,7 @@ def transformSamples(samplePath, prefix, maxShape, shift, segInfo, dest, saving 
     except: pass
 
     # get the scale difference between the aligned image and image being transformed
-    shapeR = int(np.round(field.shape[0] / imgShape, 2))
+    shapeR = int(np.ceil(field.shape[0] / imgShape))
     maxShapeR = maxShape.copy() * [shapeR, shapeR, 1]
     shiftR = shift.copy() * shapeR
 
@@ -740,7 +742,7 @@ def plotPoints(dir, imgO, cen, points, si = 50):
             img = cv2.circle(img, pos, int(si * sizes[n]), tuple(colours[n]), int(si * sizes[n]/2)) 
         
     # plot of the rotation as well using opposite colours
-    cen = cen.astype(int)
+    cen = np.round(cen).astype(int)
     # img = cv2.circle(img, tuple(findCentre(points)), si, (0, 255, 0), si) 
     img = cv2.circle(img, tuple(cen), int(si * sizes[n] * 0.8), (255, 0, 0), int(si * sizes[n] * 0.8/2)) 
 
@@ -766,6 +768,7 @@ if __name__ == "__main__":
     dataSource = '/Volumes/Storage/H710C_6.1/'
     dataSource = '/Volumes/USB/Testing/'
     dataSource = ''
+    dataSource = '/Users/jonathanreshef/Documents/2020/Masters/Thesis/Diagrams/alignerDemonstration/'
     dataSource = '/Volumes/USB/H653A_11.3/'
 
     # dataTrain = dataHome + 'FeatureID/'
