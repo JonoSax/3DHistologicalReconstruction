@@ -334,13 +334,15 @@ def txtToDict(path, typeV = int, typeID = str):
 
     return(sampleDict)
 
-def denseMatrixViewer(coords, plot = True, unique = False):
+def denseMatrixViewer(coords, plot = True, unique = False, point = False):
 
     # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
     # which can be view with matplotlib
     # Inputs:   (coords), a list of co-ordinates
     #           (plot), boolean to control plotting
     #           assume it is a vertical stack and colour them differently
+    #           (points), instead of drawing the features as circles, 
+    #           draw as points
     # Outputs:  (), produces a plot to view
     #           (area), the array 
 
@@ -373,7 +375,7 @@ def denseMatrixViewer(coords, plot = True, unique = False):
     Ymin = int(coordsMax[:, 1].min())
 
     # add padding to the view
-    pad = int(np.mean(np.array([Ymax - Ymin + 1, Xmax - Xmin + 1])) * 0.05)
+    pad = 10
 
     area = np.zeros([Ymax - Ymin + 1 + 2*pad, Xmax - Xmin + 1 + 2*pad, 3]).astype(np.uint8)
 
@@ -386,7 +388,10 @@ def denseMatrixViewer(coords, plot = True, unique = False):
         if type(coord[0]) is np.int64:
             coord = [coord]
         for xp, yp in coord:
-            cv2.circle(area, (xp, yp), s, col, 4)
+            if point:
+                area[yp, xp, :] = col
+            else:
+                cv2.circle(area, (xp, yp), s, col, 4)
 
     if plot:
         plt.imshow(area)
@@ -396,48 +401,11 @@ def denseMatrixViewer(coords, plot = True, unique = False):
 
     return(area, shift)
 
-def maskCover(dir, dirTarget, masks, small = True):
-
-    # This function adds add the mask outline to the image
-    # Inputs:   (dir), the SPECIFIC name of the tif image the mask was made on
-    #           (dirTarget), the location to save the image
-    #           (masks), list of each array of co-ordinates for all the annotations
-    #           (small), boolean whether to add the mask to a smaller file version (ie jpeg) or to a full version (ie tif)
-    # Outputs:  (), re-saves the image with mask of the vessels drawn over it
-
-    imgR = tifi.imread(dir)
-    hO, wO, cO = imgR.shape
-
-    # if the image is more than 70 megapixels downsample 
-    if (hO * wO >= 100 * 10 ** 6) & small:
-        size = 2000
-        aspectRatio = hO/wO
-        imgR = cv2.resize(imgO, (size, int(size*aspectRatio)))
-
-    h, w, c = imgR.shape
-
-    # scale the kernel to the downsampled image
-    scale = h/hO
-    for mask in masks:
-        maskN = np.unique((mask * scale).astype(int), axis = 0)
-        for x, y in maskN:
-            # inverse colours of mask areas
-            imgR[y, x, :] = 255 - imgR[y, x, :]
-
-    # NOTE this doesn't need to use PIL, can just to cv2.imwrite
-    imgR = Image.fromarray(imgR)
-    if small:
-        imgR.save(dirTarget + ".jpeg")
-    else:
-        imgR.save(dirTarget + ".tif")
-
-    # cv2.imwrite(newImg, imgR, [cv2.IMWRITE_JPEG_QUALITY, 80])
-    # cv2.imshow('kernel = ' + str(kernel), imgR); cv2.waitKey(0)
-
-def nameFromPath(paths, n = 2, prefix = False):
+def nameFromPath(paths, n = 2, prefix = False, unique = False):
     # this function extracts the names from a path/s
     # Inputs:   (paths), either a list or string of paths 
     #           (n), number of 
+    #           (unique), return only the unique instances of the names
     # Outputs:  (names), elist of the names from the paths
 
     if paths == None:
@@ -477,6 +445,9 @@ def nameFromPath(paths, n = 2, prefix = False):
     # if the path input is a string, it will expect an output of a string as well
     if pathStr:
         names = names[0]
+
+    if unique:
+        names = list(np.unique(np.array(names)))
 
     return names
 
@@ -741,7 +712,9 @@ def uniqueKeys(dictL):
 
     return(dictMod, commonKeys)
 
-def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, distCheck = True, maxFeats = np.inf):
+def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, \
+    cpuNo = False, tol = 0.05, spawnPoints = 10, anchorPoints = 5, \
+        distCheck = True, maxFeats = np.inf, angThr = 5, distTrh = 0.05):
 
     '''
     ---------- NOTE the theory underpinning this function ----------
@@ -778,6 +751,8 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
     the infostore\n
     (distCheck), boolean whether to take into account the distance of objects for 
     spatial cohesion\n
+    (angThr), maximum angle in degress for the angle check of the spatial cohesiveness\n
+    (distTrh), maximum fraction of the distance for the distance check of the spatial cohesivenss\n
 
     Outputs:  \n
     (infoStore), the set of features and corresponding information that have been 
@@ -846,7 +821,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
         qs = {}
         for n, m in enumerate(matchInfos):
             qs[n] = multiprocessing.Queue()
-            job[n] = multiprocessing.Process(target=findgoodfeatures, args = (m, allInfo, dist, tol, anchorPoints, distCheck, maxFeats, qs[n], ))
+            job[n] = multiprocessing.Process(target=findgoodfeatures, args = (m, allInfo, dist, tol, anchorPoints, distCheck, maxFeats, angThr, distTrh, qs[n], ))
             job[n].start()
         matchInfoNs = []
         for n in job:
@@ -864,7 +839,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
 
             # find features which are spatially coherent relative to the best feature for both 
             # the referenc and target image and with the other constrains
-            matchInfoN = findgoodfeatures(m, allInfo, dist, tol, anchorPoints, distCheck, maxFeats)
+            matchInfoN = findgoodfeatures(m, allInfo, dist, tol, anchorPoints, distCheck, maxFeats, angThr, distTrh)
 
             # Store the features found and if more features are found with a different combination
             # of features then save that instead
@@ -872,7 +847,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, cpuNo = Fal
                 # re-initialise the matches found
                 infoStore = matchInfoN
 
-            if len(infoStore) == maxFeats:
+            if len(infoStore) >= maxFeats:
                 break
                 
             # print(str(fits) + " = " + str(len(matchInfoN)) + "/" + str(len(resInfo)))
@@ -909,15 +884,12 @@ def findbestfeatures(allInfo, dist):
 
     return(matchInfo)
 
-def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, maxFeats = 200, q = None):
+def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, maxFeats = 200, angThr = 5, distThr = 0.05, q = None):
 
     # find new features in the ref and target tissue which are positioned 
     # in approximately the same location RELATIVE to the best features found already
 
     matchInfoN = []
-
-    new = []
-    old = []
 
     # append the already found matching info
     matchInfoN += matchInfo
@@ -1025,8 +997,8 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
         # from all the previously found features then append 
         # NOTE using distance is a thresholding criteria which doesn't work when there 
         # is deformation
-        angConfirm = (np.array(angdist) < 10/180*np.pi).all()
-        distConfirm = (np.array(ratiodist) < 0.05).all() or not distCheck       # inverse distCheck boolean so 
+        angConfirm = (np.array(angdist) < angThr/180*np.pi).all()
+        distConfirm = (np.array(ratiodist) < distThr).all() or not distCheck       # inverse distCheck boolean so 
                                                                                 # when False, distCheck is always true
                                                                                 # and when True, only works when condition met
         if angConfirm and distConfirm:
@@ -1201,7 +1173,6 @@ def drawLine(img, point0, point1, blur = 2, colour = [0, 0, 255]):
     xp = np.linspace(int(point0[1]), int(point1[1]), int(dist)).astype(int)
     yp = np.linspace(int(point0[0]), int(point1[0]), int(dist)).astype(int)
 
-
     # change the colour of these pixels which indicate the line
     for vx in range(-blur, blur, 1):
         for vy in range(-blur, blur, 1):
@@ -1213,7 +1184,7 @@ def drawLine(img, point0, point1, blur = 2, colour = [0, 0, 255]):
     
     return(img)
 
-def dictToDF(info, title, min = 1, feats = None):
+def dictToDF(info, title, feats = None):
 
     # create a pandas data frame from a dictionary of feature objects
     # Inputs:   (info), dictionary
@@ -1235,8 +1206,6 @@ def dictToDF(info, title, min = 1, feats = None):
         keys = np.array(list(info.keys()))[np.argsort([-len(info[i]) for i in info])][:feats]
 
     for m in keys:
-        if len(info[m]) < min:
-            continue
         for nm, v in enumerate(info[m]):
             i = info[m][v]
             # only for the first iteration append the reference position
@@ -1306,15 +1275,21 @@ def moveImg(ref, tar, shift):
 
     return(tarM)
 
-def getSect(img, mpos, l, bw = True):
+def getSect(img, mpos, l, bw = True, relPos = None, border = True):
 
     # get the section of the image based off the feature object and the tile size
     # Inputs:   (img), numpy array of image
     #           (mpos), position
     #           (s), tile size 
+    #           (bw), if true then samples are converted into black and white, 
+    #           if false then the original image
+    #           (relPos), the size of a plate to place the image relatively. If None then just 
+    #           the section as is
+    #           (border), if True then only the targeted sample is extracted, otherwise
+    #           the surrounding tissue is included
     # Outputs:  (imgSect), black and white image section
 
-    x, y, c = img.shape      
+    x, y, _ = img.shape      
 
     # get target position from the previous match, use this as the 
     # position of a possible reference feature in the next image
@@ -1322,6 +1297,21 @@ def getSect(img, mpos, l, bw = True):
     xs = int(np.clip(xp-l, 0, x)); xe = int(np.clip(xp+l, 0, x))
     ys = int(np.clip(yp-l, 0, y)); ye = int(np.clip(yp+l, 0, y))
     sect = img[xs:xe, ys:ye]
+
+    if relPos is not None:
+
+        minPos, maxPos = relPos
+        
+        plate = np.zeros(np.insert(np.ceil(maxPos - minPos + l*2).astype(int), 2, 3)).astype(np.uint8)
+
+        xM, yM = np.round(mpos-minPos).astype(int)
+
+        sectStore = sect.copy()
+        sect = plate.copy()
+
+        sect[xM:xM+int(l*2), yM:yM+int(l*2)] = sectStore
+
+        # place sect into the plate,l do xs, ys - minPos and add border boolean
 
     # NOTE turn into black and white to minimise the effect of colour
     if bw:
@@ -1368,7 +1358,7 @@ def getSampleName(dirsrc, name):
     '''
 
     while True: 
-        samp = glob(dirsrc + "*" + name + "*")
+        samp = sorted(glob(dirsrc + "*" + name + "*"))
 
         # if the key word returned only one sample that is the path of interest
         if len(samp) == 1:
@@ -1404,7 +1394,7 @@ def standardImgSize(imgs):
 
         plateref = plate.copy(); plateref[:xr, :yr, :] = i; normImgs.append(plateref)
 
-    return(normImgs, yr)
+    return(normImgs, y)
 
     
 
