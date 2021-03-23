@@ -18,7 +18,7 @@ segsrc = src + "Segmentations/"
 
 imgDest = src + "SegmentationEvals/"
 
-imgs = sorted(glob(imgsrc + "*.png"))
+imgs = sorted(glob(imgsrc + "*anno*.png"))
 masks = sorted(glob(segsrc + "*.png"))
 
 maskToUse=[]
@@ -48,15 +48,21 @@ for n, (m, i) in enumerate(zip(maskToUse, imgs)):
 
     xr, yr = tuple(np.round((xi / xm) * np.array([xm, ym])).astype(int))
     imgStored = []
-    for ni, i in enumerate(np.unique(mask)[1:]):
+    for ni, i in enumerate(np.unique(mask)):
         
         # get the mask of only the particular tissue type
-        maskFull = cv2.resize(((mask==i)*1).astype(np.uint8), tuple([yr, xr]))
+        maskFull = cv2.resize(((mask==i)*0.75 + 0.25), tuple([yr, xr]))
         xf, yf, _ = maskFull.shape
 
-        maskCover = np.zeros([xi, yi, 3]); maskCover[:xr, :yr, :] = maskFull
-
-        imgMasked = (img * maskCover).astype(np.uint8)
+        if i == 0:
+            maskCover = np.ones([xi, yi, 3]); maskCover[:xr, :yr, :] = maskFull
+        else:
+            maskCover = np.zeros([xi, yi, 3]); maskCover[:xr, :yr, :] = maskFull
+            
+        # make the background a value of 1 now
+        img[img==[0, 0, 0]] = 1
+        # mask the image and where the background is included, set value to 1
+        imgMasked = (img*maskCover).astype(np.uint8)
 
         imgStored.append(imgMasked)
 
