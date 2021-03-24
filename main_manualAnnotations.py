@@ -15,7 +15,7 @@ Processing includes:
 from HelperFunctions import *
 
 # dataHome is where all the directories created for information are stored 
-dataTrain = '/Volumes/Storage/H653A_11.3new/'
+dataTrain = '/Volumes/USB/H653A_11.3/'
 
 # dataTrain = '/Users/jonathanreshef/Documents/2020/Masters/TestingStuff/Segmentation/Data.nosync/HistologicalTraining2/'
 
@@ -26,37 +26,40 @@ dataTrain = '/Volumes/Storage/H653A_11.3new/'
 # dataTrain = '/Volumes/resabi201900003-uterine-vasculature-marsden135/All material for Boyd paper/Results Boyd paper/Arcuates and Radials/NDPI segmentations/'
 
 
-size = 3
+size = 2.5
 kernel = 50
 name = ''
 portion = 0.2
+cpuNo = 5
 
-print("\n----------- SegLoad -----------")
-# extract the manual annotations
-SegLoad(dataTrain, name)
+if __name__ == "__main__":
 
-print("\n----------- WSILoad -----------")
-# extract the tif file of the specified size
-WSILoad(dataTrain, name, size)
+    print("\n----------- SegLoad -----------")
+    # extract the manual annotations
+    SegLoad(dataTrain, cpuNo)
 
-print("\n----------- maskMaker -----------")
-# from the manually annotated blood vessels, make them into masks
-maskMaker(dataTrain, name, size)
+    print("\n----------- WSILoad -----------")
+    # extract the tif file of the specified size
+    # WSILoad(dataTrain, size, cpuNo)
 
-print("\n----------- WSIExtract -----------")
-# extract ONLY the blood vessels from the sample (masked)
-WSIExtract(dataTrain, name, size)
+    print("\n----------- maskMaker -----------")
+    # from the manually annotated blood vessels, make them into masks
+    maskMaker(dataTrain, size, cpuNo)
 
-print("\n----------- SegmentExtract -----------")
-# extract only the sample from the whole slide
-# if there are multiple specimens, seperate these into a, b, c... samples (including info)
-# specID()
-# depreciated: sampleExtract(dataTrain, name, size, True)
+    print("\n----------- WSIExtract -----------")
+    # extract ONLY the blood vessels from the sample (masked)
+    # WSIExtract(dataTrain, name, size)
 
-print("\n----------- AignSegments -----------")
-# align all the specimens 
-align(dataTrain, name, size, True)  
+    print("\n----------- SegmentExtract -----------")
+    # extract only the sample from the whole slide
+    # if there are multiple specimens, seperate these into a, b, c... samples (including info)
+    # specID()
+    # depreciated: sampleExtract(dataTrain, name, size, True)
 
-print("\n----------- FeatureExtraction -----------")
-# propogate an annotated feature through the aligned tissue and extract
-featExtract(dataTrain, name, size)
+    print("\n----------- AignSegments -----------")
+    # align all the specimens 
+    # align(dataTrain, name, size, True)  
+
+    print("\n----------- FeatureExtraction -----------")
+    # propogate an annotated feature through the aligned tissue and extract
+    # featExtract(dataTrain, name, size)
