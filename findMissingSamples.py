@@ -3,7 +3,7 @@ from glob import glob
 from HelperFunctions.Utilities import nameFromPath
 import pandas as pd
 
-def find(dirHome, size, names):
+def findMissingSamples(dirHome, size):
 
     '''
     This takes the names of the samples and works out from the naming convention
@@ -15,17 +15,12 @@ def find(dirHome, size, names):
         Inputs:\n
     (dirHome), specimen home directory\n
     (size), sample resolution\n
-    (names), the naming convention to indicate a different sample. NOTE the format is
-    in a dictionary where each name entry is added in as a list. If there are multiple
-    different naming conventions for the same order then add them in sequentially. 
-    eg: \n
-    names = {0: ["A+B_0"], 1:["A+B_1"], 2:["C_0", "C_1"]}   \n
-    There are 4 ways which the samples have been name which refer to 3 individual 
-    samples (ie the 3rd image of a sample has 2 possible ways to be named)
 
         Outputs:\n
     (), saves the output as a csv file in the info folder of that specimen
     '''
+
+    names = sampleCategories(dirHome)
 
     home = dirHome + str(size)
     imgsrc = home + "/alignedSamples/"
@@ -56,20 +51,62 @@ def find(dirHome, size, names):
         # calculate the number of missing samples
         missing.append(interSamp * IDs + intraSamp - 1)
 
+    print(str(np.sum(missing)) + " samples missing")
     # create a data frame of the information and save it as a csv file
     missingdf = pd.DataFrame(data = np.c_[imgIDs[:-1], imgIDs[1:], missing], columns = ["Ref", "Tar", "Missing"])
     missingdf.to_csv(missingSamplesPath)
+
+def sampleCategories(dirHome):
+    '''
+    this contains the hard coded dictionaries indicating the sample numbers 
+    The dictionaries are organised as follows:
+    names = {0: ["A+B_0"], 1:["A+B_1"], 2:["C_0", "C_1"]} 
+    The dictionary input is the string from the sample of what the index number SHOULD be
+    In this case: 
+        samples with that end with A+B_0 refer to the first sample
+        samples that end with A+B_1 refer to the second sample
+        sample may end with either C_0 or C_1 but they both refer to the third sample
+
+    This process is NOT full proof as the naming convention was done very manually
+    so it is RECOMMENDED you manually check afterwards
+
+        Outputs:\n
+    (names): the appropriate dictionary of the names
+
+    '''
+
+    # get the specimen name 
+    spec = dirHome.split("/")[-1]
+
+    if spec == "H710C":
+        names = {0: ["A+B_0"], 1:["A+B_1"], 2:["C_0", "C_1"]}       # for H710C
+    elif spec == "H753A":
+        names = {0: ["_0"], 1: ["_1", "_2"]}                        # for H753A
+    else:
+        # if there is no match then manually enter the names
+        print("No matching specimen naming convention. Manually create the dictionary.", end = " ")
+        print("If there are multiple entries seperate with a comma. When finished press enter twice")
+        n = 0
+        names = {}
+        while True:
+            label = input("Label for index " + str(n) + ": ")
+            if label.lower() == "":
+                break
+            names[n] = []
+            for l in label.split(","):
+                names[n].append(l.replace(" ", ""))
+            n += 1
+
+    return(names)
 
 if __name__ == "__main__":
 
 
     dirHome = '/Volumes/Storage/H710C_6.1/'
-    dirHome = '/Volumes/Storage/H653A_11.3/'
+    dirHome = '/Volumes/USB/H671A_18.5/'
+    dirHome = '/Volumes/USB/H653A_11.3/'
 
     size = 3
 
-    names = {0: ["A+B_0"], 1:["A+B_1"], 2:["C_0", "C_1"]}       # for H710C
-    names = {0: ["_0"], 1: ["_1", "_2"]}                        # for H753A
-
-    find(dirHome, size, names)
+    findMissingSamples(dirHome, size)
 
