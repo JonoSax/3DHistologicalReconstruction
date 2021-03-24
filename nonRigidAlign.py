@@ -17,6 +17,7 @@ from scipy.optimize import minimize as minimise
 from HelperFunctions.SP_AlignSamples import aligner
 from HelperFunctions.SP_FeatureFinder import allFeatSearch
 from HelperFunctions.Utilities import *
+from findMissingSamples import findMissingSamples
 
 
 # for each fitted pair, create an object storing their key information
@@ -39,7 +40,35 @@ class feature:
     def __repr__(self):
             return repr((self.ID, self.refP, self.tarP))
 
-def nonRigidAlign(dirHome, size, cpuNo):
+def nonRigidAlign(dirHome, size, cpuNo = 1, \
+    featsMin = 20, dist = 30, featsMax = 20, errorThreshold = 100, \
+        distFeats = 400, sect = 100, selectCriteria = "length", fixFeatures = False):
+
+    '''
+    Perform a non-rigid alignment of the specimen and extract features 
+    from specimen
+
+        Inputs:\n
+    (dirHome): \n
+    (size): \n
+    (cpuNo): \n
+    (errorThreshold): maximum per feature error for the linear alignment
+    (featsMin): minimum number of samples which a feature has to propogate 
+    through to be used in the registeraion \n
+    (dist): minimum distance features can be during the feature selection\n
+    (featsMax): maximum number of features to be used during the non-linear registeraion\n
+    (distFeatures): minimum distance between feataures to be used during non-linear registeraion\n
+    (sect): the proporptional area size used for the feature tracking and extraction \n
+    (selectCriteria): the type of trajectory used for the NL modelling (prioritising
+    either a "smooth" or "length" critiera of the features\n
+    (fixFeatures): boolean, if True will read through sample names and 
+    attempt to compensate for missing samples but default false so no 
+    missing sample interpolation
+
+        Outputs:\n
+    (): NL aligned samples
+    '''
+
 
     home = dirHome + str(size)
 
@@ -53,26 +82,20 @@ def nonRigidAlign(dirHome, size, cpuNo):
     dirMaker(dirfeats)
     dirMaker(destNLALign)
     dirMaker(destFeatSections)
-
-    sect = 250           # the proporptional area of the image to search for features
-    dist = 30           # distance between the sift features
-    featsMin = 10       # min number of samples a feature must pass through for use to NL deform
-
+    
     # Find the continuous features throught the samples
     contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, sz = sect, dist = dist)
     
     # perform a rigid alignment on the tracked features
-    aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, errorThreshold=100)
+    aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, errorThreshold = errorThreshold)
     
-    # Variables for the feature selectino
-    featsMax = 20       # max number of features per sample which meet criteria to be used
-    distFeats = 400     # distance (pixels) between the final features
-    selectCriteria = 'smooth'       # criteria used to select features (either based on the *smooth*, ie how smooth the 
-                                    # the feature is at it moves throught the specimen or *length*, ie priorities longer features)
+    if fixFeatures:
+        findMissingSamples(dirHome, size)
 
     # with all the features found, find their trajectory and adjust to create continuity 
     # between samples
-    featShaper(destRigidAlign, destFeatSections, featsMin = featsMin, dist = distFeats, maxfeat = featsMax, selectCriteria = selectCriteria, plot = True)
+    featShaper(destRigidAlign, destFeatSections, featsMin = featsMin, \
+        dist = distFeats, maxfeat = featsMax, selectCriteria = selectCriteria, plot = True)
     
     # extract the feature sections
     allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect)
@@ -81,11 +104,11 @@ def nonRigidAlign(dirHome, size, cpuNo):
     nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, prefix = "png")
 
     # extract the feature sections from the non-linear samples (in their TRUE positions)
-    allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=True)
+    # allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=True)
 
     # extract sections and deform the FULL SCALE images (png is downsampled 
     # by a factor of 0.2)
-    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, scl = 5, prefix = "tif")
+    # nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, scl = 5, prefix = "tif")
 
 def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, dist = 20, plotting = False):
 
@@ -109,7 +132,7 @@ def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, di
 
     # ALWAYS use the downscaled version of the images to find continuity 
     # of features
-    imgs = sorted(glob(imgsrc + "*.png"))[:3]
+    imgs = sorted(glob(imgsrc + "*.png"))
 
     # print(np.where(np.array(nameFromPath(imgs, 3)) == "H710C_364A+B_1"))
 
@@ -158,7 +181,7 @@ def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, di
         '''
 
         # parallelsiation seems to take longer...
-        if cpuNo == False:
+        if cpuNo == True:
             confirmInfo = []
             for m in continuedFeatures + matchedInfo:
                 confirmInfo.append(featMatching(m, tarImg, refImg, sz = sz))
@@ -305,7 +328,7 @@ def featShaper(diralign, dirSectdest, featsMin = 5, dist = 100, maxfeat = 20, se
     dfAllCont = pd.concat([dfAll[dfAll["ID"] == f] for f in featCheck[:, 0]])
 
     if plot:    
-        # px.line_3d(dfAllCont, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features with min continuity").show()
+        px.line_3d(dfAllCont, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features with min continuity").show()
         
         imgs = sorted(glob(diralign + "*.png"))[:4]
 
@@ -940,7 +963,7 @@ def drawPoints(img, df, sampleNos, zAxis = "Z", annos = 3, l = 0, crcSz = 10, sh
 
     return(img)
 
-def featExtractor(dest, imgPath, infoSamp, infoAll, sz, zSamp = "Zs", prefix = "png", ref = True, realPos = False):
+def featExtractor(dest, imgPath, infoSamp, infoAll, sz, zSamp = "Zs", prefix = "png", realPos = False):
 
     '''
     This function takes an image and all the feature positions as a pandas data 
@@ -954,6 +977,9 @@ def featExtractor(dest, imgPath, infoSamp, infoAll, sz, zSamp = "Zs", prefix = "
     (sz), the size of the segment used to identify that feature\n
     (prefix), if the prefix is png or tif process differently to ensure 
     colour scheme is consistent and loading efficiently\n
+    (realPos), if True then the sections extracted are placed in their relative positions
+    from the sample (ie black border around the non-target tissue). If False then the section 
+    is perfect extracted
 
         Outputs: \n
     (), saves the section in the directory as its feature name\n
@@ -989,12 +1015,11 @@ def featExtractor(dest, imgPath, infoSamp, infoAll, sz, zSamp = "Zs", prefix = "
         made = dirMaker(featdir)
 
         if made:
-            if ref:
-                firstSamp = drawPoints(img.copy(), infoSamp[infoSamp["ID"] == d.ID], 1, zSamp, 3, l, crcSz = 0, shape = shape)
-                if prefix == "tif":
-                    cv2.imwrite(featdir + "_referenceImage.jpg", cv2.cvtColor(firstSamp, cv2.COLOR_BGR2RGB)) 
-                else:   
-                    cv2.imwrite(featdir + "_referenceImage.jpg", firstSamp) 
+            firstSamp = drawPoints(img.copy(), infoSamp[infoSamp["ID"] == d.ID], 1, zSamp, 3, l, crcSz = 0, shape = shape)
+            if prefix == "tif":
+                cv2.imwrite(featdir + "_referenceImage.jpg", cv2.cvtColor(firstSamp, cv2.COLOR_BGR2RGB)) 
+            else:   
+                cv2.imwrite(featdir + "_referenceImage.jpg", firstSamp) 
         
         if prefix == "tif":
             tifi.imwrite(featdir + nameFromPath(imgPath, 3) + "." + prefix, featSect)
@@ -1184,8 +1209,8 @@ if __name__ == "__main__":
     cpuNo = False
 
     dataHome = '/eresearch/uterine/jres129/BoydCollection/H710C_6.1/'
-    dataHome = '/Volumes/USB/H710C_6.1/'
     dataHome = '/Volumes/USB/H653A_11.3/'
+    dataHome = '/Volumes/USB/H710C_6.1/'
     nonRigidAlign(dataHome, size, cpuNo)
 
     '''
