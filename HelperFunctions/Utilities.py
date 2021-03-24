@@ -15,6 +15,7 @@ from itertools import repeat
 import pandas as pd
 from time import time, time_ns
 import shutil
+import random
 
 # os.system('python HelperFunctions/setup.py build_ext --inplace')
 # from cythonTools import findangle2
@@ -334,7 +335,7 @@ def txtToDict(path, typeV = int, typeID = str):
 
     return(sampleDict)
 
-def denseMatrixViewer(coords, plot = True, unique = False, point = False):
+def denseMatrixViewer(coords, plot = True, unique = False, point = False, gray = False):
 
     # This function takes in a numpy array of co-ordinates in a global space and turns it into a local sparse matrix 
     # which can be view with matplotlib
@@ -345,6 +346,8 @@ def denseMatrixViewer(coords, plot = True, unique = False, point = False):
     #           draw as points
     # Outputs:  (), produces a plot to view
     #           (area), the array 
+    #           (shift), the position of the origin on this new image from the original image
+        
 
     # if unique, then only show the features which are unique
     if unique:
@@ -377,27 +380,40 @@ def denseMatrixViewer(coords, plot = True, unique = False, point = False):
     # add padding to the view
     pad = 10
 
-    area = np.zeros([Ymax - Ymin + 1 + 2*pad, Xmax - Xmin + 1 + 2*pad, 3]).astype(np.uint8)
+    # create a gray scale area
+    if gray:
+        area = np.zeros([Ymax - Ymin + 1 + 2*pad, Xmax - Xmin + 1 + 2*pad]).astype(np.uint8)
+        for coord in coords:
+            coord = (np.array(coord) - [Xmin, Ymin] + pad).astype(int)
+            coord = list(coord)
+            if type(coord[0]) is np.int64:
+                coord = [coord]
+            for xp, yp in coord:
+                area[yp, xp] = 255
 
-    cols = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
-    sizes = [20, 16, 12, 8]
+    # create a colour area
+    else:
+        area = np.zeros([Ymax - Ymin + 1 + 2*pad, Xmax - Xmin + 1 + 2*pad, 3]).astype(np.uint8)
 
-    for coord, col, s in zip(coords, cols, sizes):
-        coord = (np.array(coord) - [Xmin, Ymin] + pad).astype(int)
-        coord = list(coord)
-        if type(coord[0]) is np.int64:
-            coord = [coord]
-        for xp, yp in coord:
-            if point:
-                area[yp, xp, :] = col
-            else:
-                cv2.circle(area, (xp, yp), s, col, 4)
+        cols = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+        sizes = [20, 16, 12, 8]
+
+        for coord, col, s in zip(coords, cols, sizes):
+            coord = (np.array(coord) - [Xmin, Ymin] + pad).astype(int)
+            coord = list(coord)
+            if type(coord[0]) is np.int64:
+                coord = [coord]
+            for xp, yp in coord:
+                if point:
+                    area[yp, xp, :] = col
+                else:
+                    cv2.circle(area, (xp, yp), s, col, 4)
 
     if plot:
         plt.imshow(area)
         plt.show()
 
-    shift = (Xmin, Ymin)
+    shift = np.array([Xmin - pad, Ymin - pad])
 
     return(area, shift)
 
@@ -809,6 +825,8 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, \
 
     # NOTE for some reason this is slower ot paraellise (both by pool and process) than 
     # being calculated sequentially.... WHY???
+    # NOTE cpuNo is a not False check rather than true because if there is a specified
+    # number of cpus then it doesn't work properly 
     if cpuNo != False:
         # Using Pool
         '''
@@ -1356,9 +1374,9 @@ def getSampleName(dirsrc, name):
         Outputs:\n
     path, the exact path of the selected file
     '''
-
+    possiblePath = dirsrc + "*" + name
     while True: 
-        samp = sorted(glob(dirsrc + "*" + name + "*"))
+        samp = sorted(glob(possiblePath + "*"))
 
         # if the key word returned only one sample that is the path of interest
         if len(samp) == 1:
@@ -1367,13 +1385,32 @@ def getSampleName(dirsrc, name):
         # if the key word return more than one sample
         if len(samp) > 1:
             print("For " + name + " which sample are you referring to?")
-            for sa in samp:
-                print(nameFromPath(sa, 3, prefix=True))
-            name = input("Type in one of the above: ")
-        
+            for n, sa in enumerate(samp):
+                print("[" + str(n) + "]" + ": " + nameFromPath(sa, 3, prefix=True))
+            possiblePathID = input("Type in the index number of one of the above: ")
+            possiblePath = None
+            while possiblePath is None:
+                try:
+                    possiblePath = samp[int(possiblePathID)]
+                except:
+                    print("Incorrect id inputted, try again")
         # if the key word return no samples adjust the sampleID
         if len(samp) == 0:
-            name = input("Key word " + name + " returned no results, check sample exists and type it in here: ")
+            name = print("Key word " + name + " returned no results. Recursive search has found: ")
+            allpng = glob(dirsrc+'*/*/*png')
+            # randomally shuffle the images found
+            random.shuffle(allpng)
+            # only display the top 20 images
+            for n, sa in enumerate(allpng[:20]):
+                print("[" + str(n) + "]" + ": " + nameFromPath(sa, 3, prefix=True))
+            possiblePathID = input("Type in the index number of one of the above: ")
+            possiblePath = None
+            while possiblePath is None:
+                try:
+                    possiblePath = allpng[int(possiblePathID)]
+                except:
+                    print("Incorrect id inputted, try again")
+
 
 def standardImgSize(imgs):
 
@@ -1427,3 +1464,27 @@ if __name__ == "__main__":
 
     print("\nc = " + str(cFinish))
     print("py = " + str(pyFinish))
+
+def getMatchingList(refList, targetLists):
+
+    '''
+    This function takes in a reference list and on the target list
+    find all the files which match the name of that irrespective of the 
+    prefrix
+    '''
+
+    matchedList=[]
+
+    # ensure the target lists is a nested list
+    if type(targetLists[0]) is not list:
+        targetLists = [targetLists]
+
+    for t in targetLists:
+        for i in refList:
+            try:
+                m = nameFromPath(t).index(nameFromPath(i))
+                matchedList.append(t[m])
+            except:
+                matchedList.append(None)
+
+    return(matchedList)
