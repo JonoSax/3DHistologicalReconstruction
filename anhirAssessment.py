@@ -18,12 +18,7 @@ from glob import glob
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.cluster import KMeans
-
-
-dataHome = '/Volumes/USB/ANHIR/TargetTesting/COAD_08/'
-size = 3
-res = 0.2
-cpuNo = 1
+import scipy
 
 def annotateImages(dataHome, size, res):
     '''
@@ -205,17 +200,19 @@ def processErrors(dataHome, size, datasrc, plot):
     # save as a csv
     featureErrors.to_csv(dataHome + "landmark/" + datasrc + ".csv")
 
-def quickStats(dataHome, file): 
+def quickStats(dfPath): 
 
     # read in the df
-    df = pd.read_csv(dataHome + "/landmark/" + file + ".csv", index_col=0)
-    print("\n---- " + file + " ----")
+    df = pd.read_csv(dfPath, index_col=0)
+    name = nameFromPath(dfPath)
+    print("\n---- " + name + " ----")
     # Provide some quick stats
     names = list(df.keys())
+
     for e, name in zip(df.T.values, names):
         # remove nans
         e = e[~np.isnan(e)]
-        
+
         dist = np.round(np.sqrt(np.median(e)), 2)
         std = np.round(np.sqrt(np.std(e)), 2)
     
@@ -223,36 +220,52 @@ def quickStats(dataHome, file):
 
     return(df)
 
-def featureErrorAnalyser(df):
+def featureErrorAnalyser(dataHome):
 
-    dataSrc = ["alignedSamples", "RealignedSamples", "NLalignedSamples"]
+    # this is the hard coded order of the processing (ie image processing goes from
+    # masked to aligned, then aligned to re...)
+    processOrder = ["maskedSamples", "alignedSamples", "NLalignedSamples"]
+
+    dataSrc = dataHome + "landmark/"
+    dfs = sorted(glob(dataSrc + "*Samples.csv"))
 
     infoAll = []
-    for d in dataSrc:
-        infodf = quickStats(dataHome, d)
+    for d in dfs:
+        infodf = quickStats(d)
         infoAll.append(np.sqrt(infodf))
 
     df = pd.concat(infoAll)
 
-    ids = sorted(nameFromPath(list(df.keys()), 4))
+    names = sorted(nameFromPath(list(df.keys()), 4))
+    ids = np.unique(nameFromPath(names, 3))
 
+    print("---- pValues ----")
+    for i in ids:
+        for p0, p1 in zip(processOrder[:-1], processOrder[1:]):
+            p0df = df[i + "_" + p0]
+            p1df = df[i + "_" + p1]
+
+            pV = scipy.stats.ttest_ind(p0df, p1df, nan_policy = 'omit').pvalue
+            print(i + ": " + p0 + "-->" + p1 + " = " + str(np.round(pV, 4)))
+
+    # plot the distribution of the errors
     # initialise
     info = []
     idstore = None
     names = []
 
-    for i in ids:
-        name = i.split("_")[-1]
-        id = nameFromPath(i)
+    for n in names:
+        name = n.split("_")[-1]
+        id = nameFromPath(n)
         if idstore is None or id == idstore:
-            info.append(df[i])
+            info.append(df[n])
             names.append(name)
         else:
             plt.hist(info)
             plt.legend(names)
             plt.title(idstore)
             plt.show()
-            info = []; info.append(df[i])
+            info = []; info.append(df[n])
             names = []; names.append(id)
         idstore = id
 
@@ -264,15 +277,18 @@ def featureErrorAnalyser(df):
 
     print("")
 
-
-
 if __name__ == "__main__":
+    
+    dataHome = '/Volumes/USB/ANHIR/TargetTesting/COAD_08/'
+    size = 3
+    res = 0.2
+    cpuNo = 1
 
     # transform the target images first 
     size = 3
-    '''
     downsize(dataHome, size, res, cpuNo)
     specID(dataHome, size, cpuNo)
+    '''
     featFind(dataHome, size, cpuNo, featMin = 50, gridNo = 1, dist = 50)
     align(dataHome, size, cpuNo, errorThreshold=500, fullScale=False)
     nonRigidAlign(dataHome, size, cpuNo, featsMin = 3, errorThreshold=500, selectCriteria="smooth", distFeats=200)
@@ -288,7 +304,7 @@ if __name__ == "__main__":
     annotateImages(dataHome, size, res)
     specID(dataHome, size, cpuNo, None)
     # linear alignment
-    aligner(src + '/masked/', src + '/info/', src + '/alignedSamples/', cpuNo, errorThreshold = 500)
+    aligner(src + '/maskedSamples/', src + '/info/', src + '/alignedSamples/', cpuNo, errorThreshold = 500)
     
     # alignment with the NL features
     aligner(src + '/alignedSamples/', src + '/infoNL/', src + '/ReAlignedSamples/', cpuNo, errorThreshold = 500)
@@ -301,8 +317,9 @@ if __name__ == "__main__":
     input("Press enter after renaming the NL samples")
     '''
     # get the errors of the linear aligned features 
-    processErrors(dataHome, size, "alignedSamples", False)
-    processErrors(dataHome, size, "RealignedSamples", False)
-    processErrors(dataHome, size, "NLalignedSamples", False)
+    # processErrors(dataHome, size, "maskedSamples", False)
+    # processErrors(dataHome, size, "alignedSamples", False)
+    # processErrors(dataHome, size, "RealignedSamples", False)
+    # processErrors(dataHome, size, "NLalignedSamples", False)
 
     featureErrorAnalyser(dataHome)
