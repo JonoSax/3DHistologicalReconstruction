@@ -42,7 +42,8 @@ class feature:
 
 def nonRigidAlign(dirHome, size, cpuNo = 1, \
     featsMin = 20, dist = 30, featsMax = 20, errorThreshold = 100, \
-        distFeats = 400, sect = 100, selectCriteria = "length", fixFeatures = False):
+        distFeats = 400, sect = 100, selectCriteria = "length", \
+            flowThreshold = 100, fixFeatures = False):
 
     '''
     Perform a non-rigid alignment of the specimen and extract features 
@@ -75,7 +76,8 @@ def nonRigidAlign(dirHome, size, cpuNo = 1, \
     imgsrc = home + "/alignedSamples/"
     destRigidAlign = home + "/RealignedSamples/"
     dirfeats = home + "/infoNL/"
-    destNLALign = home + "/NLAlignedSamples/"
+    destNLALign = home + "/NLAlignedSamplesSmall/"
+    destNLALignFull = home + "/NLAlignedSamplesFull/"
     destFeatSections = home + "/FeatureSections/"
     
     dirMaker(destRigidAlign)
@@ -84,33 +86,33 @@ def nonRigidAlign(dirHome, size, cpuNo = 1, \
     dirMaker(destFeatSections)
     
     # Find the continuous features throught the samples
-    contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, sz = sect, dist = dist)
+    # contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, sz = sect, dist = dist)
     
     # perform a rigid alignment on the tracked features
-    aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, errorThreshold = errorThreshold)
-    
+    # aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, errorThreshold = errorThreshold)
     if fixFeatures:
         findMissingSamples(dirHome, size)
-
     # with all the features found, find their trajectory and adjust to create continuity 
     # between samples
+    '''
     featShaper(destRigidAlign, destFeatSections, featsMin = featsMin, \
-        dist = distFeats, maxfeat = featsMax, selectCriteria = selectCriteria, plot = True)
+        dist = distFeats, maxfeat = featsMax, selectCriteria = selectCriteria, plot = False)
+    '''
     
     # extract the feature sections
-    allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect)
+    # allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos = True)
 
     # extract sections and deform the downsampled images
-    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, prefix = "png")
+    nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, prefix = "png", flowThreshold = 50)
 
     # extract the feature sections from the non-linear samples (in their TRUE positions)
     # allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=True)
 
     # extract sections and deform the FULL SCALE images (png is downsampled 
     # by a factor of 0.2)
-    # nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, scl = 5, prefix = "tif")
+    # nonRigidDeform(destRigidAlign, destNLALignFull, destFeatSections, scl = 5, prefix = "tif")
 
-def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, dist = 20, plotting = False):
+def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, dist = 20, plotting = True):
 
     '''
     This function takes images and finds features that are continuous
@@ -181,7 +183,7 @@ def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, di
         '''
 
         # parallelsiation seems to take longer...
-        if cpuNo == True:
+        if cpuNo == False:
             confirmInfo = []
             for m in continuedFeatures + matchedInfo:
                 confirmInfo.append(featMatching(m, tarImg, refImg, sz = sz))
@@ -231,7 +233,7 @@ def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, di
 
         imgCombine = nameFeatures(refImg, tarImg, confirmedFeatures, scales, combine = True, txtsz=0.5)
         cv2.imwrite(destFeat + tarName + "-->" + refName + "_processed.png", imgCombine)
-        # featMatchimg = nameFeatures(refImg, tarImg, continuedFeatures, combine = True)
+        # featMatchimg = nameFeatures(refImg, tarImg, confirmedFeatures, combine = True, scalesAll=scales)
         # plt.imshow(featMatchimg); plt.show()
 
         # ----- identify the feature ID -------
@@ -327,20 +329,12 @@ def featShaper(diralign, dirSectdest, featsMin = 5, dist = 100, maxfeat = 20, se
     featCheck = featCounts[np.where(featCounts[:, 1] > featsMin)]
     dfAllCont = pd.concat([dfAll[dfAll["ID"] == f] for f in featCheck[:, 0]])
 
-    if plot:    
-        px.line_3d(dfAllCont, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features with min continuity").show()
-        
-        imgs = sorted(glob(diralign + "*.png"))[:4]
-
-        # plotFeatureProgress(dfAllCont[dfAllCont["Zs"] < 4], imgs, diralign + 'CombinedRough.jpg', 1, 30, 2)
-
     # smooth the features
     featsSm = smoothFeatures(dfAllCont, 1e3, zAxis = "Zs")
+    # px.line_3d(featsSm, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features with min continuity").show()
 
     # select the best features
     dfSelectR, dfSelectSM, targetIDs = featureSelector(dfAllCont, featsSm, featsMin = featsMin, dist = dist, maxfeat = maxfeat, cond = selectCriteria)
-
-    plotFeatureProgress(dfSelectR[dfSelectR["Zs"] < 4], imgs, diralign + 'CombinedRough.jpg', 1, 35, 2)
 
     # fix the features for the missing samples
     dfSelectRFix = fixFeatures(dfSelectR, regionOfPath(diralign, 2))
@@ -350,9 +344,13 @@ def featShaper(diralign, dirSectdest, featsMin = 5, dist = 100, maxfeat = 20, se
     dfSelectSMFix2 = smoothFeatures(dfSelectSMFix, smooth = 1e3)
 
     # 3D plot the smoothed and rough selected features 
-    if plot:    px.line_3d(dfSelectRFix, x="X", y="Y", z="Z", color="ID", title = "Raw selected features " + selectCriteria).show()
-    # px.line_3d(dfSelectSMFix, x="X", y="Y", z="Z", color="ID", title = "Smoothed selected + fix features").show()
-    if plot:    px.line_3d(dfSelectSMFix2, x="X", y="Y", z="Z", color="ID", title = "All Smoothed selected features " + selectCriteria).show()    
+    if plot:    
+        imgs = sorted(glob(diralign + "*.png"))[:4]
+        plotFeatureProgress(dfSelectR[dfSelectR["Zs"] < 4], imgs, diralign + 'CombinedRough.jpg', 1, 35, 2)
+
+        px.line_3d(dfAllCont, x="X", y="Y", z="Zs", color="ID", title = "ALL raw features with min continuity").show()
+        px.line_3d(dfSelectRFix, x="X", y="Y", z="Zs", color="ID", title = "Raw selected features " + selectCriteria).show()
+        px.line_3d(dfSelectSMFix2, x="X", y="Y", z="Z", color="ID", title = "All Smoothed selected features " + selectCriteria).show()    
     
     # save the data frames as csv files
     dfAll.to_csv(dirSectdest + "all.csv")
@@ -375,12 +373,12 @@ def allFeatExtractor(imgSrc, dirSectdest, prefix, scl = 1, sz = 0, realPos = Fal
 
     # trajectories which are based on fixed samples are "Z" and raw samples are "Zs"
     if realPos:
-        zSamp = "Z"
+        zSamp = "Zs"
     else:
         zSamp = "Zs"
 
     if realPos:
-        dfRawCont = pd.read_csv(dirSectdest + "smoothFixFeatures.csv")
+        dfRawCont = pd.read_csv(dirSectdest + "rawFeatures.csv")
     else:
         dfRawCont = pd.read_csv(dirSectdest + "rawFeatures.csv")
     
@@ -390,7 +388,7 @@ def allFeatExtractor(imgSrc, dirSectdest, prefix, scl = 1, sz = 0, realPos = Fal
         sampdf.X *= scl; sampdf.Y *= scl        # scale the positions based on image size
         featExtractor(LSectDir, img, sampdf, dfRawCont, sz, zSamp, prefix = prefix, realPos = realPos)
 
-def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png"):
+def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", flowThreshold = 100):
 
     '''
     This transforms the images based on the feature transforms
@@ -408,21 +406,48 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png"):
 
     print("\n--- NL deformation of " + prefix + " images ---\n")
 
-    dfSelectRFix = pd.read_csv(dirSectdest + "rawFixFeatures.csv")
-    dfSelectSMFix2 = pd.read_csv(dirSectdest + "smoothFixFeatures.csv")
+    featsConfirm = dirSectdest + "featsConfirm/"
 
-    # get the image paths
-    imgs = sorted(glob(diralign + "*" + prefix))
-    
+    # get info
+    if prefix == "png":
+        imgs = sorted(glob(diralign + "*" + prefix))
+        # create the directory to store the features that were actuall 
+        # used for the saved deformation
+        dirMaker(featsConfirm)
+        dfSelectSMFix = pd.read_csv(dirSectdest + "smoothFixFeatures.csv")
+        dfSelectRFix = pd.read_csv(dirSectdest + "rawFixFeatures.csv")
+    elif prefix == "tif":
+        imgs = sorted(glob(diralign + "*" + prefix))
+        # get the features which were used during the png warping
+        smFeats = glob(featsConfirm + "*sm.csv")
+        rawFeats = glob(featsConfirm + "*raw.csv")
+        dfSelectSMFix, dfSelectRFix = None
+        for sm, r in zip(smFeats, rawFeats):
+            smDf = pd.read_csv(sm)
+            rDf = pd.read_csv(r)
+            # initialise the data frame
+            if dfSelectSMFix is None:
+                dfSelectSMFix = smDf
+                dfSelectRFix = rDf
+            else:
+                # append the dataframes
+                dfSelectSMFix.append(smDf)
+                dfSelectRFix.append(rDf)
+
     # create the dictionary which relates the real Z number to the sample image available
     key = np.c_[np.unique(dfSelectRFix.Z), [np.unique(dfSelectRFix[dfSelectRFix["Z"] == f].Zs)[0] for f in np.unique(dfSelectRFix.Z)]].astype(int)
 
     # Warp images to create smoothened feature trajectories
     # NOTE the sparse image warp is already highly parallelised so not MP functions
-
     for Z, Zs in key:
         imgPath = imgs[Zs]
-        ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix2, dirNLdest, border = 5, smoother = 0, order = 1, annotate = False, scl = scl)
+        output = ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix, dirNLdest, border = 5, smoother = 0, order = 1, annotate = False, scl = scl, flowThreshold = flowThreshold)
+        # during the feature transform of the png image, the final 
+        # positions used for warping were used are saved
+        if output is not None:
+            raw, sm = output 
+            pd.DataFrame(raw).to_csv(featsConfirm + nameFromPath(imgPath, 3) + "raw.csv")
+            pd.DataFrame(sm).to_csv(featsConfirm + nameFromPath(imgPath, 3) + "sm.csv")
 
     '''
     # get the feature extraction from the modified images
@@ -430,7 +455,7 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png"):
 
     # for all the NL features SELECTED, extract the feature sections
     for n, img in enumerate(imgsMod):
-        sampdf = dfSelectSMFix2[dfSelectSMFix2["Z"] == n]
+        sampdf = dfSelectSMFix[dfSelectSMFix["Z"] == n]
         featExtractor(NLSectDir, img, sampdf, sz, zSamp = "Z")
     '''
     # plotFeatureProgress([dfSelectR, dfSelectSM], imgsMod, dirNLdest + 'CombinedSmooth.jpg', sz, [3])
@@ -597,7 +622,8 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
     (dfSm), pandas data frame of the smoothed feature positions
     (featsMin), minimum number of samples a feature has to pass through to be used\n
     (dist), minimum distance between features\n
-    (maxfeat) max number of features to be returned
+    (maxfeat) max number of features to be returned per sample
+    (cond), the priority of the features to select (either prioritising longer or smoothr features)
 
     Outputs:\n
     (dfNew), pandas data frame of the features which meet the requirements 
@@ -617,7 +643,8 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
     pdAllR = []
     pdAllSm = []
     while s < sampleMax:
-
+        
+        # this is the number of samples ahead of the current one we are looking to ensure features are still present
         extraLen = featsMin - (featsMin - (sampleMax - s)) * ((sampleMax - s) < featsMin)
 
         # get all the feature positions on the sample
@@ -626,8 +653,6 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
         # ensure that there are at least 3 features which are continued.
         # if that condition is not met then reduce the extraLen needed
         while len(sampsdfBoth) < 3 and n < extraLen:
-            sampdf = dfR[dfR["Zs"] == s + extraLen]
-
             # create a data frame which contains the features in the current sample as well
             # as the samples further on in the specimen 
             sampHere, sampExtra = dfR[dfR["Zs"] == s + extraLen - n], dfR[dfR["Zs"] == s]
@@ -645,7 +670,6 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
 
         # calculate the average error per point between the smoothed and raw features
         errorStore = []
-        errorStorem = []
         for i in sampsdfBoth.ID:
             rawFeat = np.c_[dfR[dfR["ID"] == i].X, dfR[dfR["ID"] == i].Y]
             smFeat = np.c_[dfSm[dfSm["ID"] == i].X, dfSm[dfSm["ID"] == i].Y]
@@ -714,7 +738,7 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
 
     return(dfFinalR, dfFinalSm, finalFeats)
 
-def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5, order = 2, annotate = False, scl = 1):
+def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5, order = 2, annotate = False, scl = 1, flowThreshold = 100):
 
     # perform the non-rigid warp
     # Inputs:   (s), number of the sample
@@ -723,6 +747,8 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     #           (dfNew), data frame of the smoothed feature info
     #           (dest), directory to save modified image
     #           (scl), rescaling value for the image to match the feature postiions
+    #           (flowThreshold), the maximum flow matrix magnitude that is acceptable for a NL
+    #               deformation
     # Outputs:  (imgMod), the numpy array of the warped image
     #           (imgFlow), the flow field which was produced to make the 
     #               warped image
@@ -768,22 +794,44 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     rawf = np.fliplr(np.unique(np.array(rawFeats), axis = 0))
     smf = np.fliplr(np.unique(np.array(smFeats), axis = 0))
 
-    # ensure the inputs are 4D tensors
-    tfrawPoints = np.expand_dims(rawf.astype(float), 0)
-    tfsmPoints = np.expand_dims(smf.astype(float), 0)
     tftarImg = np.expand_dims(img, 0).astype(float)
 
-    # perform non-rigid deformation on the image
+    # perform non-rigid deformation on the image. If the flow vector is above 
+    # the threshold flogmagnitude then remove the features creating the 
+    # largest errors and repeat. NOTE this could be done in the feature selection 
+    # but it would be presumptive to remove features based purely on their errors
+    # BEFORE assess their effects on the NL deformations
     # NOTE for tif uses excessive memory, consider using HPC...
-    imgMod, imgFlow = sparse_image_warp(tftarImg, tfrawPoints, tfsmPoints, \
-        num_boundary_points=border, \
-            regularization_weight=smoother, \
-                interpolation_order=order)
+    while True:
+        imgMod, imgFlow = sparse_image_warp(tftarImg, \
+            np.expand_dims(rawf.astype(float), 0), \
+                np.expand_dims(smf.astype(float), 0), \
+                    num_boundary_points=border, \
+                        regularization_weight=smoother, \
+                            interpolation_order=order)
 
-    # print("error = " + str(np.round(np.log(np.sum(np.abs(imgMod - img)/3)), 2)))
+        # print("error = " + str(np.round(np.log(np.sum(np.abs(imgMod - img)/3)), 2)))
 
-    # convert the image and flow field into something useful
-    imgMod = np.array(imgMod[0]).astype(np.uint8)
+        # if the largest vector magnitude is larger than 50, this is indicative that
+        # the deformation is possible "impossible" so apply a greater smoothing
+        # constant and try again
+        imgMod = np.array(imgMod[0]).astype(np.uint8)
+        maxFlow = np.max(abs(imgFlow))
+        print("     " + str(maxFlow))
+        cv2.imwrite(dest + name + "_" + str(int(maxFlow)) + ".png", imgMod)
+        # cv2.imshow("Img w smoothing = " + str(maxFlow), imgMod); cv2.waitKey(0)
+        if maxFlow > flowThreshold:
+            # get pixel error distance between points
+            err = np.sqrt(np.sum((rawf - smf)**2, axis = 1))
+
+            # find the position of maximum error
+            pos = np.argmax(err)
+
+            # remove the individual feature with the largest error contribution
+            rawf = np.delete(rawf, pos, axis = 0)
+            smf = np.delete(smf, pos, axis = 0)
+        else:
+            break
     Flow = np.array(imgFlow[0])
     # plt.imshow(np.sum(np.abs(imgMod - img)/3, axis = 2), cmap = 'gray'); plt.show()
 
@@ -835,8 +883,15 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     # save the images
     if prefix == "tif":
         tifi.imwrite(dest + name + ".tif", imgMod)
+        return None
     else:
         cv2.imwrite(dest + name + ".png", imgMod)
+
+        # based on the final positions of the features found, return these 
+        # for the tif transformation so that the flow threshold process
+        # doesn't have to occur
+        return([rawf, smf])
+
 
 def plotFeatureProgress(dfs, imgAll, dirdest, gridsz = 0, sz = 0, annos = [3]):
 
@@ -1087,7 +1142,7 @@ def fixFeatures(features, home):
     info = home + "info/"
 
     # get the csv file on the missing samples
-    missingSampDir = info + "missingSamples1.csv"
+    missingSampDir = info + "missingSamples.csv"
 
     # get all the images
     imgs = sorted(glob(alignedSamples + "*.png"))
@@ -1209,9 +1264,15 @@ if __name__ == "__main__":
     cpuNo = False
 
     dataHome = '/eresearch/uterine/jres129/BoydCollection/H710C_6.1/'
-    dataHome = '/Volumes/USB/H653A_11.3/'
     dataHome = '/Volumes/USB/H710C_6.1/'
-    nonRigidAlign(dataHome, size, cpuNo)
+    dataHome = '/Volumes/USB/H653A_11.3/'
+
+
+
+    nonRigidAlign(dataHome, size, cpuNo = 1, \
+    featsMin = 20, dist = 30, featsMax = 100, errorThreshold = 100, \
+        distFeats = 50, sect = 100, selectCriteria = "length", \
+            flowThreshold = 50, fixFeatures = False)
 
     '''
     for d in dirHome:
