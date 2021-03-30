@@ -159,7 +159,7 @@ def imageModGenerator():
     imgSrc = dataHome + "3/BirdFace.png"
     img = cv2.imread(imgSrc)
 
-    dirMaker(dataHome + "3/masked/")
+    dirMaker(dataHome + "3/maskedSamples/")
 
     # get the reference image in the centre of the maxSize
     x, y = img.shape[:2]
@@ -169,14 +169,14 @@ def imageModGenerator():
     imgN[xMi:xMi+x, yMi:yMi+y, :] = img
 
     # create the centred image to align all samples to
-    # cv2.imwrite(dataHome + "3/masked/modImg000.png", imgN)
+    # cv2.imwrite(dataHome + "3/maskedSamples/modImg000.png", imgN)
 
     for i in range(20):
         imgN = imgTransform(img, np.array([xM, yM]), maxRot=360)
         name = str(i + 1)
         while len(name) < 3:
             name = "0" + name
-        # cv2.imwrite(dataHome + "3/masked/modImg" + name + ".png", imgN)
+        # cv2.imwrite(dataHome + "3/maskedSamples/modImg" + name + ".png", imgN)
 
     featFind(dataHome, "3", 1, 10, 1, 1)
     align(dataHome, "3", 1)
@@ -245,7 +245,7 @@ def siftTimer():
     resolutions 
     '''
 
-    imgPath = '/Volumes/USB/H653A_11.3/3/masked/H653A_002_0.png'
+    imgPath = '/Volumes/USB/H653A_11.3/3/maskedSamples/H653A_002_0.png'
     imgOrig = cv2.imread(imgPath)
 
     # perform sift search on multiple different resolutions of sift
@@ -272,10 +272,12 @@ def vesselPositionsOnMaskedImgs():
     '''
 
     src = '/Volumes/USB/H653A_11.3/2.5/'
-    masks = src + 'NLAlignedSamples/'
+    imgsrc = src + 'maskedSamples/'
+    destImgs = imgsrc + "targetVessels/"
+    dirMaker(destImgs)
 
-    downsampleImgs = glob(masks + "*.png")
-    fullImgs = sorted(glob(masks + "*.tif"))
+    downsampleImgs = sorted(glob(imgsrc + "*.png"))
+    fullImgs = sorted(glob(imgsrc + "*.tif"))
 
     for d in downsampleImgs:
 
@@ -293,14 +295,74 @@ def vesselPositionsOnMaskedImgs():
         maskPos = np.insert(maskPos, 0, np.flip(img.shape[:2]), axis = 0)
 
         vessels = denseMatrixViewer([maskPos], plot = False, point = True)[0]
-        cv2.imwrite(masks + name + "_vessels.png", vessels)
+        cv2.imwrite(destImgs + name + "_vessels.png", vessels)
         
-        listToTxt([maskPos], masks + name + "vessels.txt")
+        listToTxt([maskPos], destImgs + name + "vessels.txt")
+
+def bruteForceMatcherTimes():
+
+    bf = cv2.BFMatcher_create()   
+    sift = cv2.xfeatures2d.SIFT_create(nOctaveLayers = 3)    
+
+    # just get two random images 
+    img1 = cv2.imread('/Volumes/USB/H653A_11.3/3/maskedSamples/H653A_002_0.png')
+    img2 = cv2.imread('/Volumes/USB/H653A_11.3/3/maskedSamples/H653A_003_0.png')
+
+    # get sift info
+    _, des_ref = sift.detectAndCompute(img1,None)
+    _, des_tar = sift.detectAndCompute(img2,None)
+
+    des_ref_accum = []
+    des_tar_accum = []
+
+    timeStore = []
+    tRange = np.arange(1, 20, 2)
+    for i in tRange:
+        print("Processing " + str(i))
+
+        # make the lists i long
+        des_ref_accum = []
+        des_tar_accum = []
+        for n in range(i):
+            des_ref_accum.append(des_ref)
+            des_tar_accum.append(des_tar)
+        start = time()
+        matches = bf.match(np.hstack(des_ref_accum), np.hstack(des_tar_accum))
+        end = time()-start
+        timeStore.append(end)
+
+    plt.plot(tRange, timeStore); plt.show()
+
+    print("")
+
+def compareSmoothvsRaw():
+
+    '''
+    This function takes a raw and smoothed data frame and plots both of 
+    them showing their differences
+
+    NOTE only run this while featShaper() is running so the right variables
+    are loaded
+    '''
+
+    # insert different types so that dashed and full lines can be plotted 
+    dfSelectR.insert(4, "Type", 0)
+    dfSelectSMFix2.insert(4, "Type", 1)
+
+    # rename the raw feature Z axis
+    dfSelectRNew = dfSelectR.rename(columns={'Zs': 'Z'})
+
+    a = pd.concat([dfSelectRNew, dfSelectSMFix2])
+    dfSelectRNew
+    dfSelectSMFix2
+    px.line_3d(a, x="X", y="Y", z="Z", color="ID", line_dash="Type", title = "Smooth vs Raw").show()    
+
 
 if __name__ == "__main__":
 
-    # imageModGenerator()
+    imageModGenerator()
 
     # siftTimer()
 
     # vesselPositionsOnMaskedImgs()
+    bruteForceMatcherTimes()
