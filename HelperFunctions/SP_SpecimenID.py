@@ -26,18 +26,21 @@ entire image, rather than segmenting the image into grids
 '''
 
 # NOTE can probably depreciate specID and make sectionSelecter the main function
-def specID(dataHome, size, cpuNo = False):
+def specID(dataHome, size, cpuNo = False, imgref = 'refimg.png'):
 
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
 
-    refimg = dataHome + 'refimg.png'
+    # get the reference image path
+    if imgref is not None:
+        refimgPath = getSampleName(dataHome, imgref)
+        imgref = cv2.imread(refimgPath)
 
     # gets the images for processing
-    sectionSelecter(datasrc, cpuNo, refimg)
+    sectionSelecter(datasrc, cpuNo, imgref)
 
 
-def sectionSelecter(datasrc, cpuNo = False, refimgpath = None):
+def sectionSelecter(datasrc, cpuNo = False, imgref = None):
 
     '''
     This function creates a mask which is trying to selectively surround
@@ -61,16 +64,16 @@ def sectionSelecter(datasrc, cpuNo = False, refimgpath = None):
     imgbigsrc = datasrc + "tifFiles/"
 
     # create the directory where the masked files will be created
-    imgMasked = datasrc + "masked/"
+    imgMasked = datasrc + "maskedSamples/"
     imgMasks = imgMasked + "masks/"
     imgPlots = imgMasked + "plot/"
     dirMaker(imgMasks)
     dirMaker(imgPlots)
     
     # get all the images 
-    imgsmall = sorted(glob(imgsmallsrc + "*.png"))[:30]
+    imgsmall = sorted(glob(imgsmallsrc + "*.png"))
     imgbig = sorted(glob(imgbigsrc + "*.tif"))
-    '''
+    
     print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
     # serialised
     if cpuNo == 1:
@@ -81,17 +84,16 @@ def sectionSelecter(datasrc, cpuNo = False, refimgpath = None):
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
             pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasks), repeat(imgPlots)))
-    '''
+    
     print("\n   #--- APPLY MASKS ---#")
     
     # get the directories of the new masks
-    masks = sorted(glob(imgMasks + "*.pbm"))[:30]
+    masks = sorted(glob(imgMasks + "*.pbm"))
 
     # use the first image as the reference for colour normalisation
     # NOTE use the small image as it is faster but pretty much the 
     # same results
 
-    imgref = cv2.imread(refimgpath)
     # imgref = None
     # serialised
     if cpuNo == 1:
@@ -441,15 +443,19 @@ def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgRef):
     name = nameFromPath(maskpath)
     print(name + " modifying")
 
-    try:    imgsmallpath = glob(smallsrcPath + name + "*.png")[0]
-    except: print("     SMALL IMG SEARCH"); imgsmallpath = getSampleName(smallsrcPath, name + "*")
-    
-    try:    imgbigpath = glob(bigsrcPath + name + "*.tif")[0]
-    except: print("     BIG IMG SEARCH"); imgbigpath = getSampleName(bigsrcPath, name + "*")
+    try:    
+        imgsmallpath = glob(smallsrcPath + name + "*.png")[0]
+        imgbigpath = glob(bigsrcPath + name + "*.tif")[0]
+    except: 
+        return
    
     imgsmall = cv2.imread(imgsmallpath)
     imgbig = cv2.imread(imgbigpath)
-    ratio = int(np.round(imgbig.shape[0] / imgsmall.shape[0], 2))  # get the upscale size of the images
+    try:
+        ratio = int(np.round(imgbig.shape[0] / imgsmall.shape[0], 2))  # get the upscale size of the images
+    except:
+        print("---- FAILED " + name + " ----")
+        return
 
     # if there are just normal masks, apply them
     if maskpath is not None:

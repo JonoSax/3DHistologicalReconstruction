@@ -17,7 +17,7 @@ else:
 def WSIExtract(dataTrain, name, size):
 
     # this is the function called by main. Organises the inputs for findFeats
-    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))
+    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))[-1:]
     
     # parallelise work
     jobs = {}

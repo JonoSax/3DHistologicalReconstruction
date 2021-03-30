@@ -37,7 +37,7 @@ def fixit(dataHome, size, cpuNo, sampleIDs, segSection = False):
     # get the size specific source of the aligned information information
     dataaligned = dataHome + str(size) + imagesrc + "/alignedSamples/"
     datainfo = dataHome + str(size) + imagesrc + "/info/"
-    datamasked = dataHome + str(size) + imagesrc + "/masked/"
+    datamasked = dataHome + str(size) + imagesrc + "/maskedSamples/"
 
     samples = []
     # search for the key word in the name and verify it exists

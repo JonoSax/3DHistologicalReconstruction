@@ -47,7 +47,7 @@ def align(data, size, cpuNo = 1, errorThreshold = 100, fullScale = False):
 
     # get the file of the features information 
     src = data + str(size)
-    dataSegmented = src + '/masked/'     
+    dataSegmented = src + '/maskedSamples/'     
     destImgPath = src + '/alignedSamples/'
     featureInfoPath = src + '/info/'
 
@@ -76,7 +76,7 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
-    shiftFeatures(featureInfoPath, destImgPath, errorThreshold)
+    shiftFeatures(featureInfoPath, sampledirs, destImgPath, errorThreshold)
 
     # get the field shape required for all specimens to fit
     info = sorted(glob(featureInfoPath + "*feat"))[:len(sampleNames)]
@@ -119,13 +119,14 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
 
     print('Alignment complete')
 
-def shiftFeatures(src, alignedSamples, errorThreshold = 100):
+def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
 
     '''
     Function takes the images and translation information and adjusts the images to be aligned and returns the translation vectors used
         
         Inputs:   \n
-    (src), the directory of the samples being aligned\n
+    (src), the directory of the feature information\n
+    (imgDir), the directory of the images used to transform
     (alignedSamples), destination directory  \n
     (errorThreshold), the maximum error value which is tolerated before removing features \n
     
@@ -144,7 +145,7 @@ def shiftFeatures(src, alignedSamples, errorThreshold = 100):
     dirMaker(alignedFeats)
 
     # get the feature names of ONLY the feature files
-    featNames = sorted(list(set(nameFromPath(glob(src + "*feat"), 3))))
+    featNames = sorted(list(set(nameFromPath(glob(imgDir + "*png"), 3))))
 
     for fr, ft in zip(featNames[:-1], featNames[1:]):
         # load all the features

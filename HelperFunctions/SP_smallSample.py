@@ -12,14 +12,14 @@ if __name__ != 'HelperFunctions.SP_smallSample':
 else:
     from HelperFunctions.Utilities import nameFromPath, dirMaker
 
-def downsize(dataHome, size, scale = 0.3, cpuNo = False):
+def downsize(dataHome, size, scale = 0.3, cpuNo = False, prefix = "tif"):
 
     # downsize the tif images, move them into the images directory and 
     # rename as appropriate
 
     tifFiles = dataHome + str(size) + "/tifFiles/"
 
-    files = sorted(glob(tifFiles + "*.tif"))
+    files = sorted(glob(tifFiles + "*." + prefix))
 
     # create an error if there arent enough images
     if len(files) < 2:
@@ -55,9 +55,12 @@ def ds(f, scale, targetDir, unrotated = False):
     name, id = sampName.split("_")
 
     # if samples with c are present, rotate
-    if name.find("H710C") > -1 and id.find("C") > -1: 
+    if name.lower().find("h710c") > -1 and id.lower().find("c") > -1: 
         rotate = np.array([unrotated, True]).all()
-    else:   rotate = False
+    elif name.lower().find("h710b") > -1 and id.lower().find("d") > -1:
+        rotate = np.array([unrotated, True]).all()
+    else:   
+        rotate = False
 
     print(sampName + " being resized")
     try:

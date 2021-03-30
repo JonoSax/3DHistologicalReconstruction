@@ -47,7 +47,14 @@ def fullMatchingSpec(datasrc, size, segSections = 1, cpuNo = False):
     # Outputs:  (), aligned samples of the seg sections
 
     # select the features within the aligned samples
-    featSelectArea(datasrc, size, segSections, 0)
+    while True:
+        try:
+            segSections = int(segSections)
+            break
+        except:
+            segSections = input("Segment sections input incorrect, please try again: ")
+
+    # featSelectArea(datasrc, size, segSections, 0, prefix = "png")
 
     input("Check all the samples are of acceptable quality. Delete any that are severly damaged/not valuable then press any key")
 
@@ -72,8 +79,8 @@ def fullMatching(sectiondir, cpuNo):
 
     # featfind parameters
     gridNo = 1
-    featMin = 20
-    dist = 50
+    featMin = 5
+    dist = 10
 
     # boolean to save tif after alignment
     saving = False
@@ -98,9 +105,8 @@ def fullMatching(sectiondir, cpuNo):
     
     
     # perform alignment of the segsections based on the features
-    
     sampleNames = sorted(nameFromPath(imgs, 3))
-    shiftFeatures(sampleNames, dataDest, alignedimgDest)
+    shiftFeatures(dataDest, alignedimgDest)
 
     # use a reference image
     refImg = cv2.imread(imgs[1])

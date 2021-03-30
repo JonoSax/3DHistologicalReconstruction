@@ -79,7 +79,7 @@ def featFind(dataHome, size, cpuNo = 1, featMin = 20, gridNo = 3, dist = 10):
     datasrc = dataHome + str(size) + "/"
 
     # gets the images for processing
-    imgsrc = datasrc + "masked/"
+    imgsrc = datasrc + "maskedSamples/"
 
     # specify where the outputs are saved
     dataDest = datasrc + "info/"
@@ -117,14 +117,14 @@ def featFind(dataHome, size, cpuNo = 1, featMin = 20, gridNo = 3, dist = 10):
     if cpuNo == 1:
         # serialisation (mainly debuggin)
         for refsrc, tarsrc in zip(imgRef, imgTar):
-            findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featMin, dist)
+            findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featMin, dist, cpuNo)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(findFeats, zip(imgRef, imgTar, repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist)))
+            pool.starmap(findFeats, zip(imgRef, imgTar, repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist), repeat(cpuNo)))
         
-def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin, dist):
+def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin, dist, cpuNo):
 
     '''
     This script finds features between two sequential samples (based on their
@@ -175,11 +175,10 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin, dist):
     matchedInfo, xrefDif, yrefDif, xtarDif, ytarDif, scl = allFeatSearch(img_refMaster, img_tarMaster, \
         dist = dist, featMin = featMin, scales = scales, \
             name_ref = name_ref, name_tar = name_tar, \
-                gridNo = gridNo)
+                gridNo = gridNo, cpuNo = cpuNo)
 
     # print("time for " + imgName + " " + str(time() - a))
     '''
-
     matchedInfo, xrefDif, yrefDif, xtarDif, ytarDif, scl = allFeatSearch(img_refMaster, img_tarMaster, \
         dist = 3, featMin = 10, \
             name_ref = name_ref, name_tar = name_tar, \
@@ -357,7 +356,7 @@ def allFeatSearch(imgRef, imgTar,
     '''
 
     # initialise the bf and sift 
-    bf = cv2.BFMatcher()   
+    bf = cv2.BFMatcher_create()   
     # NOTE this required the contrib module --> research use only
     # NOTE using 2 octaves is for some reason faster than 1 octave....
     # However 3 octaves produces the most feature per unit time^^2....
@@ -405,8 +404,8 @@ def allFeatSearch(imgRef, imgTar,
             x, y, _ = img_ref.shape
             # img_tar = img_tar[int(0.5*x):int(0.6*x), int(0.55*y):int(0.65*y), :]
             # img_ref = img_ref[int(0.5*x):int(0.6*x), int(0.55*y):int(0.65*y), :]
-            kp_ref, des_ref = sift.detectAndCompute(img_ref,None)
-            kp_tar, des_tar = sift.detectAndCompute(img_tar,None)
+            kp_ref, des_ref = sift.detectAndCompute(img_refO,None)
+            kp_tar, des_tar = sift.detectAndCompute(img_tarO,None)
             bf = cv2.BFMatcher()
             matches = bf.knnMatch(des_ref,des_tar, k=2)   
             # cv2.drawMatchesKnn expects list of lists as matches.

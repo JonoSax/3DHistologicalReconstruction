@@ -21,15 +21,14 @@ tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 def WSILoad(dataTrain, size, cpuNo = False):
 
     # this is the function called by main. Organises the inputs for findFeats
-    ndpis = sorted(glob(dataTrain + "*.nd*"))
-
+    ndpis = sorted(glob(dataTrain + "*.ndpi"))
+    ndpas = sorted(glob(dataTrain + "*.ndpa"))
     # ensure all ndpi files have at least a two digit category number (prevents 
     # false identification)
-    for ndpi in ndpis:
+    for ndpi, ndpa in zip(ndpis, ndpas):
         name = nameFromPath(ndpi).replace(" ", "")
         home = regionOfPath(ndpi).replace(" ", "\ ")    # remove the spaces from final name
         no = name.split("_")
-        prefix = "." + ndpi.split(".")[-1]
 
         # if there are less than two digits in the name, add a 0
         while len(no[-1]) < 4:
@@ -38,8 +37,9 @@ def WSILoad(dataTrain, size, cpuNo = False):
         name = no[0] + "_" + no[-1]
 
         # if the name has been modified rename it
-        if ndpi.replace(" ", "\ ") != home + name + prefix:
-            os.system("mv " + ndpi.replace(" ", "\ ") + " " + home + name + prefix)
+        if ndpi.replace(" ", "\ ") != home + name:
+            os.system("mv " + ndpi.replace(" ", "\ ") + " " + home + name + ".ndpi")
+            os.system("mv " + ndpa.replace(" ", "\ ") + " " + home + name + ".ndpi.ndpa")
         else:
             print(name + " well named")
 
@@ -112,7 +112,7 @@ def ndpiLoad(mag, src, dest):
 
     name = nameFromPath(src)
 
-    extractedName = dirSRC + name + "_x" + str(mag) + "_3z0.tif"    # NOTE, use of z0 is to prevent 
+    extractedName = dirSRC + name + "_x" + str(mag) + "_z0.tif"    # NOTE, use of z0 is to prevent 
                                                                 # duplication of the same file, however 
                                                                 # if there is z shift then this will fail
 

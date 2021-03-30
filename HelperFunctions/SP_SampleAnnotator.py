@@ -17,6 +17,7 @@ to allow a user to select points. The functionionality of each funcitons is as f
 
 '''
 
+from time import sleep
 import matplotlib
 matplotlib.use('TkAgg')
 import cv2
@@ -100,7 +101,7 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
 
         # if doing it for the main images
         try:    
-            imgdirs = dataSource + 'masked/'
+            imgdirs = dataSource + 'maskedSamples/'
 
             # get the images, doesn't m
             imgrefdir = glob(imgdirs + ref + ".*")[0]
@@ -196,12 +197,12 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
             y, x = roiselector(imgCombineA, title)
 
             # if the window is closed to skip selecting a feature, keep the feature
-            if x * y == 0:
+            if (x * y == 0).all():
                 yme = featID[0]
                 xme = featID[1]
             else:
-                yme = y
-                xme = x
+                yme = np.mean(y)
+                xme = np.mean(x)
 
             # append reference and target information to the original list
             if featC == 'ref':
@@ -234,7 +235,7 @@ def featChangePoint(dataSource, ref, tar, featureInfo = None, nopts = 5, ts = 4,
 
     return(featInfos)
 
-def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
+def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False, prefix = "tif"):
 
     # this function brings up a gui which allows user to manually selection a 
     # roi on the image. This extracts samples from the aligned tissues and saves them
@@ -247,10 +248,10 @@ def featSelectArea(datahome, size, feats = 1, sample = 0, normalise = False):
     for f in range(feats):
         dirMaker(segSections + "seg" + str(f) + "/")
 
-    alignedSamples = datahome + str(size) + "/alignedSamples/"
+    alignedSamples = datahome + str(size) + "/RealignedSamples/"
 
     # get all the samples to be processed
-    samples = sorted(glob(alignedSamples + "*.tif"))
+    samples = sorted(glob(alignedSamples + "*" + prefix))
 
     # get the image to be used as the reference
     if type(sample) == int:
@@ -343,7 +344,7 @@ def roiselector(img, title = "Matching"):
 
     # perform a search over a reduced size area
     imgr = cv2.cvtColor(cv2.resize(img, (sizeY, sizeX)), cv2.COLOR_RGB2BGR)
-    x, y = annotatorGUI(imgr, title)
+    x, y = annotatorGUI(imgr, title + " ENSURE YOU WAIT ~1 SEC BEFORE PRESSING ENTER")
 
     # get the postions
     # y = np.array([roi[1], roi[1] + roi[3]])
@@ -367,21 +368,22 @@ def annotatorGUI(img, title):
         x1, y1 = eclick.xdata, eclick.ydata
         x2, y2 = erelease.xdata, erelease.ydata
 
+        print(str([np.array([x1, x2]), np.array([y1, y2])]))
+
         # turn selection into point
         global allPos
-        allPos = np.array([np.mean([x1, x2]), np.mean([y1, y2])])
+        allPos = [np.array([x1, x2]), np.array([y1, y2])]
 
     def toggle_selector(event):
         if event.key == 'enter':
             toggle_selector.RS.set_active(False)
             fig.canvas.mpl_disconnect(toggle_selector)
             plt.close()
-            return
             # toggle_selector.RS.set_active(True)
 
     fig, ax = plt.subplots(figsize = (16, 12))
     global allPos
-    allPos = [0, 0]
+    allPos = [np.array([0, 0]), np.array([0, 0])]
     plt.axis("off")    
     plt.imshow(img)
     ax.set_title(title)
@@ -399,6 +401,8 @@ def annotatorGUI(img, title):
     plt.show()
 
     # if a new position was declared return that
+    if (allPos[0] * allPos[1] == 0).all():
+        print("WAHT")
     try:
         return(allPos)
     # if no new position declared, return the origin
@@ -467,7 +471,7 @@ def annotateImg(imgs, info, ts):
 if __name__ == "__main__":
 
     '''
-    dataSource = '/Volumes/USB/H653/3/masked/'
+    dataSource = '/Volumes/USB/H653/3/maskedSamples/'
     nameref = 'H653_01A_0.jpg'
     nametar = 'H653_02A_0.jpg'
     matchRef = {}

@@ -827,7 +827,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, \
     # being calculated sequentially.... WHY???
     # NOTE cpuNo is a not False check rather than true because if there is a specified
     # number of cpus then it doesn't work properly 
-    if cpuNo != False:
+    if cpuNo == True:
         # Using Pool
         '''
         with multiprocessing.Pool(cpuNo) as pool:
