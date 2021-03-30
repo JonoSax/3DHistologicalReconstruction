@@ -89,18 +89,18 @@ def nonRigidAlign(dirHome, size, cpuNo = 1, \
     # contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, sz = sect, dist = dist)
     
     # perform a rigid alignment on the tracked features
-    # aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, errorThreshold = errorThreshold)
+    aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, errorThreshold = np.inf)
+    
     if fixFeatures:
         findMissingSamples(dirHome, size)
     # with all the features found, find their trajectory and adjust to create continuity 
     # between samples
-    '''
+    
     featShaper(destRigidAlign, destFeatSections, featsMin = featsMin, \
-        dist = distFeats, maxfeat = featsMax, selectCriteria = selectCriteria, plot = False)
-    '''
+        dist = distFeats, maxfeat = featsMax, selectCriteria = selectCriteria, plot = True)
     
     # extract the feature sections
-    # allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos = True)
+    allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos = True)
 
     # extract sections and deform the downsampled images
     nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, prefix = "png", flowThreshold = 50)
@@ -112,7 +112,7 @@ def nonRigidAlign(dirHome, size, cpuNo = 1, \
     # by a factor of 0.2)
     # nonRigidDeform(destRigidAlign, destNLALignFull, destFeatSections, scl = 5, prefix = "tif")
 
-def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, dist = 20, plotting = True):
+def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, dist = 20, plotting = False):
 
     '''
     This function takes images and finds features that are continuous
@@ -818,7 +818,7 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
         imgMod = np.array(imgMod[0]).astype(np.uint8)
         maxFlow = np.max(abs(imgFlow))
         print("     " + str(maxFlow))
-        cv2.imwrite(dest + name + "_" + str(int(maxFlow)) + ".png", imgMod)
+        # cv2.imwrite(dest + name + "_" + str(int(maxFlow)) + ".png", imgMod)
         # cv2.imshow("Img w smoothing = " + str(maxFlow), imgMod); cv2.waitKey(0)
         if maxFlow > flowThreshold:
             # get pixel error distance between points
@@ -832,7 +832,6 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
             smf = np.delete(smf, pos, axis = 0)
         else:
             break
-    Flow = np.array(imgFlow[0])
     # plt.imshow(np.sum(np.abs(imgMod - img)/3, axis = 2), cmap = 'gray'); plt.show()
 
     # print("Max Flow = " + str(np.max(Flow)) + " Min Flow = " + str(np.min(Flow)))
@@ -891,7 +890,6 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
         # for the tif transformation so that the flow threshold process
         # doesn't have to occur
         return([rawf, smf])
-
 
 def plotFeatureProgress(dfs, imgAll, dirdest, gridsz = 0, sz = 0, annos = [3]):
 
@@ -1261,18 +1259,31 @@ if __name__ == "__main__":
 
 
     size = 3
-    cpuNo = False
+    cpuNo = True
 
     dataHome = '/eresearch/uterine/jres129/BoydCollection/H710C_6.1/'
     dataHome = '/Volumes/USB/H710C_6.1/'
     dataHome = '/Volumes/USB/H653A_11.3/'
+    dataHome = '/Volumes/USB/H710B_6.1/'
+    dataHome = '/Volumes/USB/H671B_18.5/'
 
+    dataHomes = [
+    # '/Volumes/USB/H653A_11.3/',
+    # '/Volumes/USB/H671A_18.5/',
+    # '/Volumes/USB/H671B_18.5/',
+    # '/Volumes/USB/H710B_6.1/',
+    # '/Volumes/USB/H710C_6.1/',
+    # '/Volumes/USB/H673A_7.6/',
+    # '/Volumes/USB/H750A_7.0/',
+    '/Volumes/USB/H1029A_8.4/'
+    ]
 
+    for dataHome in dataHomes:
 
-    nonRigidAlign(dataHome, size, cpuNo = 1, \
-    featsMin = 20, dist = 30, featsMax = 100, errorThreshold = 100, \
-        distFeats = 50, sect = 100, selectCriteria = "length", \
-            flowThreshold = 50, fixFeatures = False)
+        nonRigidAlign(dataHome, size, cpuNo = 1, \
+        featsMin = 20, dist = 30, featsMax = 100, errorThreshold = 100, \
+            distFeats = 50, sect = 100, selectCriteria = "length", \
+                flowThreshold = 50, fixFeatures = True)
 
     '''
     for d in dirHome:
