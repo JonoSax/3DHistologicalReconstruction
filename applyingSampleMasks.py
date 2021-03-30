@@ -5,7 +5,7 @@ Apply the masks over the images
 '''
 
 
-from HelperFunctions.Utilities import nameFromPath
+from HelperFunctions.Utilities import nameFromPath, getMatchingList
 import cv2
 import numpy as np
 from glob import glob
@@ -18,18 +18,10 @@ segsrc = src + "Segmentations/"
 
 imgDest = src + "SegmentationEvals/"
 
-imgs = sorted(glob(imgsrc + "*anno*.png"))
 masks = sorted(glob(segsrc + "*.png"))
+imgs = sorted(glob(imgsrc + "*anno*.png"))
 
-maskToUse=[]
-for i in imgs:
-    try:
-        m = nameFromPath(masks).index(nameFromPath(i))
-        maskToUse.append(masks[m])
-    except:
-        maskToUse.append(None)
-
-
+maskToUse = getMatchingList(imgs, masks)
 
 for n, (m, i) in enumerate(zip(maskToUse, imgs)):
 
