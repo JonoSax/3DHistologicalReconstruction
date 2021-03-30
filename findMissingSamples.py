@@ -21,6 +21,9 @@ def findMissingSamples(dirHome, size):
     '''
 
     names = sampleCategories(dirHome)
+    if names is None:
+        print("Not fixing samples")
+        return
 
     home = dirHome + str(size)
     imgsrc = home + "/alignedSamples/"
@@ -32,6 +35,13 @@ def findMissingSamples(dirHome, size):
 
     missingSamplesPath = home + "/info/missingSamples.csv"
 
+    try:
+        open(missingSamplesPath)
+        print("Missing samples found already")
+        return
+    except:
+        pass
+
     missing = []
     for r, t in zip(imgIDs[:-1], imgIDs[1:]):
 
@@ -40,8 +50,12 @@ def findMissingSamples(dirHome, size):
             name = names[p]
             for n in name:
                 # store the position in the names sequence and the sample number
-                if r.find(n) > -1: refInfo = [int(r.split(n)[0]), p]
-                if t.find(n) > -1: tarInfo = [int(t.split(n)[0]), p]
+                try:
+                    if r.find(n) > -1: refInfo = [int(r.split(n)[0]), p]
+                    if t.find(n) > -1: tarInfo = [int(t.split(n)[0]), p]
+                    break
+                except:
+                    pass
 
         # get name info
         interSamp = tarInfo[0] - refInfo[0]
@@ -79,9 +93,12 @@ def sampleCategories(dirHome):
     spec = dirHome.split("/")[-1]
 
     if spec == "H710C":
-        names = {0: ["A+B_0"], 1:["A+B_1"], 2:["C_0", "C_1"]}       # for H710C
+        names = {0: ["_A+B_0"], 1:["_A+B_1"], 2:["_C_0", "_C_1"]}       # for H710C
     elif spec == "H753A":
         names = {0: ["_0"], 1: ["_1", "_2"]}                        # for H753A
+    elif spec == "H710B":
+        names = {0: ["A+B+C_0", "A+B_0"], 1: ["A+B+C_1", "A+B_1"], 
+        2: ["A+B+C_2", "C+D_0"], 3: ["D_0", "C+D_1"]}
     else:
         # if there is no match then manually enter the names
         print("No matching specimen naming convention. Manually create the dictionary.", end = " ")
@@ -91,6 +108,7 @@ def sampleCategories(dirHome):
         while True:
             label = input("Label for index " + str(n) + ": ")
             if label.lower() == "":
+                names = None
                 break
             names[n] = []
             for l in label.split(","):
