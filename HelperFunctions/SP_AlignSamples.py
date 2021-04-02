@@ -69,7 +69,7 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
     # get the sample slices of the specimen to be processed
     smallSamples = sorted(glob(sampledirs + "*.png"))
     fullSamples = sorted(glob(sampledirs + "*.tif"))
-
+    '''
     # use a reference sample to normalise colours
     sampleNames = nameFromPath(smallSamples, 3)
 
@@ -116,6 +116,9 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
             print("\n--- Transforming full scale images ---\n")
             with Pool(processes=cpuNo) as pool:
                 pool.starmap(transformSamples, zip(fullSamples, repeat("tif"), repeat(maxShape), repeat(shiftMi), repeat(featureInfoPath), repeat(destImgPath)))
+    '''
+    exactBound(destImgPath, "png")
+    exactBound(destImgPath, "tif")
 
     print('Alignment complete')
 
@@ -494,6 +497,51 @@ def transformSamples(samplePath, prefix, maxShape, shift, segInfo, dest, saving 
         cv2.imwrite(dest + sample + ".png", warped)
 
     print("Done translation of " + sample)
+
+def exactBound(imgDir, prefix):
+    ''' 
+    Bounding the images to extract only the sample
+
+        Inputs:\n
+    (imgDir), directory of the images
+    (prefix), image prefix (ie png or tif)
+
+        Output:\n
+    (), replaces the aligned images with the bounded ones
+    '''
+    imgs = sorted(glob(imgDir + "*" + prefix))
+
+    if len(imgs) == 0:
+        return
+
+    img0 = cv2.imread(imgs[0])
+    # initialise the imgStore array
+    imgStore = ((np.sum(img0, axis = 2)>0)*1).astype(np.uint8)
+
+    for i in imgs:
+        img = cv2.imread(i)
+        imgStore += ((np.sum(img, axis = 2)>0)*1).astype(np.uint8)
+
+    # try to get a bound which is exact as possible
+    size = 800
+    while True:
+        extractRange = bounder(imgStore, size)
+        if len(extractRange) == 1:
+            extract = extractRange[0]
+            break
+        elif len(extractRange) == 0:
+            print("Bounding not possible")
+            return
+        else:
+            size -= 100
+            
+    x, y = extract
+    for i in imgs:
+        name = nameFromPath(i)
+        img = cv2.imread(i)
+        imgB = img[y[0]:y[1], x[0]:x[1], :]
+        # overwrite the aligned samples with the bounded ones
+        cv2.imwrite(i, imgB)
 
 def translatePoints(feats, bestfeatalign = False):
 

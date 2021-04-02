@@ -11,7 +11,6 @@ from glob import glob
 from multiprocessing import Pool
 import multiprocessing
 from itertools import repeat
-
 if __name__ != "HelperFunctions.SP_SpecimenID":
     from Utilities import *
 else:
@@ -40,7 +39,7 @@ def specID(dataHome, size, cpuNo = False, imgref = 'refimg.png'):
     sectionSelecter(datasrc, cpuNo, imgref)
 
 
-def sectionSelecter(datasrc, cpuNo = False, imgref = None):
+def sectionSelecter(datasrc, cpuNo = False, imgref = None, plot = False):
 
     '''
     This function creates a mask which is trying to selectively surround
@@ -83,7 +82,7 @@ def sectionSelecter(datasrc, cpuNo = False, imgref = None):
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasks), repeat(imgPlots)))
+            pool.starmap(maskMaker, zip(imgsmall, repeat(imgMasks), repeat(imgPlots), repeat(plot)))
     
     print("\n   #--- APPLY MASKS ---#")
     
@@ -126,7 +125,7 @@ def sectionSelecter(datasrc, cpuNo = False, imgref = None):
                 pool.starmap(imgNormColour, zip(imgsmallmasked, repeat(refimg), imgbigmasked))
     '''
 
-def maskMaker(idir, imgMasked = None, imgplot = False):     
+def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):     
 
     # this function loads the desired image extracts the target sample:
     # Inputs:   (img), the image to be processed
@@ -276,15 +275,12 @@ def maskMaker(idir, imgMasked = None, imgplot = False):
     # what happens is that all the erosion/dilation operations work from the top down
     # so it causes an accumulation of "fat" at the bottom of the image. this removes it
     im_id = cv2.rotate(cv2.dilate(cv2.rotate(im_id, cv2.ROTATE_180), (5, 5), iterations = 10), cv2.ROTATE_180)
-    
-    # segment out the image
-    extract = bounder(im_id)
 
     # save the mask as a .pbm file
     cv2.imwrite(imgMasked + name + ".pbm", im_id)
     print("     " + name + " Masked")
     # plot the key steps of processing
-    if imgplot:
+    if plot:
         # create sub plotting capabilities
         # fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
         
@@ -324,6 +320,8 @@ def maskMaker(idir, imgMasked = None, imgplot = False):
         imgMod = imgO * im_id
 
         # draw the bounding box of the image being extracted
+        # segment out the image
+        extract = bounder(im_id)
         for n in extract:
             x, y = extract[n]
             for i in range(2):
@@ -592,6 +590,6 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H653A_11.3/'
 
     size = 3
-    cpuNo = 4
+    cpuNo = 1
         
     specID(dataSource, size, cpuNo)

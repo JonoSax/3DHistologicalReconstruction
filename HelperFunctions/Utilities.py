@@ -1488,3 +1488,96 @@ def getMatchingList(refList, targetLists):
                 matchedList.append(None)
 
     return(matchedList)
+
+def bounder(img, s = 100):
+    
+    # this function extracts the co-ordinates which are to be used to bound
+    # the mask and image
+    # Inputs:   (img), image (either 2 or 3 channel)
+    #           (s), the size to downsample. the smaller s is the more robust it
+    #           is to image imperfections but the less precise the bounding is
+    # Outputs:  (extractA), co-ordinates of bounding positions corresponding to 
+    #           the binary image
+
+    def edgefinder(im, max = False):
+        
+        # this function find the occurence of the up and down edges
+        # indicating the start and end of an image
+        # Inputs:   (im): binary image 
+        #           (vertical): boolean, if it is vertical then it changes this 
+        #           from finding multple starts and stops to finding only the max
+        #           positions (used to find vertical points in a known continuous 
+        #           structure)
+        # Outputs:  (up, down): positions of the edges
+
+        # find where the edges are and get the mid points between samples
+        # (ignore the start and finish points)
+
+        # convert the image into a 1d array 
+        count = (np.sum((im), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
+        l = len(count)
+
+        # get the edges
+        down = np.where(np.diff(count) == -1)[0]
+        up = np.where(np.diff(count) == 1)[0]
+
+        # check there are values in up and down
+        # if there is an 'up' occuring before a 'down', remove it 
+        # (there has to be an image before a midpoint occurs)
+        if len(up) * len(down) > 0:
+            if up[0] > down[0]:
+                up = np.insert(up, 0, 0)
+            if down[-1] < up[-1]:
+                down = np.insert(down, 0, l) 
+        # if there is no start or stop just add the start and end
+        if len(up) == 0:
+            up = np.insert(up, 0, 0)
+        if len(down) == 0:
+            down = np.insert(down, 0, l)
+
+        # ensure the order of points
+        down = np.sort(down)
+        up = np.sort(up)
+
+        if max:
+            down = np.max(down)
+            up = np.min(up)
+
+        return(up, down)
+    
+    # if 3 channel image, convert into a binary
+    if len(img.shape) == 3:
+        img = ((np.sum(img, axis = 2)>0)*1).astype(np.uint8)
+
+    rows, cols = img.shape
+    
+    # flatten the mask and use this to figure out how many samples there 
+    # are and where to split them
+    imgr = cv2.resize(img, (s, int(s*rows/cols)))
+    resized = cv2.erode(imgr, (3, 3), iterations=8)
+
+    # plt.imshow(resize); plt.show()
+    # resize = cv2.erode(im_id, (3, 3), iterations = 5)
+    x, y = resized.shape
+
+    start, end = edgefinder(resized)
+
+    extractA = {}
+    extractS = {}
+    # find the horizontal start and stop positions of each sample
+    for n, (s, e) in enumerate(zip(start, end)):
+        extractA[n] = []
+        extractS[n] = []
+        sampH = np.clip(np.array([s, e+1]).astype(int), 0, y)    # +- 3 to compensate for erosion (approx)
+        extractA[n].append((sampH * cols / y).astype(int))
+        extractS[n].append(sampH)
+    
+    # find the vertical stop an start positions of each sample
+    for ext in extractS:
+        x0, x1 = extractS[ext][0]
+        imgsect = resized[:, x0:x1]
+        bottom, top = edgefinder(cv2.rotate(imgsect, cv2.ROTATE_90_COUNTERCLOCKWISE), True)
+        sampV = np.clip(np.array([bottom-5, top+1]).astype(int), 0, x)   # +- 3 to compensate for erosion (approx)
+        extractA[ext].append((sampV * rows / x).astype(int))
+
+    return(extractA)
