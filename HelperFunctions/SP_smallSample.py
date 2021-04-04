@@ -59,6 +59,10 @@ def ds(f, scale, targetDir, unrotated = False):
         rotate = np.array([unrotated, True]).all()
     elif name.lower().find("h710b") > -1 and id.lower().find("d") > -1:
         rotate = np.array([unrotated, True]).all()
+    elif name.lower().find("h750a") > -1 and id.lower().find("c") > -1:
+        rotate = np.array([unrotated, True]).all()
+    elif name.lower().find("h671b") > -1 and id.lower().find("c") > -1:
+        rotate = np.array([unrotated, True]).all()
     else:   
         rotate = False
 
