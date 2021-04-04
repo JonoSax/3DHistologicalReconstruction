@@ -89,28 +89,9 @@ def featFind(dataHome, size, cpuNo = 1, featMin = 20, gridNo = 3, dist = 10):
 
     # get the downsampled images
     imgs = sorted(glob(imgsrc + "*.png"))
-    imgRef = []
-    imgTar = []
 
-    # get the images which need to have features identified. 
-    info = sorted(glob(dataDest + "*feat"))
-    featNames = nameFromPath(imgs, 3)
-    for n, f in enumerate(featNames):
-        # load all the features
-        refinfo = glob(dataDest + f + "*reffeat")
-        tarinfo = glob(dataDest + f + "*tarfeat")
-        allI = len(info)
-        # if missing the features
-        if len(tarinfo) < 1 and n != 0:
-            imgRef.append(imgs[n-1])
-            imgTar.append(imgs[n])
-        if len(refinfo) < 1 and n != len(featNames) - 1:
-            imgRef.append(imgs[n])
-            imgTar.append(imgs[n+1])
-
-    # ensure that there are only unique entires
-    imgRef = sorted(list(set(imgRef)))
-    imgTar = sorted(list(set(imgTar)))
+    # find the ref and target images needed to complete matching
+    imgRef, imgTar = findMissing(imgs, dataDest)
 
     print(str(len(imgTar)) + "/" + str(len(imgs)-1) + " images pairs to be processed")
 
