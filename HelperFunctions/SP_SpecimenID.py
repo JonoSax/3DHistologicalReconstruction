@@ -105,25 +105,6 @@ def sectionSelecter(datasrc, cpuNo = False, imgref = None, plot = False):
             pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, repeat(imgsmallsrc), repeat(imgbigsrc), repeat(imgref)))
 
     print('Info Saved')
-    '''
-    print("\n   #--- NORMALISE COLOURS ---#")
-    # NOTE this is done seperately from the masking so that the colour 
-    # normalisation is done on masked images, rather than images on slides
-    # get all the masked images 
-    imgsmallmasked = sorted(glob(imgMasked + "*png"))
-    imgbigmasked = sorted(glob(imgMasked + "*tif"))
-    refimg = cv2.imread(getSampleName(imgMasked, refimgname))
-
-    # if there is a reference image, normalise colours
-    if refimg is not None:
-        if cpuNo is False:
-            # normalise the colours of the images
-            for imgtarS, imgtarF in zip(imgsmallmasked, imgbigmasked):
-                imgNormColour(imgtarS, refimg, imgtarF)
-        else:
-            with Pool(processes=cpuNo) as pool: 
-                pool.starmap(imgNormColour, zip(imgsmallmasked, repeat(refimg), imgbigmasked))
-    '''
 
 def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):     
 
@@ -337,93 +318,6 @@ def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):
         plt.savefig(imgplot + name + ".jpg")
         plt.clf()
 
-def bounder(im_id):
-    
-    # this function extracts the co-ordinates which are to be used to bound
-    # the mask and image
-    # Inputs:   (im_id), the binary image
-    # Outputs:  (extractA), co-ordinates of bounding positions corresponding to 
-    #           the binary image
-
-    def edgefinder(im, max = False):
-        
-        # this function find the occurence of the up and down edges
-        # indicating the start and end of an image
-        # Inputs:   (im): binary image 
-        #           (vertical): boolean, if it is vertical then it changes this 
-        #           from finding multple starts and stops to finding only the max
-        #           positions (used to find vertical points in a known continuous 
-        #           structure)
-        # Outputs:  (up, down): positions of the edges
-
-        # find where the edges are and get the mid points between samples
-        # (ignore the start and finish points)
-
-        # convert the image into a 1d array 
-        count = (np.sum((im), axis = 0)>0)*1      # this robustly flattens the image into a 1D object
-        l = len(count)
-
-        # get the edges
-        down = np.where(np.diff(count) == -1)[0]
-        up = np.where(np.diff(count) == 1)[0]
-
-        # check there are values in up and down
-        # if there is an 'up' occuring before a 'down', remove it 
-        # (there has to be an image before a midpoint occurs)
-        if len(up) * len(down) > 0:
-            if up[0] > down[0]:
-                up = np.insert(up, 0, 0)
-            if down[-1] < up[-1]:
-                down = np.insert(down, 0, l) 
-        # if there is no start or stop just add the start and end
-        if len(up) == 0:
-            up = np.insert(up, 0, 0)
-        if len(down) == 0:
-            down = np.insert(down, 0, l)
-
-        # ensure the order of points
-        down = np.sort(down)
-        up = np.sort(up)
-
-        if max:
-            down = np.max(down)
-            up = np.min(up)
-
-        return(up, down)
-    
-    rows, cols = im_id.shape
-    
-    # flatten the mask and use this to figure out how many samples there 
-    # are and where to split them
-    imgr = cv2.resize(im_id, (100, 100))
-    resized = cv2.erode(imgr, (3, 3), iterations=5)
-
-    # plt.imshow(resize); plt.show()
-    # resize = cv2.erode(im_id, (3, 3), iterations = 5)
-    x, y = resized.shape
-
-    start, end = edgefinder(resized)
-
-    extractA = {}
-    extractS = {}
-    # find the horizontal start and stop positions of each sample
-    for n, (s, e) in enumerate(zip(start, end)):
-        extractA[n] = []
-        extractS[n] = []
-        sampH = np.clip(np.array([s, e+1]).astype(int), 0, y)    # +- 3 to compensate for erosion (approx)
-        extractA[n].append((sampH * cols / y).astype(int))
-        extractS[n].append(sampH)
-    
-    # find the vertical stop an start positions of each sample
-    for ext in extractS:
-        x0, x1 = extractS[ext][0]
-        imgsect = resized[:, x0:x1]
-        bottom, top = edgefinder(cv2.rotate(imgsect, cv2.ROTATE_90_COUNTERCLOCKWISE), True)
-        sampV = np.clip(np.array([bottom-5, top+1]).astype(int), 0, x)   # +- 3 to compensate for erosion (approx)
-        extractA[ext].append((sampV * rows / x).astype(int))
-
-    return(extractA)
-
 def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgRef):
 
     # this applies the mask created to the lower resolution and full 
@@ -584,12 +478,12 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Test/'
     dataSource = '/Volumes/USB/H750A_7.0/'
     dataSource = '/Volumes/USB/H671A_18.5/'
-    dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/USB/H673A_7.6/'
 
     size = 3
-    cpuNo = 1
+    cpuNo = 6
         
     specID(dataSource, size, cpuNo)
