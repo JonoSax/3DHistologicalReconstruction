@@ -105,24 +105,24 @@ def dirMaker(dir, remove = False):
             dirToMake += str(dirSplit[d] + "/")
             try:
                 os.mkdir(dirToMake)
-                made = True
+                madeNew = True
             except:
-                made = False
+                madeNew = False
 
-        return(made)
+        return(madeNew)
 
     # ensure that the exact directory being specified exists, if not create it
     dirSplit = dir.split("/")
 
-    made = make()
+    madeNew = make()
 
     # if the directory exists and the user want to create a clean directory, remove the 
     # dir and create a new one
-    if made == False and remove == True:
+    if madeNew == False and remove == True:
         shutil.rmtree(dir)
-        made = make()
+        madeNew = make()
     
-    return(made)
+    return(madeNew)
 
 def txtToList(dir):
 
@@ -1187,9 +1187,12 @@ def drawLine(img, point0, point1, blur = 2, colour = [0, 0, 255]):
     # get the distance between the points
     dist = np.ceil(np.sqrt(np.sum(abs(point1 - point0)**2)))
 
+    x, y, _ = img.shape
+
     # interpolate for the correct number of pixels between points
-    xp = np.linspace(int(point0[1]), int(point1[1]), int(dist)).astype(int)
-    yp = np.linspace(int(point0[0]), int(point1[0]), int(dist)).astype(int)
+    xp = np.clip(np.linspace(int(point0[1]), int(point1[1]), int(dist)).astype(int), 0, x-blur)
+    yp = np.clip(np.linspace(int(point0[0]), int(point1[0]), int(dist)).astype(int), 0, y-blur)
+
 
     # change the colour of these pixels which indicate the line
     for vx in range(-blur, blur, 1):
@@ -1312,30 +1315,42 @@ def getSect(img, mpos, l, bw = True, relPos = None, border = True):
     # get target position from the previous match, use this as the 
     # position of a possible reference feature in the next image
     yp, xp = np.round(mpos).astype(int)
-    xs = int(np.clip(xp-l, 0, x)); xe = int(np.clip(xp+l, 0, x))
-    ys = int(np.clip(yp-l, 0, y)); ye = int(np.clip(yp+l, 0, y))
+    xps = xp-l; xs = int(np.clip(xps, 0, x)); xpe = xp+l; xe = int(np.clip(xpe, 0, x))
+    yps = yp-l; ys = int(np.clip(yps, 0, y)); ype = yp+l; ye = int(np.clip(ype, 0, y))
     sect = img[xs:xe, ys:ye]
 
+    # if section is to be placed inside sections which preserve the relative
+    # positions of the sections in the specimen
     if relPos is not None:
 
         minPos, maxPos = relPos
         
-        plate = np.zeros(np.insert(np.ceil(maxPos - minPos + l*2).astype(int), 2, 3)).astype(np.uint8)
-
+        sectStd = np.zeros(np.insert(np.ceil(maxPos - minPos + l*2).astype(int), 2, 3)).astype(np.uint8)
+    
         xM, yM = np.round(mpos-minPos).astype(int)
 
-        sectStore = sect.copy()
-        sect = plate.copy()
+        sx, sy, _ = sect.shape
 
-        sect[xM:xM+int(l*2), yM:yM+int(l*2)] = sectStore
+        # ensure that the section is placed inside the standard section size
+        # in the true position relative to the entire features
+        sectStd[xM:xM+int(sx), yM:yM+int(sy)] = sect
 
-        # place sect into the plate,l do xs, ys - minPos and add border boolean
+    # if the sections are to be extracted as is (no 3D shape preserved/fake alignment)
+    else:
+
+        # ensure that every single section is the same size
+        sectStd = np.zeros([int(l) * 2 + 1, int(l) * 2 + 1, 3])  
+        s, _, _ = sectStd.shape
+
+        # ensure that if the section size was on a boundary (so isn't the standard size)
+        # the correct part of this section is blacked out
+        sectStd[int(xs-xps+1):int(s-(xpe-xe)+1), int(ys-yps+1):int(s-(ype-ye)+1), :] = sect
 
     # NOTE turn into black and white to minimise the effect of colour
     if bw:
-        sectImg = np.mean(sect, axis = 2).astype(np.uint8)
+        sectImg = np.mean(sectStd, axis = 2).astype(np.uint8)
     else:
-        sectImg = sect
+        sectImg = sectStd
 
     return(sectImg)
 
@@ -1581,3 +1596,40 @@ def bounder(img, s = 100):
         extractA[ext].append((sampV * rows / x).astype(int))
 
     return(extractA)
+
+def findMissing(imgs, destFeat):
+
+    '''
+    From a directory of complete images, find the missing features 
+
+        Inputs:\n
+    (imgs), list of images to find matches to\n
+    (destFeat), directory of the feature to search\n
+
+        Outputs:\n
+    (imgRef, imgTar), ref and target images to 
+    '''
+
+    imgRef = []
+    imgTar = []
+
+    # get the images which need to have features identified. 
+    info = sorted(glob(destFeat + "*feat"))
+    featNames = nameFromPath(imgs, 3)
+    for n, f in enumerate(featNames):
+        # load all the features
+        refinfo = glob(destFeat + f + "*reffeat")
+        tarinfo = glob(destFeat + f + "*tarfeat")
+        # if missing the features
+        if len(tarinfo) < 1 and n != 0:
+            imgRef.append(imgs[n-1])
+            imgTar.append(imgs[n])
+        if len(refinfo) < 1 and n != len(featNames) - 1:
+            imgRef.append(imgs[n])
+            imgTar.append(imgs[n+1])
+
+    # ensure that there are only unique entires
+    imgRef = sorted(list(set(imgRef)))
+    imgTar = sorted(list(set(imgTar)))
+
+    return(imgRef, imgTar)
