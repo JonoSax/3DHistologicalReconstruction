@@ -22,7 +22,6 @@ def findMissingSamples(dirHome, size):
 
     names = sampleCategories(dirHome)
     if names is None:
-        print("Not fixing samples")
         return
 
     home = dirHome + str(size)
@@ -36,9 +35,13 @@ def findMissingSamples(dirHome, size):
     missingSamplesPath = home + "/info/missingSamples.csv"
 
     try:
+        # check if there is already a missing sample file
         open(missingSamplesPath)
-        print("Missing samples found already")
-        return
+        print("Missing samples found already. Are you sure you want to overwrite?")
+        i = input("Yes or No: ")
+        # if you don't want to overwrite then skip
+        if i.lower().find("n") > -1:
+            return
     except:
         pass
 
@@ -52,8 +55,10 @@ def findMissingSamples(dirHome, size):
                 # store the position in the names sequence and the sample number
                 try:
                     if r.find(n) > -1: refInfo = [int(r.split(n)[0]), p]
+                except:
+                    pass
+                try:
                     if t.find(n) > -1: tarInfo = [int(t.split(n)[0]), p]
-                    break
                 except:
                     pass
 
@@ -61,9 +66,10 @@ def findMissingSamples(dirHome, size):
         interSamp = tarInfo[0] - refInfo[0]
         intraSamp = tarInfo[1] - refInfo[1]
         IDs = len(names)
-
-        # calculate the number of missing samples
-        missing.append(interSamp * IDs + intraSamp - 1)
+        
+        # calculate the number of missing samples and store
+        sampsMissing = interSamp * IDs + intraSamp - 1
+        missing.append(sampsMissing)
 
     print(str(np.sum(missing)) + " samples missing")
     # create a data frame of the information and save it as a csv file
@@ -90,15 +96,26 @@ def sampleCategories(dirHome):
     '''
 
     # get the specimen name 
-    spec = dirHome.split("/")[-1]
+    spec = dirHome.split("/")[-2]
 
-    if spec == "H710C":
-        names = {0: ["_A+B_0"], 1:["_A+B_1"], 2:["_C_0", "_C_1"]}       # for H710C
+    if spec == "H653A_11.3":
+        names = {0: ["_0"], 1: ["_1"]}
+    elif spec == "H671A_18.5":
+        names = {0: ["_0"], 1: ["_1"]}
+    elif spec == "H671B_18.5":
+        names = {0: ["A+B_0", "_0"], 1:["A+B_1", "_1"], 2:["C_0", "_2"]}   
+    elif spec == "H673A_7.6":
+        names = {0: ["_0"]}
+    elif spec == "H710B_6.1":
+        names = {0: ["A+B+C_0", "A+B_0"], 1: ["A+B+C_1", "A+B_1"], 2: ["A+B+C_2", "C+D_0"], 3: ["D_0", "C+D_1"]}
+    elif spec == "H710C_6.1":
+        names = {0: ["A+B_0"], 1:["A+B_1"], 2:["C_0", "C_1"]}       
     elif spec == "H753A":
-        names = {0: ["_0"], 1: ["_1", "_2"]}                        # for H753A
-    elif spec == "H710B":
-        names = {0: ["A+B+C_0", "A+B_0"], 1: ["A+B+C_1", "A+B_1"], 
-        2: ["A+B+C_2", "C+D_0"], 3: ["D_0", "C+D_1"]}
+        names = {0: ["_0"], 1: ["_1", "_2"]}                        
+    elif spec == "H750A_7.0":
+        names = {0: ["A+B_0"], 1:["A+B_1"], 2:["C_0", "C_1"]}   
+    elif spec == "H1029A_8.4":
+        names = {0: ["_0"]}
     else:
         # if there is no match then manually enter the names
         print("No matching specimen naming convention. Manually create the dictionary.", end = " ")
@@ -108,7 +125,8 @@ def sampleCategories(dirHome):
         while True:
             label = input("Label for index " + str(n) + ": ")
             if label.lower() == "":
-                names = None
+                if len(names) == 0:
+                    names = None
                 break
             names[n] = []
             for l in label.split(","):
