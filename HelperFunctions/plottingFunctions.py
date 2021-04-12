@@ -9,6 +9,8 @@ from glob import glob
 from random import uniform
 from time import time
 import tifffile as tifi
+import pandas as pd
+import plotly.express as px
 
 if __name__ != "HelperFunctions.plottingFunctions":
     from Utilities import *
@@ -51,8 +53,6 @@ def plottingFeaturesPerRes(IMGREF, name, matchedInfo, scales, circlesz = 1):
         # downscale then upscale just so that the image looks like the downsample version but can 
         # be stacked
         imgRefM = cv2.resize(imgRefM, (int(IMGREF.shape[1]), int(IMGREF.shape[0])))
-        
-
         imgRefM, _ = nameFeatures(imgRefM.copy(), imgRefM.copy(), sclInfoAll, circlesz=circlesz, combine = False, txtsz=0)
         
         imgRefM = cv2.putText(imgRefM, "Scale = " + str(scl), (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, [255, 255, 255], thickness = 14)
@@ -66,15 +66,13 @@ def plottingFeaturesPerRes(IMGREF, name, matchedInfo, scales, circlesz = 1):
     cv2.imwrite("/Users/jonathanreshef/Downloads/" + name + ".png", imgRefS)
     # plt.imshow(imgRefS); plt.show()
 
-def colourDistributionHistos():
+def colourDistributionHistos(imgtarSmallorig, imgref, imgtarmod):
 
     '''
     Compares the distributions of the colour channels before and after
     colour normalisations compared to the reference image
+    Run this at the end of the specimenID.imgNormColour
     '''
-
-
-    imgtarSmallOrig = cv2.imread(imgtarSmallpath)
 
     colours = ['b', 'g', 'r']
     z = [np.arange(10), np.zeros(10)]
@@ -87,9 +85,9 @@ def colourDistributionHistos():
     blkLn, = plt.plot(z[0], z[1], "k")    # reference
     
     for c, co in enumerate(colours):
-        o = np.histogram(imgtarSmallOrig[:, :, c], 32, (0, 256))   # original
+        o = np.histogram(imgtarSmallorig[:, :, c], 32, (0, 256))   # original
         r = np.histogram(imgref[:, :, c], 32, (0, 256)) # reference
-        v = np.histogram(imgtarSmall[:, :, c], 32, (0, 256))   # modified
+        v = np.histogram(imgtarmod[:, :, c], 32, (0, 256))   # modified
         v = np.ma.masked_where(v == 0, v)
 
         maxV = np.sum(r[0][1:])        # get the sum of all the points
@@ -107,7 +105,7 @@ def colourDistributionHistos():
     # ----- Plot the modified vs reference histogram plots -----
     
     for c, co in enumerate(colours):
-        v = np.histogram(imgr[:, :, c], 32, (0, 256))[0][1:]   # modified
+        v = np.histogram(imgtarmod[:, :, c], 32, (0, 256))[0][1:]   # modified
         v = np.ma.masked_where(v == 0, v)
         plt.plot(v/maxV, co + "--", linewidth = 2)
         r = np.histogram(imgref[:, :, c], 32, (0, 256))[0][1:] # reference
@@ -272,14 +270,14 @@ def vesselPositionsOnMaskedImgs():
     '''
 
     src = '/Volumes/USB/H653A_11.3/2.5/'
-    imgsrc = src + 'maskedSamples/'
+    imgsrc = src + 'NLAlignedSamplesSmall/'
     destImgs = imgsrc + "targetVessels/"
     dirMaker(destImgs)
 
     downsampleImgs = sorted(glob(imgsrc + "*.png"))
     fullImgs = sorted(glob(imgsrc + "*.tif"))
 
-    for d in downsampleImgs:
+    for n, d in enumerate(downsampleImgs):
 
         name = nameFromPath(d, 3)
 
@@ -357,12 +355,65 @@ def compareSmoothvsRaw():
     dfSelectSMFix2
     px.line_3d(a, x="X", y="Y", z="Z", color="ID", line_dash="Type", title = "Smooth vs Raw").show()    
 
+def getLongFeats():
+
+    '''
+    This script identifies the longest n features for each specimen 
+    '''
+
+    # the longest n features to report back
+    n = 3
+
+    src = "/Volumes/USB/"
+    specs = glob(src + "H*")
+
+    for s in specs:
+
+        print("\n---- " + s.split("/")[-1] + " ----")
+
+        featsrc = s + "/3/FeatureSections/linearSect_png_False/"
+
+        feats = glob(featsrc + "*")
+
+        featIDOrder = np.argsort([-len(glob(f + "/*.png")) for f in feats])
+        featIDLen = -np.sort([-len(glob(f + "/*.png")) for f in feats])
+
+        for f, l in zip(featIDOrder[:n], featIDLen[:n]):
+            specID = feats[f].split("/")[-1]
+            print("ID: " + str(specID) + " len: " + str(l))
+
+def getAllTrajectories():
+
+    '''
+    Get all the 3D trajectories from the feature tracking of all specimens
+    '''
+
+    src = "/Volumes/USB/"
+    specs = glob(src + "H*")
+
+    for s in specs:
+
+        specName = s.split("/")[-1]
+        print("\n---- " + specName + " ----")
+
+        # get the raw features
+        rawfeatsrc = s + "/3/FeatureSections/rawFixFeatures.csv"
+        smfeatsrc = s + "/3/FeatureSections/smoothFixFeatures.csv"
+
+        try:
+            rawfeats = pd.read_csv(rawfeatsrc)
+            smfeats = pd.read_csv(smfeatsrc)
+            
+            px.line_3d(rawfeats, "X", "Y", "Z", "ID", title=specName + " raw").show()
+            px.line_3d(smfeats, "X", "Y", "Z", "ID", title=specName + " raw").show()
+        except:
+            print("     " + specName + " failed")
 
 if __name__ == "__main__":
 
-    imageModGenerator()
+    # imageModGenerator()
 
     # siftTimer()
 
-    # vesselPositionsOnMaskedImgs()
-    bruteForceMatcherTimes()
+    getAllTrajectories()
+    # getLongFeats()
