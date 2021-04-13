@@ -2,11 +2,7 @@
 this script is performing and measuring the ANHIR registerations
 '''
 
-from math import comb
-from numpy.lib.arraysetops import unique
-from numpy.lib.recfunctions import rec_drop_fields
-from pandas.core.frame import DataFrame
-from scipy._lib.six import b
+
 from HelperFunctions.SP_FeatureFinder import feature
 from HelperFunctions.Utilities import getMatchingList, denseMatrixViewer, nameFromPath, drawLine
 from HelperFunctions import *
@@ -19,6 +15,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.cluster import KMeans
 import scipy
+import os
 
 def annotateImages(dataHome, size, res):
     '''
@@ -31,9 +28,9 @@ def annotateImages(dataHome, size, res):
     imgs = sorted(glob(imgsrc + "*png"))
     annos = sorted(glob(annosrc + "*"))
 
-    imgsToUse = getMatchingList(annos, imgs)
+    annosToUse, imgsToUse = getMatchingList(annos, imgs, True)
 
-    for a, i in zip(annos, imgsToUse):
+    for a, i in zip(annosToUse, imgsToUse):
         img = cv2.imread(i)
         anno = pd.read_csv(a)
         for n in anno.index:
@@ -209,6 +206,23 @@ def quickStats(dfPath):
     # Provide some quick stats
     names = list(df.keys())
 
+    # NOTE to compare to ANHIR data, compute the 
+    # landmark registration accuracy (TRE) which is:
+    '''
+    relative Target Registration Error (rTRE) as the 
+    Euclidean distance between the submitted coordinates 
+    xˆlj and the manually determined (ground truth) 
+    coordinates xlj (withheld from participants)
+
+    NOTE use the original image diagonal rather than the registered
+    image diagonal.... 
+
+    (Borovec, J., Kybic, J., Arganda-Carreras, I., Sorokin, D. V., 
+    Bueno, G., Khvostikov, A. V., ... & Muñoz-Barrutia, A. (2020). 
+    ANHIR: automatic non-rigid histological image registration 
+    challenge. IEEE transactions on medical imaging, 39(10), 3042-3052.)
+    '''
+
     for e, name in zip(df.T.values, names):
         # remove nans
         e = e[~np.isnan(e)]
@@ -227,7 +241,11 @@ def featureErrorAnalyser(dataHome):
     processOrder = ["maskedSamples", "alignedSamples", "NLalignedSamples"]
 
     dataSrc = dataHome + "landmark/"
-    dfs = sorted(glob(dataSrc + "*Samples.csv"))
+    dfPath = glob(dataSrc + "*Samples.csv")
+    dfs = []
+    for p in processOrder:
+        pathNo = np.where([d.find(p)>-1 for d in dfPath])[0][0]
+        dfs.append(dfPath[pathNo])
 
     infoAll = []
     for d in dfs:
@@ -252,7 +270,6 @@ def featureErrorAnalyser(dataHome):
     # initialise
     info = []
     idstore = None
-    names = []
 
     for n in names:
         name = n.split("_")[-1]
@@ -278,31 +295,35 @@ def featureErrorAnalyser(dataHome):
     print("")
 
 if __name__ == "__main__":
-    
+
+    src = '/Volumes/resabi201900003-uterine-vasculature-marsden135/anhir/TargetTesting/'
+
     dataHome = '/Volumes/USB/ANHIR/TargetTesting/COAD_08/'
-    size = 3
     res = 0.2
     cpuNo = 1
 
     # transform the target images first 
     size = 3
+    
     downsize(dataHome, size, res, cpuNo)
     specID(dataHome, size, cpuNo)
-    '''
     featFind(dataHome, size, cpuNo, featMin = 50, gridNo = 1, dist = 50)
     align(dataHome, size, cpuNo, errorThreshold=500, fullScale=False)
-    nonRigidAlign(dataHome, size, cpuNo, featsMin = 3, errorThreshold=500, selectCriteria="smooth", distFeats=200)
+    nonRigidAlign(dataHome, size, cpuNo, featsMin = 3, errorThreshold=500, selectCriteria="smooth", distFeats=10, featsMax=100)
     
-    input("Hit any key to continue AFTER copying the found info into the new folder")
-    '''
-
-    size = 2.6
-    src = dataHome + str(size) + "/"
+    # input("Hit any key to continue AFTER copying the found info into the new folder")
+    newsize = str(size) + "b"
+    
+    os.system("cp -r " + dataHome + str(size) + "/images " + dataHome + str(newsize) + "/images")
+    os.system("cp -r " + dataHome + str(size) + "/info " + dataHome + str(newsize) + "/info")
+    os.system("cp -r " + dataHome + str(size) + "/infoNL " + dataHome + str(newsize) + "/infoNL")
+    
+    src = dataHome + str(newsize) + "/"
     # apply the feataures onto the images and deform them exactly the same as 
     # the target images
-    '''
-    annotateImages(dataHome, size, res)
-    specID(dataHome, size, cpuNo, None)
+    
+    annotateImages(dataHome, newsize, res)
+    specID(dataHome, newsize, cpuNo, imgref = None)
     # linear alignment
     aligner(src + '/maskedSamples/', src + '/info/', src + '/alignedSamples/', cpuNo, errorThreshold = 500)
     
@@ -310,16 +331,16 @@ if __name__ == "__main__":
     aligner(src + '/alignedSamples/', src + '/infoNL/', src + '/ReAlignedSamples/', cpuNo, errorThreshold = 500)
     
     # NL alignment
-    nonRigidDeform(dataHome + str(size) + "/RealignedSamples/", \
-        dataHome + str(size) + "/NLAlignedSamples/", \
-            dataHome + str(size) + "/FeatureSections/", \
+    nonRigidDeform(dataHome + str(newsize) + "/RealignedSamples/", \
+        dataHome + str(newsize) + "/NLAlignedSamples/", \
+            dataHome + str(newsize) + "/FeatureSections/", \
                 prefix = "png")
     input("Press enter after renaming the NL samples")
-    '''
+    
     # get the errors of the linear aligned features 
-    # processErrors(dataHome, size, "maskedSamples", False)
-    # processErrors(dataHome, size, "alignedSamples", False)
+    processErrors(dataHome, newsize, "maskedSamples", False)
+    processErrors(dataHome, newsize, "alignedSamples", False)
     # processErrors(dataHome, size, "RealignedSamples", False)
-    # processErrors(dataHome, size, "NLalignedSamples", False)
+    processErrors(dataHome, newsize, "NLalignedSamples", False)
 
     featureErrorAnalyser(dataHome)
