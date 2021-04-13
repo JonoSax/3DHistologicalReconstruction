@@ -13,8 +13,10 @@ import multiprocessing
 from itertools import repeat
 if __name__ != "HelperFunctions.SP_SpecimenID":
     from Utilities import *
+    from plottingFunctions import colourDistributionHistos
 else:
     from HelperFunctions.Utilities import *
+    from HelperFunctions.plottingFunctions import colourDistributionHistos
 
 '''
 TODO: explanation of what happens here.....
@@ -58,8 +60,8 @@ def sectionSelecter(datasrc, cpuNo = False, imgref = None, plot = False):
     (), create the down-sampled and full scale tif images with their respecitve 
     samples extracted and with their colours normalised against a reference image 
     '''
-
-    imgsmallsrc = datasrc + "images/"
+    
+    imgsrc = datasrc + "images/"
     imgbigsrc = datasrc + "tifFiles/"
 
     # create the directory where the masked files will be created
@@ -69,9 +71,9 @@ def sectionSelecter(datasrc, cpuNo = False, imgref = None, plot = False):
     dirMaker(imgMasks)
     dirMaker(imgPlots)
     
-    # get all the images 
-    imgsmall = sorted(glob(imgsmallsrc + "*.png"))
-    imgbig = sorted(glob(imgbigsrc + "*.tif"))
+    # get all the small images 
+    imgsmall = sorted(glob(imgsrc + "*.png"))
+
     
     print("\n   #--- SEGMENT OUT EACH IMAGE AND CREATE MASKS ---#")
     # serialised
@@ -97,12 +99,12 @@ def sectionSelecter(datasrc, cpuNo = False, imgref = None, plot = False):
     # serialised
     if cpuNo == 1:
         for m in masks:
-            imgStandardiser(imgMasked, m, imgsmallsrc, imgbigsrc, imgref)
+            imgStandardiser(imgMasked, m, imgsrc, imgref)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, repeat(imgsmallsrc), repeat(imgbigsrc), repeat(imgref)))
+            pool.starmap(imgStandardiser, zip(repeat(imgMasked), masks, repeat(imgsrc), repeat(imgref)))
 
     print('Info Saved')
 
@@ -318,7 +320,7 @@ def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):
         plt.savefig(imgplot + name + ".jpg")
         plt.clf()
 
-def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgRef):
+def imgStandardiser(destPath, maskpath, imgsrc, imgRef):
 
     # this applies the mask created to the lower resolution and full 
     # resolution images and creates information needed for the alignment
@@ -334,137 +336,108 @@ def imgStandardiser(destPath, maskpath, smallsrcPath, bigsrcPath, imgRef):
 
     name = nameFromPath(maskpath)
     print(name + " modifying")
+    dirMaker(destPath)
 
+    # get the imgpath. if it fails just break
     try:    
-        imgsmallpath = glob(smallsrcPath + name + "*.png")[0]
-        imgbigpath = glob(bigsrcPath + name + "*.tif")[0]
+        imgpath = glob(imgsrc + name + "*.*")[0]
     except: 
+        print("     FAILED image: " + imgsrc + name)
         return
-   
-    imgsmall = cv2.imread(imgsmallpath)
-    imgbig = cv2.imread(imgbigpath)
+   # read in the image, either as a tif or non-tif image
+    if imgpath.split(".")[-1] == "tif":
+        tif = True
+        img = tifi.imread(imgpath)
+    else:
+        tif = False
+        img = cv2.imread(imgpath)
+
+    # read in the raw mask
     try:
-        ratio = int(np.round(imgbig.shape[0] / imgsmall.shape[0], 2))  # get the upscale size of the images
+        mask = (cv2.imread(maskpath)/255).astype(np.uint8)
+    except:
+        print("     FAILED mask: " + maskpath)
+        return
+
+    try:
+        ratio = int(np.round(img.shape[0] / mask.shape[0], 2))  # get the upscale size of the images
     except:
         print("---- FAILED " + name + " ----")
         return
 
-    # if there are just normal masks, apply them
-    if maskpath is not None:
+    # get the bounding positional information
+    extract = bounder(mask[:, :, 0])
 
-        # read in the raw mask
-        try:
-            mask = (cv2.imread(maskpath)/255).astype(np.uint8)
-        except:
-            print("     FAILED: " + maskpath)
-            return
+    id = 0
+    for n in extract:
 
-        # get the bounding positional information
-        extract = bounder(mask[:, :, 0])
+        if mask is None or img is None:
+            print("\n\n!!! " + name + " failed!!!\n\n")
+            break
 
-        id = 0
-        for n in extract:
+        # get the co-ordinates
+        x, y = extract[n]
 
-            if mask is None or imgbig is None or imgsmall is None:
-                print("\n\n!!! " + name + " failed!!!\n\n")
-                break
+        # extract only the mask containing the sample
+        maskE = mask[y[0]:y[1], x[0]:x[1], :]
 
-            # get the co-ordinates
-            x, y = extract[n]
+        # if each of the mask section is less than 20% of the entire mask 
+        # area, it probably isn't a sample and is not useful
+        if maskE.size < mask.size * 0.2 / len(extract) or np.sum(maskE) == 0:
+            continue
 
-            # extract only the mask containing the sample
-            maskE = mask[y[0]:y[1], x[0]:x[1], :]
+        # create a a name
+        newid = name + "_" + str(id)
 
-            # if each of the mask section is less than 20% of the entire mask 
-            # area, it probably isn't a sample and is not useful
-            if maskE.size < mask.size * 0.2 / len(extract) or np.sum(maskE) == 0:
-                continue
+        # adjust for the original size image
+        xb, yb = np.array(extract[n]) *  ratio
+        imgsect = img[:, :, :][yb[0]:yb[1], xb[0]:xb[1], :].copy()
 
-            # create a a name
-            newid = name + "_" + str(id)
+        # expand the dims so that it can multiply the original image
+        maskS = cv2.resize(maskE, (imgsect.shape[1], imgsect.shape[0])).astype(np.uint8)
 
-            # extract only the image which contains the sample
-            imgsmallsect = imgsmall[y[0]:y[1], x[0]:x[1], :]
+        # apply the mask to the images 
+        imgsect *= maskS
 
-            # adjust for the original size image
-            xb, yb = np.array(extract[n]) *  ratio
-            imgbigsect = imgbig[:, :, :3][yb[0]:yb[1], xb[0]:xb[1], :]
+        # normalise the colours
+        if imgRef is not None:
+            imgsect = imgNormColour(imgsect, imgRef, tif)#, imgbigsect)
 
-            # expand the dims so that it can multiply the original image
-            maskS = cv2.resize(maskE, (imgsmallsect.shape[1], imgsmallsect.shape[0])).astype(np.uint8)
-            maskB = cv2.resize(maskE, (imgbigsect.shape[1], imgbigsect.shape[0])).astype(np.uint8)
+        if False:
+            colourDistributionHistos(imgsmall[y[0]:y[1], x[0]:x[1], :]*maskS, imgRef, imgsmallsect)
 
-            # apply the mask to the images 
-            imgsmallsect *= maskS
-            imgbigsect *= maskB
+        # write the new images
+        if tif:
+            tifi.imwrite(destPath + newid + ".tif", imgsect)
+        else:
+            cv2.imwrite(destPath + newid + ".png", imgsect)
 
-            if imgRef is not None:
-                imgsmallsect = imgNormColour(imgsmallsect, imgRef)#, imgbigsect)
+        id += 1
 
-            # write the new images
-            cv2.imwrite(destPath + newid + ".png", imgsmallsect)
-            # tifi.imwrite(destPath + newid + ".tif", imgbigsect)
+        print("     " + newid + " made")
 
-            id += 1
-
-            print("     " + newid + " made")
-
-def imgNormColour(imgtarSmallpath, imgref, imgtarFullpath = None):
+def imgNormColour(img, imgref, tif):
 
     '''
     Normalises all the colour channels of an image
 
         Inputs:\n
 
-    (imgtarSmalldir), downsampled image path to normalise the colours for
+    (img), image to modify
     (imgref), image as array which has the colour properties to match
-    (imgtarFullpath), full scale tif image to normalise the colour for
+    (tif), boolean. If true then convert the reference image channels as necessary
 
         Outputs:\n  
 
     (), over-writes the old images wit the new ones
     '''
 
-    if type(imgtarFullpath) == str: 
-        print("Normalising " + nameFromPath(imgtarSmallpath, 3))
-        imgtarSmall = cv2.imread(imgtarSmallpath)
+    if tif:
+        imgref = cv2.cvtColor(imgref, cv2.COLOR_BGR2RGB)
 
-        # if the input is an image just re-assing
-    else:
-        imgtarSmall = imgtarSmallpath
+    imgMod = hist_match(img, imgref)   
 
-    # if converting the tif image as well, load it and create a reference image 
-    # using rgb (tifi) not bgr (cv2)
-    if type(imgtarFullpath) == str: 
-        imgtarFull = tifi.imread(imgtarFullpath)
-        
-    elif imgtarFullpath is not None:
-        imgtarFull = imgtarFullpath
-
-    imgRefRGB = cv2.cvtColor(imgref, cv2.COLOR_BGR2RGB)
-
-    for c in range(3):
-        imgtarSmall[:, :, c], normColourKey = hist_match(imgtarSmall[:, :, c], imgref[:, :, c])   
-
-        # if there is a full scale image, those colours as well
-        if imgtarFullpath is not None:
-
-            # performing a full image normalisations
-            imgtarFull[:, :, c], _ = hist_match(imgtarFull[:, :, c], imgRefRGB[:, :, c])
-
-            # using the normcolourkey 
-            # imgtarFull[:, :, c] = hist_match(imgtarFull[:, :, c], imgref[:, :, c], normColourKey)
-
-    '''
-    cv2.imwrite(imgtarSmallpath, imgtarSmall)
-    if imgtarFullpath is not None:
-        tifi.imwrite(imgtarFullpath, imgtarFull)
-    '''
-
-    if imgtarFullpath is not None:
-        return(imgtarSmall, imgtarFull)
-    else:
-        return(imgtarSmall)
+    return(imgMod)
         
 if __name__ == "__main__":
 
@@ -480,10 +453,10 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H710B_6.1/'
     dataSource = '/Volumes/USB/H710C_6.1/'
-    dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
 
     size = 3
-    cpuNo = 6
+    cpuNo = 1
         
     specID(dataSource, size, cpuNo)

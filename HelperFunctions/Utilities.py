@@ -550,7 +550,7 @@ def dictToArray(d, type = float):
 
     return(l)
 
-def hist_match(target, reference, normColourKey = None):
+def hist_match(targetOrig, referenceOrig):
 
     '''
     Redistribute the colour profile of a target image to match that 
@@ -568,8 +568,31 @@ def hist_match(target, reference, normColourKey = None):
     normColourKey: array of the values associated with the change
     '''
 
+    # get the number of channels of the image. If it is gray scale then it is 
+    # only one channel
+    try:
+        _, _, channels = targetOrig.shape
+    except:
+        channels = 1
+
+    targetFinal = np.zeros(targetOrig.shape).astype(np.uint8)
+
+    # some legend plotting stuff
+    '''
+    z = [np.linspace(0, 0.01, 10), np.zeros(10)]
+    blkDsh, = plt.plot(z[0], z[1], "ks:")    # targetO
+    blkDot, = plt.plot(z[0], z[1], "k:")    # targetMod
+    blkLn, = plt.plot(z[0], z[1], "k--")    # reference
+    '''
+
+    colours = ["r", "g", "b"]
+
     # if no colour key provided
-    if normColourKey is None:
+    for col, c in zip(colours, range(channels)):
+
+        target = targetOrig[:, :, c]
+        reference = referenceOrig[:, :, c]
+   
         oldshape = target.shape
         target = target.ravel()
         reference = reference.ravel()
@@ -597,56 +620,32 @@ def hist_match(target, reference, normColourKey = None):
         interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
 
         # normalise the colour
-        normChannel = (interp_t_values[bin_idx].reshape(oldshape)).astype(np.uint8)
+        targetFinal[:, :, c] = (interp_t_values[bin_idx].reshape(oldshape)).astype(np.uint8)
 
+        '''
         # create the colour key, first column is the actual pixel value 
         # and the second column is the new pixel value
         normColourKey = np.vstack((s_values, interp_t_values)).T
+        '''
 
         # return the image with normalised distribtution of pixel values and 
         # in the same data type as np.uin8
-        return (normChannel, normColourKey)
 
-    else:
+        '''
+        plt.plot(t_values, t_quantiles, col + "s:", markevery = 10)
+        plt.plot(s_values, s_quantiles, col + ":", markevery= 10)
+        plt.plot(interp_t_values, s_quantiles, col + "--")
+        '''
 
-        # NOTE TBC but i need to find a way to make the target image 
-        # modified --> loop through and do it in cython????
-
-        ar = 0
-        ns = 0
-        av = np.zeros(256)      # store the interpreted values in an array
-        for nr, nv in normColourKey:
-
-            n = 0
-            while nr != ar + n:
-                n += 1
-            
-            # interpret between n values
-            interp = np.linspace(ns, nv, n + 1)
-            for n_a, a in enumerate(interp):
-                av[ar + n_a] = a
-
-            # store the previous value to interpret between
-            ns = nv
-
-            # iterate through ar
-            ar += 1 + n
-
-        # fill the rest of the array with 255
-        av[ar:] = 255
-        av = np.round(av).astype(np.uint8)
-
-        # this is currently super slow.... cython????
-        normChannel = target.copy()
-        for x in range(target.shape[0]):
-            if x%100 == 0:
-                print(x)
-            for y in range(target.shape[1]):
-                normChannel[x, y] = av[target[x, y]]
-        
-        # return the image with normalised distribtution of pixel values and 
-        # in the same data type as np.uin8
-        return (normChannel)
+    '''
+    plt.title("Distribution of cumulative sums for each colour channel")
+    plt.xlabel("Pixel value")
+    plt.ylabel("Fraction of value (cumulative)")
+    plt.legend([blkDsh, blkDot, blkLn], ["Reference", "TargetOrig", "TargetMod"])
+    plt.show()
+    '''
+    
+    return (targetFinal)
 
 def findangle(point1, point2, point3 = None):
 
@@ -742,7 +741,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, \
     this takes lists of all the information from the SIFT feature identification 
     and bf matching and returns only n number of points which match the criteria
 
-    Inputs:   \n
+        Inputs:   \n
     (resInfo), all the information returned by the sift operator after being
     brute forced matched for that specific resolutionn\n
     (matchInfo), points that have already been found\n
@@ -770,7 +769,7 @@ def matchMaker(resInfo, matchedInfo = [], manual = False, dist = 50, \
     (angThr), maximum angle in degress for the angle check of the spatial cohesiveness\n
     (distTrh), maximum fraction of the distance for the distance check of the spatial cohesivenss\n
 
-    Outputs:  \n
+        Outputs:  \n
     (infoStore), the set of features and corresponding information that have been 
     found to have the most spatial coherence\n
     '''
@@ -971,45 +970,6 @@ def findgoodfeatures(matchInfo, allInfo, dist, tol, r = 5, distCheck = True, max
                     continue
 
                 angdist.append(abs((newrefang[n1] - newrefang[n2]) - (newtarang[n1] - newtarang[n2])))
-        
-        '''
-
-        # use, up to, the top n best features: this is more useful/only used if finding
-        # LOTS of features as this fitting procedure has a O(n^2) time complexity 
-        # so limiting the search to this sacrifices limited accuracy for significant 
-        # speed ups
-        for n1, mi1 in enumerate(matchInfoN[:r]):
-            for n2, mi2 in enumerate(matchInfoN[:r]):
-
-                # if the features are repeated, don't use it
-                if n1 >= n2:
-                    continue
-
-                # find the angle for the new point and all the previously found point
-                if (mi1.refP).any() == np.inf:
-                    print("TO INFINITY AND BEYOND")
-                newrefang = findangle(mi1.refP, i.refP, mi2.refP)
-                newtarang = findangle(mi1.tarP, i.tarP, mi2.tarP)
-
-                # newrefang2 = findangle2(mi1.refP, mi2.refP, i.refP)
-                # newtarang2 = findangle2(mi1.tarP, mi2.tarP, i.tarP)
-
-                # store the difference of this new point relative to all the ponts
-                # previously found 
-                # NOTE this works on the assumption that the scale of the images
-                # remains the same
-                angdist.append(abs(newrefang - newtarang))
-
-            # get the distances of the new points to the best feature
-            newrefdist = np.sqrt(np.sum((mi1.refP - i.refP)**2))
-            newtardist = np.sqrt(np.sum((mi1.tarP - i.tarP)**2))
-
-            if newrefdist - newrefdist == 0 and newtardist - newtardist == 0:
-                # finds how much larger the largest distance is compared to the smallest distance
-                ratiodist.append((newtardist/newrefdist)**(1-((newrefdist>newtardist)*2)) - 1)
-            else:
-                ratiodist.append(np.inf)
-        '''
 
         # if the new feature is than 5 degress off and within 5% distance each other 
         # from all the previously found features then append 
@@ -1296,7 +1256,7 @@ def moveImg(ref, tar, shift):
 
     return(tarM)
 
-def getSect(img, mpos, l, bw = True, relPos = None, border = True):
+def getSect(img, mpos, l, bw = True, relPos = None):
 
     # get the section of the image based off the feature object and the tile size
     # Inputs:   (img), numpy array of image
@@ -1306,8 +1266,6 @@ def getSect(img, mpos, l, bw = True, relPos = None, border = True):
     #           if false then the original image
     #           (relPos), the size of a plate to place the image relatively. If None then just 
     #           the section as is
-    #           (border), if True then only the targeted sample is extracted, otherwise
-    #           the surrounding tissue is included
     # Outputs:  (imgSect), black and white image section
 
     x, y, _ = img.shape      
@@ -1335,8 +1293,16 @@ def getSect(img, mpos, l, bw = True, relPos = None, border = True):
         # in the true position relative to the entire features
         sectStd[xM:xM+int(sx), yM:yM+int(sy)] = sect
 
+        # re-assign sect
+        sect = sectStd
+
     # if the sections are to be extracted as is (no 3D shape preserved/fake alignment)
+    '''
     else:
+
+        # NOTE for H653A check how feat 111 performs.... This else statement may do 
+        # more harm than good..... Might just be easier to put a border around the 
+        # aligned samples
 
         # ensure that every single section is the same size
         sectStd = np.zeros([int(l) * 2 + 1, int(l) * 2 + 1, 3])  
@@ -1345,12 +1311,13 @@ def getSect(img, mpos, l, bw = True, relPos = None, border = True):
         # ensure that if the section size was on a boundary (so isn't the standard size)
         # the correct part of this section is blacked out
         sectStd[int(xs-xps+1):int(s-(xpe-xe)+1), int(ys-yps+1):int(s-(ype-ye)+1), :] = sect
+    '''
 
     # NOTE turn into black and white to minimise the effect of colour
     if bw:
-        sectImg = np.mean(sectStd, axis = 2).astype(np.uint8)
+        sectImg = np.mean(sect, axis = 2).astype(np.uint8)
     else:
-        sectImg = sectStd
+        sectImg = sect
 
     return(sectImg)
 
@@ -1426,7 +1393,6 @@ def getSampleName(dirsrc, name):
                 except:
                     print("Incorrect id inputted, try again")
 
-
 def standardImgSize(imgs):
 
     '''
@@ -1447,8 +1413,6 @@ def standardImgSize(imgs):
         plateref = plate.copy(); plateref[:xr, :yr, :] = i; normImgs.append(plateref)
 
     return(normImgs, y)
-
-    
 
 if __name__ == "__main__":
 
@@ -1480,7 +1444,7 @@ if __name__ == "__main__":
     print("\nc = " + str(cFinish))
     print("py = " + str(pyFinish))
 
-def getMatchingList(refList, targetLists):
+def getMatchingList(refList, targetLists, return_both = False):
 
     '''
     This function takes in a reference list and on the target list
@@ -1488,21 +1452,28 @@ def getMatchingList(refList, targetLists):
     prefrix
     '''
 
-    matchedList=[]
+    matchedrefList=[]
+    matchedtarList=[]
 
     # ensure the target lists is a nested list
     if type(targetLists[0]) is not list:
         targetLists = [targetLists]
 
     for t in targetLists:
-        for i in refList:
+        for r in refList:
             try:
-                m = nameFromPath(t).index(nameFromPath(i))
-                matchedList.append(t[m])
+                m = nameFromPath(t).index(nameFromPath(r))
+                matchedtarList.append(t[m])
+                matchedrefList.append(r)
             except:
-                matchedList.append(None)
+                matchedtarList.append(None)
 
-    return(matchedList)
+    if return_both:
+        # remove any none entries
+        matchedtarList = [i for i in matchedtarList if i]
+        return(matchedrefList, matchedtarList)
+    else:
+        return(matchedtarList)
 
 def bounder(img, s = 100):
     
