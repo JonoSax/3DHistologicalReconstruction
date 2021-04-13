@@ -113,12 +113,8 @@ def nonRigidAlign(dirHome, size, cpuNo = True, \
     nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, prefix = "png", flowThreshold = flowThreshold)
 
     # extract the feature sections from the non-linear samples (in their TRUE positions)
-    # allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=False)
-    # allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=True)
-
-    # extract sections and deform the FULL SCALE images (png is downsampled 
-    # by a factor of 0.2)
-    # nonRigidDeform(destRigidAlign, destNLALignFull, destFeatSections, scl = 5, prefix = "tif")
+    allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=False)
+    allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=True)
 
 def contFeatFinder(imgsrc, destFeat, destImg = None, cpuNo = False, sz = 100, dist = 20):
 
@@ -429,6 +425,9 @@ def allFeatExtractor(imgSrc, dirSectdest, prefix, scl = 1, sz = 0, realPos = Fal
 
     print(keyFeats)
 
+    # for all selected features print out the first and last samples and sections
+    keyFeats = True
+
     for n, img in enumerate(imgs):
         printProgressBar(n, len(imgs)-1, "feats", "", 0, 20)
         # print(str(n) + "/" + str(len(imgs)-1))
@@ -436,7 +435,7 @@ def allFeatExtractor(imgSrc, dirSectdest, prefix, scl = 1, sz = 0, realPos = Fal
         sampdf.X *= scl; sampdf.Y *= scl        # scale the positions based on image size
         featExtractor(LSectDir, img, sampdf, dfRawCont, sz, zSamp, prefix = prefix, realPos = realPos, keyFeats = keyFeats)
 
-def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", flowThreshold = 100):
+def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", flowThreshold = np.inf):
 
     '''
     This transforms the images based on the feature transforms
@@ -447,6 +446,7 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", fl
         (dirSectdest), path to save the feature sections
         (scl), resolution scale factor
         (prefix), image type used
+        (flowThreshold), maximum magnitude vector for deformation
     
     Outputs:  
         (), warp the images and save
@@ -459,14 +459,14 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", fl
     # get info
     if prefix == "png":
         imgs = sorted(glob(diralign + "*" + prefix))
-        # create the directory to store the features that were actuall 
+        # create the directory to store the features that were actuall y
         # used for the saved deformation
         dirMaker(featsConfirm)
         dfSelectSMFix = pd.read_csv(dirSectdest + "smoothSelectedFixFeatures.csv")
         dfSelectRFix = pd.read_csv(dirSectdest + "rawSelectedFixFeatures.csv")
     elif prefix == "tif":
         imgs = sorted(glob(diralign + "*" + prefix))
-        # get the features which were used during the png warping
+        # get the features which were used during the baseline warping
         smFeats = glob(featsConfirm + "*sm.csv")
         rawFeats = glob(featsConfirm + "*raw.csv")
         dfSelectSMFix, dfSelectRFix = None
@@ -487,8 +487,9 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", fl
 
     # Warp images to create smoothened feature trajectories
     # NOTE the sparse image warp is already highly parallelised so not MP functions
-    for Z, Zs in key[2:]:
-        print(str(Zs) + "/" + str(len(key)))
+    for Z, Zs in key:
+        # print(str(Z) + "/" + str(len(key)))
+        printProgressBar(Z, len(key)-1, "Warped", length = 30)
         imgPath = imgs[Zs]
         output = ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix, dirNLdest, border = 5, smoother = 0, order = 1, annotate = False, scl = scl, flowThreshold = flowThreshold)
         # during the feature transform of the png image, the final 
@@ -809,17 +810,19 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
         # if the largest vector magnitude is larger than 50, this is indicative that
         # the deformation is possible "impossible" so apply a greater smoothing
         # constant and try again
-        maxFlow = np.max(abs(imgFlow))
-        printProgressBar(np.clip(thr/maxFlow, 0, 1), 1, "Warping " + name, "", 0, 20)
+        # get the densefield vector magnitude
+        imgFlowMag = np.sqrt(imgFlow[0, :, :, 0]**2 + imgFlow[0, :, :, 1]**2)
+
+        # printProgressBar(np.clip(thr/imgFlowMag, 0, 1), 1, "Warping " + name, "", 0, 20)
         
         # cv2.imwrite(dest + name + "_" + str(int(maxFlow)) + ".png", imgMod)
         # cv2.imshow("Img w smoothing = " + str(maxFlow), imgMod); cv2.waitKey(0)
-        if np.max(maxFlow) > thr:
-            # get pixel error distance between points
-            err = np.sqrt(np.sum((rawf - smf)**2, axis = 1))
+        if np.max(imgFlowMag) > thr:
 
-            # find the position of maximum error
-            pos = np.argmax(err)
+            # identify which feature created the largest vector magnitude
+            maxFlowPos = np.unravel_index(np.argmax(imgFlowMag), imgFlowMag.shape)
+            dif = rawf*scl-maxFlowPos
+            pos = np.argmin(np.sqrt(dif[:, 0]**2 + dif[:, 1]**2))
 
             # remove the individual feature with the largest error contribution
             rawf = np.delete(rawf, pos, axis = 0)
@@ -1084,7 +1087,7 @@ def featExtractor(dest, imgPath, infoSamp, infoAll, sz, zSamp = "Zs", prefix = "
                 cv2.imwrite(featdir + "_referenceImage.jpg", firstSamp) 
         
         # for the key features draw bounding features around all of them to capture the final feature
-        if len(np.where(keyFeats == d.ID)[0]) > 0:
+        if len(np.where(keyFeats == d.ID)[0]) > 0 or keyFeats:
             finalImg = drawPoints(img.copy(), infoSamp[infoSamp["ID"] == d.ID], 1, zSamp, 3, l, crcSz = 0, shape = shape)
             cv2.imwrite(featdir + "_finalImg.jpg", finalImg) 
 
@@ -1094,7 +1097,7 @@ def featExtractor(dest, imgPath, infoSamp, infoAll, sz, zSamp = "Zs", prefix = "
             else:
                 cv2.imwrite(featdir + nameFromPath(imgPath, 3) + "." + prefix, featSect)
         except:
-            print("     fail: " + str(d.ID))
+            pass
 
 def fixFeatures(features, home):
 
@@ -1264,7 +1267,7 @@ if __name__ == "__main__":
     multiprocessing.set_start_method("fork")
 
 
-    size = 2.5
+    size = 3
     cpuNo = True
 
     dataHomes = [
@@ -1280,13 +1283,13 @@ if __name__ == "__main__":
 
     dataHomes = [
     '/Volumes/USB/H653A_11.3/',  
-    # '/Volumes/USB/H671A_18.5/',  
-    # '/Volumes/USB/H671B_18.5/',  
-    # '/Volumes/USB/H673A_7.6/',   
-    # '/Volumes/USB/H710B_6.1/',   
-    # '/Volumes/USB/H710C_6.1/',
-    # '/Volumes/USB/H750A_7.0/',   
-    # '/Volumes/USB/H1029A_8.4/'
+    '/Volumes/USB/H671A_18.5/',  
+    '/Volumes/USB/H671B_18.5/',  
+    '/Volumes/USB/H673A_7.6/',   
+    '/Volumes/USB/H710B_6.1/',   
+    '/Volumes/USB/H710C_6.1/',
+    '/Volumes/USB/H750A_7.0/',   
+    '/Volumes/USB/H1029A_8.4/'
     ]
 
     for dataHome in dataHomes:
