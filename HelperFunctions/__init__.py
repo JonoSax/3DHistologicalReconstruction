@@ -10,3 +10,4 @@ from .fixSample import fixit
 from .CI_alignfeatSelect import fullMatchingSpec   
 from .CI_targetTissue import targetTissue
 from .CI_WSIExtract import WSIExtract
+from .nonRigidAlign import nonRigidAlign
