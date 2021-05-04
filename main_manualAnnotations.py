@@ -27,9 +27,6 @@ dataTrain = '/Volumes/USB/H653A_11.3/'
 
 
 size = 2.5
-kernel = 50
-name = ''
-portion = 0.2
 cpuNo = 5
 
 if __name__ == "__main__":
@@ -40,7 +37,7 @@ if __name__ == "__main__":
 
     print("\n----------- WSILoad -----------")
     # extract the tif file of the specified size
-    # WSILoad(dataTrain, size, cpuNo)
+    WSILoad(dataTrain, size, cpuNo)
 
     print("\n----------- maskMaker -----------")
     # from the manually annotated blood vessels, make them into masks
@@ -48,18 +45,4 @@ if __name__ == "__main__":
 
     print("\n----------- WSIExtract -----------")
     # extract ONLY the blood vessels from the sample (masked)
-    # WSIExtract(dataTrain, name, size)
-
-    print("\n----------- SegmentExtract -----------")
-    # extract only the sample from the whole slide
-    # if there are multiple specimens, seperate these into a, b, c... samples (including info)
-    # specID()
-    # depreciated: sampleExtract(dataTrain, name, size, True)
-
-    print("\n----------- AignSegments -----------")
-    # align all the specimens 
-    # align(dataTrain, name, size, True)  
-
-    print("\n----------- FeatureExtraction -----------")
-    # propogate an annotated feature through the aligned tissue and extract
-    # featExtract(dataTrain, name, size)
+    WSIExtract(dataTrain, size)
