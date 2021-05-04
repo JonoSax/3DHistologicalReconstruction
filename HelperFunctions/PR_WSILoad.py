@@ -20,14 +20,14 @@ tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 
 def WSILoad(dataTrain, size, cpuNo = False):
 
-    # this is the function called by main. Organises the inputs for findFeats
-    ndpis = sorted(glob(dataTrain + "*.ndpi"))
-    ndpas = sorted(glob(dataTrain + "*.ndpa"))
-    # ensure all ndpi files have at least a two digit category number (prevents 
-    # false identification)
-    for ndpi, ndpa in zip(ndpis, ndpas):
-        name = nameFromPath(ndpi).replace(" ", "")
-        home = regionOfPath(ndpi).replace(" ", "\ ")    # remove the spaces from final name
+    def rename(file, prefix):
+
+        '''
+        Standardise the name of files
+        '''
+
+        name = nameFromPath(file).replace(" ", "")
+        home = regionOfPath(file).replace(" ", "\ ")    # remove the spaces from final name
         no = name.split("_")
 
         # if there are less than two digits in the name, add a 0
@@ -37,14 +37,25 @@ def WSILoad(dataTrain, size, cpuNo = False):
         name = no[0] + "_" + no[-1]
 
         # if the name has been modified rename it
-        if ndpi.replace(" ", "\ ") != home + name:
-            os.system("mv " + ndpi.replace(" ", "\ ") + " " + home + name + ".ndpi")
-            os.system("mv " + ndpa.replace(" ", "\ ") + " " + home + name + ".ndpi.ndpa")
+        targetPath = home + name + "." + prefix
+        if file.replace(" ", "\ ") != targetPath:
+            os.system("mv " + file.replace(" ", "\ ") + " " + targetPath)
         else:
             print(name + " well named")
 
+    ndpis = sorted(glob(dataTrain + "*.ndpi"))
+    ndpas = sorted(glob(dataTrain + "*.ndpa"))
+
+    if len(ndpis) == 0:
+        return
+
+    for ndpi in ndpis:
+        rename(ndpi, "ndpi")
+
+    for ndpa in ndpas:
+        rename(ndpa, "npdi.ndpa")
+
     specimens = sorted(glob(dataTrain + "*.ndpi"))
-    # load(dataTrain, '', size)
 
     if cpuNo > 1: 
         with Pool(processes = cpuNo) as pool: 
@@ -52,19 +63,6 @@ def WSILoad(dataTrain, size, cpuNo = False):
     else:
         for s in specimens:
             load(s, dataTrain, size)
-
-    '''
-    # parallelise work
-    jobs = {}
-
-    for spec in specimens:
-        jobs[spec] = Process(target=load, args=(dataTrain, spec, size))
-        jobs[spec].start()
-
-    for spec in specimens:
-        jobs[spec].join()
-    
-    '''
 
 def load(dirimg, dataTrain, size = 0):
 

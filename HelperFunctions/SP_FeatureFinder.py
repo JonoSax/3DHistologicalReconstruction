@@ -71,7 +71,7 @@ TODO:
         in a non-spatially relevant area of the tissue which causes a false match
 '''
 
-def featFind(dataHome, size, cpuNo = 1, featMin = 20, gridNo = 3, dist = 10):
+def featFind(dataHome, size, cpuNo = 1, featMin = 20, dist = 10):
     
     # this is the function called by main. Organises the inputs for findFeats
 
@@ -98,14 +98,14 @@ def featFind(dataHome, size, cpuNo = 1, featMin = 20, gridNo = 3, dist = 10):
     if cpuNo == 1:
         # serialisation (mainly debuggin)
         for refsrc, tarsrc in zip(imgRef, imgTar):
-            findFeats(refsrc, tarsrc, dataDest, imgDest, gridNo, featMin, dist, cpuNo)
+            findFeats(refsrc, tarsrc, dataDest, dataDest, featMin, dist, cpuNo)
 
     else:
         # parallelise with n cores
         with Pool(processes=cpuNo) as pool:
-            pool.starmap(findFeats, zip(imgRef, imgTar, repeat(dataDest), repeat(imgDest), repeat(gridNo), repeat(featMin), repeat(dist), repeat(cpuNo)))
+            pool.starmap(findFeats, zip(imgRef, imgTar, repeat(dataDest), repeat(dataDest), repeat(featMin), repeat(dist), repeat(cpuNo)))
         
-def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin, dist, cpuNo):
+def findFeats(refsrc, tarsrc, dataDest, imgdest, featMin, dist, cpuNo):
 
     '''
     This script finds features between two sequential samples (based on their
@@ -156,15 +156,7 @@ def findFeats(refsrc, tarsrc, dataDest, imgdest, gridNo, featMin, dist, cpuNo):
     matchedInfo, xrefDif, yrefDif, xtarDif, ytarDif, scl = allFeatSearch(img_refMaster, img_tarMaster, \
         dist = dist, featMin = featMin, scales = scales, \
             name_ref = name_ref, name_tar = name_tar, \
-                gridNo = gridNo, cpuNo = cpuNo)
-
-    # print("time for " + imgName + " " + str(time() - a))
-    '''
-    matchedInfo, xrefDif, yrefDif, xtarDif, ytarDif, scl = allFeatSearch(img_refMaster, img_tarMaster, \
-        dist = 3, featMin = 10, \
-            name_ref = name_ref, name_tar = name_tar, \
-                gridNo = 1, tol = 1, spawnPoints=20)
-    '''
+                gridNo = 1, cpuNo = cpuNo)
 
     # ---------- update and save the found features ---------
 
@@ -320,7 +312,7 @@ def allFeatSearch(imgRef, imgTar,
         (featMin), minimum number of features which must be found\n
         (name_ref), name of the specimen. Hardcoded image placements to help sift. 
         Not necessary but if you know where the image could kind of go is useful...\n
-        (gridNo), grid sizes to segment the sift searches\n
+        (gridNo), grid sizes to segment the sift searches NOTE depreciated (just set to 1)\n
         (sc), overlap of sc pixels around the grid for sift searches\n
         (cpuNo), see matchMaker\n
         (tol), see matchMaker\n
@@ -382,6 +374,7 @@ def allFeatSearch(imgRef, imgTar,
             # features --> more for demo purposes on why the below method is implemented
             
             '''
+            # plot the raw SIFT features identified
             x, y, _ = img_ref.shape
             # img_tar = img_tar[int(0.5*x):int(0.6*x), int(0.55*y):int(0.65*y), :]
             # img_ref = img_ref[int(0.5*x):int(0.6*x), int(0.55*y):int(0.65*y), :]

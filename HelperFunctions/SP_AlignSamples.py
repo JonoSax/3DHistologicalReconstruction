@@ -53,7 +53,7 @@ def align(data, size, cpuNo = 1, errorThreshold = 100):
 
     aligner(dataSegmented, featureInfoPath, destImgPath, cpuNo, errorThreshold)
 
-def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThreshold = 100, pad = 0):
+def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThreshold = 100, shift = True):
 
     '''
     this function takes all the directories and info and then does the full 
@@ -76,15 +76,13 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
     # get the baseline samples of the specimen to be processed
     samples = sorted(glob(sampledirs + "*.png"))
 
-    # use a reference sample to normalise colours
-    sampleNames = nameFromPath(samples, 3)
-
     # find the affine transformation necessary to fit the samples
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
     
-    # if align then shift features
-    # shiftFeatures(featureInfoPath, sampledirs, destImgPath, errorThreshold)
+    if shift:
+        # if align then shift features
+        shiftFeatures(featureInfoPath, sampledirs, destImgPath, errorThreshold)
 
     # get the minimum plate shift
     maxShape, minShift = getSpecShift(featureInfoPath)
@@ -99,9 +97,6 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
         print("--- Transforming downsampled images ---\n")
         with Pool(processes=cpuNo) as pool:
             pool.starmap(transformSamples, zip(samples, repeat(maxShape), repeat(minShift), repeat(featureInfoPath), repeat(destImgPath), repeat(False)))
-    
-    exactBound(destImgPath, "png", pad)
-    # exactBound(destImgPath, "tif", pad)   # pad has to be scaled!
 
     print('Alignment complete')
 
@@ -230,8 +225,6 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
                 # find the optimum rotational adjustment and produce modified feats
                 _, feattmp, errN, centre, MxErrPnt = rotatePoints(feattmp, bestfeatalign = False, plot = False)
 
-                # print("     Fit " + str(n) + " Error = " + str(errN))
-
                 # change in errors between iterations, using two errors
                 errorC = errO - errN
 
@@ -248,7 +241,7 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
                 #   the error of fitting = 0
                 #   a turning point has been detected and error is increasing
                 if errN == 0:
-                    print("     Fitting successful, err/feat = " + str(int(errN))) 
+                    printProgressBar(np.clip(errorThreshold/errN, 0, 1), 1, "Alignment", length = 20)
                     featsMod = feattmp      # this set of feats are the ones to use
                     featsO.fit = True
 
@@ -257,17 +250,13 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
                     # if the final error is below a threshold, it is complete
                     # but use the previously fit features
                     if errO < errorThreshold:
-                        print("     " + str(len(featsMod.ref)) + "/" + str(len(featRef[rF][0])) + " w err = " + str(int(errN)))
-                        print("     Fitting converged, attempt " + str(atmp))
+                        printProgressBar(np.clip(errorThreshold/errN, 0, 1), 1, "Alignment", length = 20)
                         featsO.fit = True
                         break
 
                     # with the current features, if they are not providing a good match
                     # then modify which features are being used to fit
                     else:
-                        # print("     Modifying feat, err/feat = " + str(int(errO)))
-                        # denseMatrixViewer([featsMod[rF], featsMod[tF], centre[tF]], True)
-                        
                         # there have to be at least 8 points left to enable good fitting practice
                         # if there aren't going to be 8 left do a manual fitting process
                         if len(featsMod.tar) < 3: 
@@ -280,7 +269,7 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
                         for m in MxErrPnt:
                             del featsO.tar[m]
                             del featsO.ref[m]
-                        print("     " + str(len(featsMod.ref)) + "/" + str(len(featRef[rF][0])) + "feats left @ err = " + str(int(errN)))
+                        printProgressBar(np.clip(errorThreshold/errN, 0, 1), 1, "Alignment", length = 20)
                         atmp += 1
                         break
 
@@ -300,9 +289,6 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
             if manualFit:
 
                 print("\n\n!! ---- FITTING PROCEDUCE DID NOT CONVERGE  ---- !!\n\n")
-                print("     Refitting, err = " + str(errN))
-
-                # denseMatrixViewer([dictToArray(featsMod.ref), dictToArray(featsMod.tar), centre], True)
 
                 # change the original positions used
                 reffeats, tarfeats = featChangePoint(regionOfPath(src, 2), rF, tF, nopts=8, title = "Select eight features on each image")
@@ -347,8 +333,6 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
         featToMatch.ref = deepcopy(featsMod.tar)       # get the fitted feature (ref)
         featToMatch.tar = deepcopy(sampleObj.tar)        # get the original position of features
 
-        # translation, featToMatch, err = translatePoints(featToMatch, True)
-
         # apply ONLY the translation transformations to the original features so that the 
         # adjustments are made to the optimised feature positions
         for f in featToMatch.tar:
@@ -359,9 +343,6 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
 
         # perform a single rotational fitting procedure
         rotateSum = 0
-
-        # view the final points before rotating VS the optimised points
-        # denseMatrixViewer([dictToArray(featToMatch[tF]), dictToArray(featsMod[tF]), centre[tF]], True)
 
         # continue fitting until convergence with the already fitted results
         while abs(errN) > 1e-8:
@@ -383,9 +364,6 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
         sampleObj.ref = objectivePolar(rotateSum, centre, False, sampleObj.ref) 
         sampleObj.tar = objectivePolar(rotateSum, centre, False, sampleObj.tar) 
 
-        # denseMatrixViewer([featRef[rF][0], sampleObj.tar, featsMod.ref, featsMod.tar, centre], True)
-        # denseMatrixViewer([featsMod.ref, featsMod.tar, centre], True)
-
         # save all the original features but transformed to meet fitting criteria 
         dictToTxt(featRef[rF][0], alignedFeats + rF + ".reffeat", fit = featsO.fit, shape = shapeRef)
         dictToTxt(sampleObj.tar, alignedFeats + tF + ".tarfeat", fit = featsO.fit, shape = shapeTar)
@@ -393,8 +371,6 @@ def shiftFeatures(src, imgDir, alignedSamples, errorThreshold = 100):
         # reasign the sample features after being translated and rotated
         try:    featRef[tF][0] = sampleObj.ref
         except: print("Finished fitting")
-
-        # plt.imshow(np.hstack(standardImgSize(matrix)[0])); plt.show()
 
     # save the tif shapes, translation and rotation information
     dictToTxt(translateAll, src + "all.translated")
@@ -509,64 +485,6 @@ def transformSamples(samplePath, maxShape, shift, segInfo, dest, saving = False)
 
     print("Done translation of " + sample)
 
-def exactBound(imgDir, prefix, pad):
-    ''' 
-    Bounding the images to extract only the sample
-
-        Inputs:\n
-    (imgDir), directory of the images
-    (prefix), image prefix (ie png or tif)
-
-        Output:\n
-    (), replaces the aligned images with the bounded ones
-    '''
-
-    print("Bounding " + prefix + " images")
-
-    imgs = sorted(glob(imgDir + "*" + prefix))
-
-    if len(imgs) == 0:
-        return
-
-    img0 = cv2.imread(imgs[0])
-    # initialise the imgStore array
-    imgStore = ((np.sum(img0, axis = 2)>0)*1).astype(np.uint8)
-
-    for i in imgs:
-        img = cv2.imread(i)
-        imgStore += ((np.sum(img, axis = 2)>0)*1).astype(np.uint8)
-
-    # try to get a bound which is exact as possible
-    size = 100
-    while True:
-        extractRange = bounder(imgStore, size)
-        if len(extractRange) == 1:
-            extract = extractRange[0]
-            break
-        elif len(extractRange) == 0:
-            print("Bounding not possible")
-            return
-        else:
-            size -= 100
-            
-    xe, ye = extract
-    for i in imgs:
-        name = nameFromPath(i)
-        img = cv2.imread(i)
-        imgB = img[ye[0]:ye[1], xe[0]:xe[1], :]
-        # overwrite the aligned samples with the bounded ones
-        if pad > 0:
-            x, y, _ = imgB.shape
-            imgPlate = np.zeros([x + int(pad*2), y + int(pad*2), 3])
-            imgPlate[pad:pad+x, pad:pad+y, :] = imgB
-            cv2.imwrite(i, imgPlate)
-        else:
-            cv2.imwrite(i, imgB)
-
-    # write the bounding points used
-    eRdict = {0: extractRange[0][0], 1:extractRange[0][1]}
-    dictToTxt(eRdict, imgDir + "_boundingPoints.txt")
-
 def translatePoints(feats, bestfeatalign = False):
 
     # get the shift of each frame
@@ -644,7 +562,6 @@ def rotatePoints(feats, tol = 1e-6, bestfeatalign = False, plot = False, centre 
     MxErrPnt = []
     ftPos = np.argsort(-errPnt)[:int(np.floor(len(errPnt)/50+1))]
     for f in ftPos:
-
         MxErrPnt.append(list(tarM.keys())[f])
 
     # return the average error per point

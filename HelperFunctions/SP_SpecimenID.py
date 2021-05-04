@@ -27,7 +27,7 @@ entire image, rather than segmenting the image into grids
 '''
 
 # NOTE can probably depreciate specID and make sectionSelecter the main function
-def specID(dataHome, size, cpuNo = False, imgref = 'refimg.png'):
+def specID(dataHome, size, cpuNo = False, imgref = 'refimg.png', plot = True):
 
     # get the size specific source of information
     datasrc = dataHome + str(size) + "/"
@@ -38,7 +38,7 @@ def specID(dataHome, size, cpuNo = False, imgref = 'refimg.png'):
         imgref = cv2.imread(refimgPath)
 
     # gets the images for processing
-    sectionSelecter(datasrc, cpuNo, imgref)
+    sectionSelecter(datasrc, cpuNo, imgref, plot)
 
 
 def sectionSelecter(datasrc, cpuNo = False, imgref = None, plot = False):
@@ -79,7 +79,7 @@ def sectionSelecter(datasrc, cpuNo = False, imgref = None, plot = False):
     # serialised
     if cpuNo == 1:
         for idir in imgsmall:    
-            maskMaker(idir, imgMasks, imgPlots)
+            maskMaker(idir, imgMasks, imgPlots, plot)
 
     else:
         # parallelise with n cores
@@ -123,7 +123,6 @@ def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):
     except:
         print("FAILED: " + idir)
         return
-    # imgO = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY) 
 
     name = nameFromPath(idir)
 
@@ -132,9 +131,8 @@ def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):
 
     img = imgO.copy()
 
-    # ----------- specimen specific modification -----------
+    # ----------- specimen specific cropping -----------
     
-    # H653 specimen specific mod
     if name.find("H653") >= 0:
         '''
         H653 has bands from the plate which the specimen is stored on which causes a lot of 
@@ -192,25 +190,12 @@ def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):
     backVal = int(np.round((forePos + 1) * rBin + np.argmin(histValsF[int(np.round(forePos + 1) * rBin):int(np.round(backPos * rBin))])))
     background = histBinsF[backVal]
 
-    '''    
-    plt.plot(histBins[1:], histVals); 
-    plt.xlabel('pixelValue')
-    plt.ylabel('pixelCount')
-    plt.title(name + " intensity histogram profile")
-    plt.semilogy(histBins[backPos+1], histVals[backPos], marker="o")
-    plt.show()  
-    '''
-
     # accentuate the colour
     im_accentuate = img.copy()
     b = background
     im_binary = (((im_accentuate - b) < 0)*1).astype(np.uint8)
-    # im_accentuate = (a * np.tanh((im_accentuate - a + b) * 3) + a).astype(np.uint8)
-    # im_accentuate = (im_accentuate - np.min(im_accentuate)) / (np.max(im_accentuate) - np.min(im_accentuate)) * 255
-    
+
     # ----------- smoothing -----------
-    # plt.imshow(im_accentuate, cmap = 'gray'); plt.show()
-    # plt.scatter(histinfo[1][:-1], histinfo[0]); plt.show()
     # create kernel
     kernelb = np.ones([5, 5])
     kernelb /= np.sum(kernelb)
@@ -268,55 +253,37 @@ def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):
         # fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
         
         f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-        # ax1.subplot(3, 1, 1)
-        ax1.semilogy(histBinsF[1:], histValsF)
-        ax1.semilogy(histBinsF[backVal+1], histValsF[backVal], marker="o", color = [0, 0, 1])
-        ax1.semilogy(histBins[1:], histVals)
-        ax1.semilogy(histBins[forePos +1], histVals[forePos], marker="o", color = [1, 0, 0])
-        ax1.semilogy(histBins[backPos +1], histVals[backPos], marker="o", color = [1, 0, 0])
-        ax1.title.set_text("Histogram profile")
-        ax1.set(xlabel='Pixel bin (start)', ylabel='Pixel count')
 
-        '''
-        plt.subplot(3, 2, 3)
-        plt.imshow(255-im_accentuate, cmap = 'gray')
-        plt.axis("off")
-        plt.title('accentuated colour')
-        '''
+        # plot the target tissue identified 
+        ax1.imshow(255-im_accentuate, cmap = 'gray')
+        ax1.axis("off")
+        ax1.title.set_text("accentuated colour Mask")
 
-        # turn the mask into an RGB image (so that the circle point is clearer)
+        # plot the tissue to be extracted and the location of the flood fill operations
         im_binary3d = (np.ones([im_binary.shape[0], im_binary.shape[1], 3]) * np.expand_dims(im_binary * 255, -1)).astype(np.uint8)
         for point in points:
             cv2.circle(im_binary3d, tuple(point), 100, (255, 0, 0), 20)
-
-        # ax2.subplot(3, 2, 4)
         ax2.imshow(im_binary3d)
         ax2.axis("off")
         ax2.title.set_text("centreFind Mask")
 
-        # ax3.subplot(3, 2, 5)
+        # plot the extracted tissue areas
         ax3.imshow(im_id, cmap = 'gray')
         ax3.axis("off")
-        ax3.title.set_text("identified sample ")
+        ax3.title.set_text("identified section")
 
-        # imgMod = imgO * np.expand_dims(im_id, -1)
+        # plot the extracted tissue in each slide
         imgMod = imgO * im_id
-
-        # draw the bounding box of the image being extracted
-        # segment out the image
         extract = bounder(im_id)
         for n in extract:
             x, y = extract[n]
             for i in range(2):
                 cv2.line(imgMod, (x[i], y[i]), (x[1], y[0]), (255, 0, 0), 10)
                 cv2.line(imgMod, (x[i], y[i]), (x[0], y[1]), (255, 0, 0), 10)
-
-        # ax4.subplot(3, 2, 6)
-        ax4.imshow(imgMod, cmap = 'gray') 
+        ax4.imshow(imgMod, cmap = "gray") 
         ax4.axis("off")
         ax4.title.set_text("masked image")
         f.tight_layout(pad = 1)
-        # plt.show()
         plt.savefig(imgplot + name + ".jpg")
         plt.clf()
 
@@ -404,7 +371,7 @@ def imgStandardiser(destPath, maskpath, imgsrc, imgRef):
             imgsect = imgNormColour(imgsect, imgRef, tif)#, imgbigsect)
 
         if False:
-            colourDistributionHistos(imgsmall[y[0]:y[1], x[0]:x[1], :]*maskS, imgRef, imgsmallsect)
+            colourDistributionHistos(img[y[0]:y[1], x[0]:x[1], :]*maskS, imgRef, imgsect)
 
         # write the new images
         if tif:
@@ -451,10 +418,10 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/Test/'
     dataSource = '/Volumes/USB/H750A_7.0/'
     dataSource = '/Volumes/USB/H671A_18.5/'
-    dataSource = '/Volumes/USB/H710B_6.1/'
-    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H673A_7.6/'
+    dataSource = '/Volumes/USB/H710C_6.1/'
     dataSource = '/Volumes/USB/H653A_11.3/'
+    dataSource = '/Volumes/USB/H710B_6.1/'
 
     size = 3
     cpuNo = 1

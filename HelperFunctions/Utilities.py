@@ -638,9 +638,9 @@ def hist_match(targetOrig, referenceOrig):
         '''
 
     '''
-    plt.title("Distribution of cumulative sums for each colour channel")
-    plt.xlabel("Pixel value")
-    plt.ylabel("Fraction of value (cumulative)")
+    plt.title("Distribution of cumulative sums for each colour channel", fontsize = 14)
+    plt.xlabel("Pixel value", fontsize = 14)
+    plt.ylabel("Fraction of value (cumulative)", fontsize = 14)
     plt.legend([blkDsh, blkDot, blkLn], ["Reference", "TargetOrig", "TargetMod"])
     plt.show()
     '''
@@ -1567,6 +1567,71 @@ def bounder(img, s = 100):
         extractA[ext].append((sampV * rows / x).astype(int))
 
     return(extractA)
+
+def exactBound(imgDir, prefix, pad, dest = None):
+    ''' 
+    Bounding the images to extract only the sample
+
+        Inputs:\n
+    (imgDir), directory of the images
+    (prefix), image prefix (ie png or tif)
+
+        Output:\n
+    (), replaces the aligned images with the bounded ones
+    '''
+
+    print("Bounding " + prefix + " images")
+
+    # if the dest is not specified, overwrite 
+    if dest is None:
+        dest = imgDir
+    else:
+        dest += "/"
+        dirMaker(dest)
+
+    imgs = sorted(glob(imgDir + "*" + prefix))
+
+    if len(imgs) == 0:
+        return
+
+    img0 = cv2.imread(imgs[0])
+    # initialise the imgStore array
+    imgStore = ((np.sum(img0, axis = 2)>0)*1).astype(np.uint8)
+
+    for i in imgs:
+        img = cv2.imread(i)
+        imgStore += ((np.sum(img, axis = 2)>0)*1).astype(np.uint8)
+
+    # try to get a bound which is exact as possible
+    size = 100
+    while True:
+        extractRange = bounder(imgStore, size)
+        if len(extractRange) == 1:
+            extract = extractRange[0]
+            break
+        elif len(extractRange) == 0:
+            print("Bounding not possible")
+            return
+        else:
+            size -= 100
+            
+    xe, ye = extract
+    for i in imgs:
+        name = nameFromPath(i)
+        img = cv2.imread(i)
+        imgB = img[ye[0]:ye[1], xe[0]:xe[1], :]
+        # overwrite the aligned samples with the bounded ones
+        if pad > 0:
+            x, y, _ = imgB.shape
+            imgPlate = np.zeros([x + int(pad*2), y + int(pad*2), 3])
+            imgPlate[pad:pad+x, pad:pad+y, :] = imgB
+            cv2.imwrite(dest + name + "." + prefix, imgPlate)
+        else:
+            cv2.imwrite(dest + name + "." + prefix, imgB)
+
+    # write the bounding points used
+    eRdict = {0: extractRange[0][0], 1:extractRange[0][1]}
+    dictToTxt(eRdict, dest + "_boundingPoints.txt")
 
 def findMissing(imgs, destFeat):
 
