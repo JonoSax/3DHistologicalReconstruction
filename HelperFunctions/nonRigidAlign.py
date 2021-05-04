@@ -101,10 +101,10 @@ def nonRigidAlign(dirHome, size, cpuNo = 1, \
         cpuNo = False
 
     # Find the continuous features throught the samples
-    # contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, sz = sect, dist = dist)
+    contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, sz = sect, dist = dist)
     
     # perform a rigid alignment on the tracked features
-    # aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, errorThreshold = np.inf)
+    aligner(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, errorThreshold = np.inf)
     
     if fixFeatures:
         findMissingSamples(dirHome, size)
