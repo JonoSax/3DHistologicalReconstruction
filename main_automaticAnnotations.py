@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
     for dataHome in dataHomes:
 
-        print("\n\n #############--- Processing " + dataHome.split("/")[-1] + " ---#############\n\n")
+        print("\n\n #############--- Processing " + dataHome.split("/")[-2] + " ---#############\n\n")
         
         print("\n----------- WSILoad ---------")
         # extract the tif file of the specified size
