@@ -11,6 +11,7 @@ from time import time
 import tifffile as tifi
 import pandas as pd
 import plotly.express as px
+from itertools import repeat
 
 if __name__ != "HelperFunctions.plottingFunctions":
     from Utilities import *
@@ -99,7 +100,7 @@ def colourDistributionHistos(imgtarSmallorig, imgref, imgtarmod):
     plt.ylim([0, ylim])
     plt.xlabel("Pixel value", fontsize = 14)
     plt.ylabel("Pixel distribution",  fontsize = 14)
-    plt.title("Histogram of colour profiles",  fontsize = 18)
+    plt.title("Histogram of colour profiles",  fontsize = 14)
     plt.show()
 
     # ----- Plot the modified vs reference histogram plots -----
@@ -355,32 +356,46 @@ def compareSmoothvsRaw():
     dfSelectSMFix2
     px.line_3d(a, x="X", y="Y", z="Z", color="ID", line_dash="Type", title = "Smooth vs Raw").show()    
 
-def getLongFeats():
+def getLongFeats(n):
 
     '''
     This script identifies the longest n features for each specimen 
     '''
 
-    # the longest n features to report back
-    n = 3
-
     src = "/Volumes/USB/"
     specs = glob(src + "H*")
+
+    specAll = []
 
     for s in specs:
 
         print("\n---- " + s.split("/")[-1] + " ----")
 
-        featsrc = s + "/3/FeatureSections/linearSect_png_False/"
+        featsrc = s + "/4/FeatureSections/NLAlignedSamplesSmallpng_True2/"
 
         feats = glob(featsrc + "*")
 
         featIDOrder = np.argsort([-len(glob(f + "/*.png")) for f in feats])
         featIDLen = -np.sort([-len(glob(f + "/*.png")) for f in feats])
 
+        featOrdered = []
+        for f in featIDOrder:
+            featOrdered.append(feats[f].split("/")[-1])
+
+        specAll.append(np.c_[featIDLen.astype(int), featOrdered, ((s.split("/")[-1]+",")*(len(featIDLen))).split(",")[:-1]])
+
         for f, l in zip(featIDOrder[:n], featIDLen[:n]):
             specID = feats[f].split("/")[-1]
             print("ID: " + str(specID) + " len: " + str(l))
+
+    specInfo = np.vstack(specAll)
+    order = np.argsort(-np.array(np.vstack(specAll))[:, 0].astype(int))[:100]
+
+    topSpecs = []
+    print("Longest 100 features and their associated specimens")
+    print("Length, featureID, specimen")
+    for o in order:
+        print(specInfo[o,:])
 
 def getAllTrajectories():
 
@@ -389,7 +404,9 @@ def getAllTrajectories():
     '''
 
     src = "/Volumes/USB/"
-    specs = glob(src + "H*")
+    src = '/Volumes/USB/ANHIR/TargetTesting/'
+    size = 2.5
+    specs = sorted(glob(src + "C*"))
 
     for s in specs:
 
@@ -397,17 +414,125 @@ def getAllTrajectories():
         print("\n---- " + specName + " ----")
 
         # get the raw features
-        rawfeatsrc = s + "/3/FeatureSections/rawFixFeatures.csv"
-        smfeatsrc = s + "/3/FeatureSections/smoothFixFeatures.csv"
+        rawfeatsrc = s + "/" + str(size) + "/FeatureSections/rawSelectedFixFeatures.csv"
+        smfeatsrc = s + "/" + str(size) + "/FeatureSections/smoothSelectedFixFeatures.csv"
 
         try:
             rawfeats = pd.read_csv(rawfeatsrc)
             smfeats = pd.read_csv(smfeatsrc)
             
             px.line_3d(rawfeats, "X", "Y", "Z", "ID", title=specName + " raw").show()
-            px.line_3d(smfeats, "X", "Y", "Z", "ID", title=specName + " raw").show()
+            px.line_3d(smfeats, "X", "Y", "Z", "ID", title=specName + " smooth").show()
         except:
             print("     " + specName + " failed")
+
+def trainingSampleProporptional():
+
+    '''
+    This is counting the number of feature for each type of tissue labelled
+    '''
+
+    vals = ['3505', '2842', '1668', '3045', '315_v,b', '3604', '554_d,g,b', '118_d,g', '743', '3_m,b', '1033', '3052', '2897', '1588', '3472', '597_d,v,b', '550_v,b', '1595', '667_v,b', '2916', '3305', '2777', '44_v,b', '588_d,v,g,b', '3411', '2883', '836', '3367', '878', '3093', '1954', '2799', '874', '3053', '1081', '2303', '3426', '1640', '3473', '225_d,g', '695_d,v,g,b', '333_v,b', '3247', '2818', '1275', '3294', '937', '862', '979', '33_d,g', '2964', '3488', '699_d,v,g,b', '929', '3448', '854', '669_m,d,g,b', '592_d,g,b', '412_d,v,b', '967', '2979', '892', '3554', '2804', '178_d,v,b', '3054', '1082', '3014', '1641', '254_d,g', '2910', '634_v,b', '214_d,v,g', '3434', '951', '3295', '641_m,d,v,g,b', '901', '3580', '1097', '2319', '3029', '2965', '276_m,d,v,g,b', '1057', '351_v,b', '943', '718', '1616', '3449', '2786', '414_m,d,g,b', '31_d,v', '3135', '3000', '2845', '104_d,g', '2805', '212_d,g,b', '3015', '264_v', '377', '1043', '129_m,b', '259_m,d,g,b', '1602', '3435', '3300', '466_d,v,b,g', '36_d,g,b', '1598', '2867', '110_d,v,g', '1938', '849', '2327', '580_d,v,b', '2973', '2006', '2787', '274_m,d,v,g,b', '3362', '3041', '34_d,v,g', '561_d,v,b', '3001', '475_d,g', '311_m,g,b', '724', '373_d,g,b', '2806', '3282', '3516', '2853', '3377', '879', '1964', '381_m,b', '3016', '3063', '347_d,g,b', '867', '2828', '3217', '863', '1804', '2927', '1066', '3363', '2934', '2795', '329_m,d,v,g,b', '76_d,v,g,b', '63_d,v,g,b', '41_d,g,b', '324_d,v,g,b', '3623', '181_v', '3484', '956', '1052', '2920', '693_d,v,b', '2781', '431_v,b', '1987', '3503', '2840', '3550', '944', '2800', '2749', '536_v,b', '940', '3145', '2161', '317_m,d,g,b', '2855', '3430', '2815', '284_m,d,g,b', '3386', '267_m,d,g,b', '1926', '169_v', '314_d,g,b', '970', '2961', '3485', '578_d,v,g,b', '2921', '3445', '567_m,b', '2001', '2782', '2877', '3266', '3591', '1988', '173_m,d,g,b', '1068', '650_d,v,b', '2936', '2801', '2983', '1_d,v,g', '3372', '3146', '206_m,d,v,g,b', '3431', '2257', '393_m,b', '328_m,d,g,b', '3292', '2998', '3205', '345_d,v,g,b', '560_d,v,g,b', '16_d,v,g', '3026', '1934', '2922', '1014', '2002', '1569', '685_m,d,g,b', '1069', '2937', '1628', '1675', '2758', '1960', '694_m,b', '98_d,v,g,b', '2444', '2817', '221_d,v,g,b', '364_m,d,v,g,b', '2864', '894', '3388', '2824', '890', '919', '3348', '3027', '1241', '915', '140_m,d,g,b', '2923', '1015', '2970', '1661', '1062', '2879', '882', '705_d,v,b', '3454', '2791', '3133', '2839', '3180', '903', '2850', '3560', '3374', '945', '57_d,v,g', '2759', '647_d,g,b', '3013', '3195', '27_d,v,g,b', '687', '3389', '395_m,b', '637', '471_m,d,b,g', '552_m,d,g,b', '2372', '3408', '2745', '3141', '738', '541_v,b', '662_d,g,b', '702_d,g,b', '2946', '53_d,g', '496_d,b,g', '35_m,b', '428_m,d,v,g,b', '116_v,b', '726', '535_d,b,g', '2866', '483_m,d,b,g', '409_v,b', '2873', '1699', '3215', '668_v,b', '60_d,g,b', '710', '2147', '756', '2888', '587_d,g,b', '1999', '1079', '790', '819', '122_v', '334_d,g,b', '3062', '519', '740', '3022', '690_d,v,g,b', '928', '1050', '899', '611_m,b', '3402', '2874', '3216', '323_d,v,g,b', '310_v,b', '152_m,d,v,g,b', '2334', '841', '297_d,v,g,b', '908', '996', '136_d,v', '38_d,v', '112_m,d,v,g,b', '2948', '183_d,v,g,b', '427_d,v,b', '2860', '2908', '3384', '2820', '352_d,g,b', '1325', '257_m,b', '1051', '1011', '652_m,b', '3490', '2229', '366_m,d,v,g,b', '2875', '3450', '934', '543_d,v,b,g', '930', '3038', '976', '369_m,d,g,b', '972', '271_v', '1073', '3370', '1632', '2755', '633_v,b', '391_m,d,g,b', '2715', '21_d,v,g,b', '3524', '960', '1088', '2956', '197_m,d,g,b', '2821', '638_m,d,b,g', '62_v,b', '3071', '1012', '346_d,v,b', '208_d,g,b', '727', '3539', '3404', '2876', '69_m,d,g,b', '3451', '3130', '2836', '2982', '1074', '3419', '244_d,v,g,b', '1589', '1827', '795', '651_v,b', '703', '295_v', '2957', '1049', '2917', '3393', '299_v,b', '858', '1707', '542_d,v,b,g', '3405', '3587', '808', '2238', '572_m,d,v,b,g', '2884', '70_d,v,g,b', '600_v,b', '55_v', '488_d,v,b', '1075', '917', '2943', '90_d,v,g', '888', '2903', '3193', '2764', '884', '2578', '3153', '517_v,b', '909', '515_m,d,v,b,g', '2958', '3347', '2870', '2038', '876', '2918', '3394', '1609', '872', '156_d,v,g,b', '3168', '198_m,b', '472_m,d,b,g', '620_v,b', '2885', '1576', '3369', '860', '689_m,d,v,g,b', '931', '59_m,d,g', '1076', '660_m,d,v,g,b', '3008', '973', '1682', '2904', '514', '3340', '3289', '245_v', '478_d,v,b', '3249', '355_d,g,b', '2586', '2265', '507_m,b', '659_m,d,g,b', '961', '594', '263_v', '2919', '176_d,v,g', '3395', '385_d,g,b', '3260', '547_v,b', '11_m,d,g,b', '1522', '18_m,b', '92_m,b', '3220', '3034', '1022', '728', '356_m,d,g,b', '518_d,b,g', '3414', '363_d,g,b', '3100', '1822', '3520', '3056', '231_m,b', '3381', '2032', '570_m,b', '2726', '2587', '708', '89_d,v,b', '2872', '51_d,v,g', '2832', '3221', '171_m,d,g,b', '2788', '143_m,d,g,b', '658_d,v,g,b', '3042', '272_v,b', '859', '358_m,d,v,g,b', '3415', '365_d,g,b', '308_d,g,b', '278_m,d,g,b', '2894', '3101', '2807', '1264', '3283', '2212', '2993', '563_m,b', '549_d,g,b', '2953', '889', '376_d,v,g,b', '516_d,v,b,g', '300_m,d,g,b', '2774', '885', '565_d,v,b', '655_d,v,g,b', '326_v,b', '1524', '407_m,b', '222_d,v,g,b', '2928', '2789', '700_v,b', '524_v,b', '10_m,b', '3423', '2669', '3018', '2954', '1645', '1046', '2914', '551_m,d,g,b', '96_m,b', '67_v,b', '3299', '924', '966', '37_d,g', '2969', '2834', '962', '2929', '450_d,v,b', '912', '188_d,v,g,b', '7_m,b', '3599', '1032', '531_d,v,b,g', '2900', '950', '415_m,d,g,b', '2809', '1547', '534_m,b', '900', '2955', '2_m,d,v,g,b', '2915', '361_v', '2962', '2776', '2641', '3486', '445_m,d,g,b', '2236', '239_m,d,g,b']
+
+    valLabel = []
+    for v in vals:
+        if len(v.split("_"))>1:
+            valLabel.append(v)
+
+    src = '/Volumes/USB/H653A_11.3/3/FeatureSections/linearSect2/'
+
+    classesLen = {}
+    classesNum = {}
+    for v in valLabel:
+        id, cl = v.split("_")
+        cl = "".join(sorted(cl.split(","))).replace("b", "").replace("g", "")    # remove blood vessesl from classes
+        if classesLen.get(cl, None) is None:
+            classesLen[cl] = []
+            classesNum[cl] = 0
+        feat = src + id + "/"
+        classesLen[cl].append(len(glob(feat + "*.png")))
+        classesNum[cl] += 1
+
+    for c in classesLen:
+        ratio = np.median(classesLen[c])
+        print("Average len of " + c + " " + str(np.round(ratio, 2)))
+
+    print(classes)
+
+def smallTilesOfSections():
+
+    '''
+    Get an image and divide it into tiles. Highlight the part of the time 
+    of interest
+    '''
+
+    img = cv2.imread("sect.png").astype(float)
+
+    x, y, c = img.shape
+
+    xs = x - 40
+    ys = y - 40
+
+    s = 20
+
+    xr = x-xs + s
+    yr = y-ys + s
+    img *= 0.5
+    imgAll = []
+    for xn in np.arange(0, xr, s, int):
+        imgHor = []
+        for yn in np.arange(0, yr, s, int):
+            plate = (np.ones([x + 10, y + 10, c])*255).astype(np.uint8)
+
+            # highlight the selected area
+            imgShow = img.copy()
+            imgShow[xn:xn+xs, yn:yn+ys, :] *= 2
+            imgShow = imgShow.astype(np.uint8)
+            plate[:x, :y, :] = imgShow
+            imgHor.append(plate)
+
+        imgAll.append(np.hstack(imgHor))
+
+    imgFinal = np.vstack(imgAll)
+    plt.imshow(imgFinal); plt.show()
+    cv2.imwrite("sectSections.png", imgFinal)
+
+def getSpecimenDimensions():
+
+    '''
+    Gets the size of the x, y and z of the specimen based on slide thickness
+    and the assumption of a 18µm pixel size (for a 2.5 full scale, 0.2x baseline image)
+    '''
+
+    src = "/Volumes/USB/"
+    specs = sorted(glob(src + "H*"))
+    path = "/4/NLAlignedSamplesSmall/"
+
+    depths = {
+    "H710B": 5,
+    "H710C": 5,
+    "H750A": 6,
+    "H673A": 10,
+    "H1029A": 10,
+    "H653A": 15,
+    "H671A": 10,
+    "H671B": 10
+    }
+
+    for s in specs:
+        name = s.split("/")[-1].split("_")[0]
+        imgs = sorted(glob(s + path + "*.png"))
+        imgpath = imgs[0]
+        img = cv2.imread(imgpath)
+        x, y, _ = img.shape
+        xdim = np.round(x * 18 / 1000, 2)        # dims in mm
+        ydim = np.round(y * 18 / 1000, 2)
+        d = np.round(depths[name] * len(imgs) / 1000, 2)
+
+        # print(name + ": " + str(xdim) + "x" + str(ydim) + "x" + str(d))
+
+        print(name + " has a slide thickness of " + str(depths[name]) + " µm with " + str(len(imgs)) + " samples so the dimensions of the final reconstruction are " + str(xdim) + "x" + str(ydim) + "x" + str(d) + " (H x W x D) mm.\n\n")
+
 
 if __name__ == "__main__":
 
@@ -415,5 +540,6 @@ if __name__ == "__main__":
 
     # siftTimer()
 
-    getAllTrajectories()
-    # getLongFeats()
+    getLongFeats(10)
+
+    # trainingSampleProporptional()
