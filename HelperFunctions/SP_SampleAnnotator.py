@@ -400,9 +400,6 @@ def annotatorGUI(img, title):
     fig.canvas.mpl_connect('key_press_event', toggle_selector)
     plt.show()
 
-    # if a new position was declared return that
-    if (allPos[0] * allPos[1] == 0).all():
-        print("WAHT")
     try:
         return(allPos)
     # if no new position declared, return the origin
