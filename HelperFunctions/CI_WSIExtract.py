@@ -14,10 +14,10 @@ if __name__ == "__main__":
 else:
     from HelperFunctions.Utilities import *
 
-def WSIExtract(dataTrain, name, size):
+def WSIExtract(dataTrain, size):
 
     # this is the function called by main. Organises the inputs for findFeats
-    specimens = sorted(nameFromPath(glob(dataTrain + name + "*.ndpa")))[-1:]
+    specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpa")))[-1:]
     
     # parallelise work
     jobs = {}
