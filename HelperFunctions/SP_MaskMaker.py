@@ -31,7 +31,7 @@ tifLevels = [20, 10, 5, 2.5, 1.25, 0.625, 0.3125, 0.15625]
 def maskMaker(dataTrain, size, cpuNo = 1):
 
     # this is the function called by main. Organises the inputs for findFeats
-    specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpa")))[-1:]
+    specimens = sorted(nameFromPath(glob(dataTrain + "*.ndpa")))
 
     '''
     for s in specimens:
@@ -292,7 +292,7 @@ def maskCover(dir, dirTarget, masks, scale, small = True):
             print("Match drawn " + str(n) + "/" + str(len(masks)))
         maskN = np.unique((mask * scale).astype(int), axis = 0)
         imgR[maskN[:, 1], maskN[:, 0]] = [0, 255, 0]
-        cv2.putText(imgR, str(n), tuple(maskN[0, :]), cv2.FONT_HERSHEY_SIMPLEX, 1, [0, 0, 0], 4)
+        # cv2.putText(imgR, str(n), tuple(maskN[0, :]), cv2.FONT_HERSHEY_SIMPLEX, 1, [0, 0, 0], 4)
 
     tifi.imwrite(dirTarget + ".tif", imgR)
 
@@ -356,12 +356,10 @@ def coordMatch(array1, array2):
 
     return(roi)
 
-
 if __name__ == "__main__":
 
     dataTrain = '/Volumes/USB/H653A_11.3/'
-    name = ''
     size = 2.5
-    cpuNo = 1
+    cpuNo = 6
 
     maskMaker(dataTrain, size, cpuNo)
