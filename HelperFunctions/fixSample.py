@@ -21,7 +21,7 @@ else:
     from HelperFunctions.SP_AlignSamples import align
 
 
-def fixit(dataHome, size, cpuNo, sampleIDs, segSection = False):
+def fixit(dataHome, size, cpuNo, sampleIDs, errorThreshold, segSection = False):
 
     # perform manual fitting of samples which did not align properly
     # Inputs:   (dataHome), directory of the specimen
@@ -56,7 +56,7 @@ def fixit(dataHome, size, cpuNo, sampleIDs, segSection = False):
     # if there were samples to align, re-align the entire specimen
     if len(samples) > 0:
         print("     Realigning samples")
-        align(dataHome, size, cpuNo, errorThreshold=100)
+        align(dataHome, size, cpuNo, errorThreshold=errorThreshold)
 
     else:
         print("     No samples to fix")

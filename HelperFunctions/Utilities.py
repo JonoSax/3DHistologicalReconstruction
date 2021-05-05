@@ -1378,18 +1378,21 @@ def getSampleName(dirsrc, name):
                     print("Incorrect id inputted, try again")
         # if the key word return no samples adjust the sampleID
         if len(samp) == 0:
-            name = print("Key word " + name + " returned no results. Recursive search has found: ")
+            print("Key word " + name + " returned no results. Recursive search has found: ")
             allpng = glob(dirsrc+'*/*/*png')
             # randomally shuffle the images found
             random.shuffle(allpng)
             # only display the top 20 images
+            print("[-1]: Perform search again")
             for n, sa in enumerate(allpng[:20]):
                 print("[" + str(n) + "]" + ": " + nameFromPath(sa, 3, prefix=True))
             possiblePathID = input("Type in the index number of one of the above: ")
-            possiblePath = None
-            while possiblePath is None:
+            while True:
+                if possiblePathID == "-1":
+                    break
                 try:
                     possiblePath = allpng[int(possiblePathID)]
+                    break
                 except:
                     print("Incorrect id inputted, try again")
 

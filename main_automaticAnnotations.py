@@ -18,11 +18,12 @@ if __name__ == "__main__":
 
     multiprocessing.set_start_method('spawn')
 
+    '''
     dataHomes = [
     # '/Volumes/USB/H653A_11.3/',
     # '/Volumes/USB/H671A_18.5/',
     # '/Volumes/USB/H671B_18.5/',
-    '/Volumes/USB/H673A_7.6/',
+    # '/Volumes/USB/H673A_7.6/',
     # '/Volumes/USB/H710B_6.1/',
     # '/Volumes/USB/H710C_6.1/',
     # '/Volumes/USB/H750A_7.0/',
@@ -38,8 +39,8 @@ if __name__ == "__main__":
     # '/eresearch/uterine/jres129/BoydCollection/H673A_7.6/',
     # '/eresearch/uterine/jres129/BoydCollection/H750A_7.0/',
     # '/eresearch/uterine/jres129/BoydCollection/H1029A_8.4/'
+    '/eresearch/uterine/jres129/BoydCollection/test/'
     ]
-    '''
 
     # zoom level to use
     size = 2.5
@@ -105,5 +106,5 @@ if __name__ == "__main__":
         nonRigidAlign(dataHome, size, cpuNo = cpuNo, \
         featsMin = 10, dist = 30, featsMax = 100, errorThreshold = 200, \
             distFeats = 50, sect = 100, selectCriteria = "length", \
-                flowThreshold = 50, fixFeatures = False, plot = False)
+                flowThreshold = 0.05, fixFeatures = False, plot = False)
     

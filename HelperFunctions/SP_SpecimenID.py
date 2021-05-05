@@ -420,8 +420,8 @@ if __name__ == "__main__":
     dataSource = '/Volumes/USB/H671A_18.5/'
     dataSource = '/Volumes/USB/H673A_7.6/'
     dataSource = '/Volumes/USB/H710C_6.1/'
-    dataSource = '/Volumes/USB/H653A_11.3/'
     dataSource = '/Volumes/USB/H710B_6.1/'
+    dataSource = '/Volumes/USB/H653A_11.3/'
 
     size = 3
     cpuNo = 1

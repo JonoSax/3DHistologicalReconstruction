@@ -52,7 +52,7 @@ class feature:
 def nonRigidAlign(dirHome, size, cpuNo = 1, \
     featsMin = 20, dist = 30, featsMax = 20, errorThreshold = 100, \
         distFeats = 400, sect = 100, selectCriteria = "length", \
-            flowThreshold = 100, featSmoother = 1e12, fixFeatures = False, \
+            flowThreshold = 0.01, featSmoother = 1e12, fixFeatures = False, \
                 plot = False, extract = True):
 
     '''
@@ -99,7 +99,7 @@ def nonRigidAlign(dirHome, size, cpuNo = 1, \
         cpuNo = True
     else:
         cpuNo = False
-
+    
     # Find the continuous features throught the samples
     contFeatFinder(imgsrc, dirfeats, destRigidAlign, cpuNo = cpuNo, sz = sect, dist = dist)
     
@@ -114,14 +114,13 @@ def nonRigidAlign(dirHome, size, cpuNo = 1, \
     featShaper(destRigidAlign, destFeatSections, featsMin = featsMin, \
         dist = distFeats, maxfeat = featsMax, selectCriteria = selectCriteria, \
             featSmoother = featSmoother, plot = plot)
-    
     # extract sections and deform the downsampled images
     nonRigidDeform(destRigidAlign, destNLALign, destFeatSections, prefix = "png", flowThreshold = flowThreshold)
 
     # extract the feature sections 
     if extract:
-        allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos = False)
-        allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos = True)
+        # allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos = False)
+        # allFeatExtractor(destRigidAlign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos = True)
         allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=False)
         allFeatExtractor(destNLALign, destFeatSections, prefix = "png", scl = 1, sz = sect, realPos=True)
 
@@ -378,7 +377,7 @@ def allFeatExtractor(imgSrc, dirSectdest, prefix, scl = 1, sz = 0, realPos = Fal
     sectType = imgSrc.split("/")[-2]
 
     # set the destination of the feature sections based on the image source and prefix
-    LSectDir = dirSectdest + sectType + prefix + "_" + str(realPos) + "2/"
+    LSectDir = dirSectdest + sectType + prefix + "_" + str(realPos) + "/"
 
     # if processing the non linear or linear aligned features
     if imgSrc.find("NL") > -1:
@@ -392,10 +391,8 @@ def allFeatExtractor(imgSrc, dirSectdest, prefix, scl = 1, sz = 0, realPos = Fal
     ID, IDCount = np.unique(dfRawCont.ID, return_counts = True)
     keyFeats = ID[np.argsort(-IDCount)][:3]
 
-    print(keyFeats)
-
     # for all selected features print out the first and last samples and sections
-    keyFeats = True
+    keyFeats = -1
 
     for n, img in enumerate(imgs):
         printProgressBar(n, len(imgs)-1, "feats", "", 0, 20)
@@ -404,7 +401,7 @@ def allFeatExtractor(imgSrc, dirSectdest, prefix, scl = 1, sz = 0, realPos = Fal
         sampdf.X *= scl; sampdf.Y *= scl        # scale the positions based on image size
         featExtractor(LSectDir, img, sampdf, dfRawCont, sz, zSamp, prefix = prefix, realPos = realPos, keyFeats = keyFeats)
 
-def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", flowThreshold = np.inf):
+def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", flowThreshold = 1):
 
     '''
     This transforms the images based on the feature transforms
@@ -415,7 +412,7 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", fl
         (dirSectdest), path to save the feature sections
         (scl), resolution scale factor
         (prefix), image type used
-        (flowThreshold), maximum magnitude vector for deformation
+        (flowThreshold), maximum magnitude vector for deformation percent of the image diagonal
     
     Outputs:  
         (), warp the images and save
@@ -459,7 +456,7 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", fl
     for Z, Zs in key:
         # print(str(Z) + "/" + str(len(key)))
         imgPath = imgs[Zs]
-        output = ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix, dirNLdest, border = 5, smoother = 0, order = 1, annotate = False, scl = scl, flowThreshold = flowThreshold)
+        output = ImageWarp(Z, imgPath, dfSelectRFix, dfSelectSMFix, dirNLdest, border = 5, smoother = 0, order = 1, annotate = False, scl = scl, thr = flowThreshold)
         # during the feature transform of the png image, the final 
         # positions used for warping were used are saved
         if output is not None:
@@ -694,7 +691,7 @@ def featureSelector(dfR, dfSm, featsMin, dist = 0, maxfeat = np.inf, cond = 'len
 
     return(dfFinalR, dfFinalSm, finalFeats)
 
-def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5, order = 2, annotate = False, scl = 1, flowThreshold = 0.01, trueName = False):
+def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5, order = 2, annotate = False, scl = 1, thr = 0.01, trueName = False):
 
     # perform the non-rigid warp
     # Inputs:   (s), number of the sample
@@ -709,24 +706,20 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     #           (imgFlow), the flow field which was produced to make the 
     #               warped image
 
-    # NOTE I should really add the corner positions for all 
-    # samples so that the warping is true, rather than a distorted movement
-    # ie create bounds on the images to deform
-
     # scale image to perform deformations to identify the ideal points to use 
     # no minimise flow errors
     scl = 0.2
 
     # ensure the naming convention is correct 
     prefix = imgpath.split(".")[-1]       # get image prefix
-    samp = nameFromPath(imgpath).split("_")[-1]
+    
     if trueName:
-        pass
+        name = nameFromPath(imgpath, 4)
     else:
+        samp = str(s)
         while len(samp) < 4:
             samp = "0" + samp
-
-    name = nameFromPath(imgpath, 1) + "_" + str(samp)
+        name = nameFromPath(imgpath, 1) + "_" + str(samp)
 
     # load the correct ID images
     if prefix == "tif":
@@ -757,16 +750,10 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
     smf = np.fliplr(np.unique(np.array(smFeats), axis = 0))
 
     tftarImg = np.expand_dims(cv2.resize(img, (int(img.shape[1]*scl), int(img.shape[0]*scl))), 0).astype(float)
+    imgSize = np.sqrt((tftarImg.shape[0]**2 + tftarImg.shape[1]**2))
 
-    # perform non-rigid deformation on the image. If the flow vector is above 
-    # the threshold flogmagnitude then remove the features creating the 
-    # largest errors and repeat. NOTE this could be done in the feature selection 
-    # but it would be presumptive to remove features based purely on their errors
-    # BEFORE assess their effects on the NL deformations
-    # NOTE for tif uses excessive memory, consider using HPC...
-
+    # NOTE for fullscale uses excessive memory, consider using HPC...
     # identify the transformation which results in the desired flow threshold
-    thr = flowThreshold * scl**2
     while True:
         imgMod, imgFlow = sparse_image_warp(tftarImg, \
             np.expand_dims(rawf.astype(float)*scl, 0), \
@@ -781,20 +768,16 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
         # the deformation is possible "impossible" so apply a greater smoothing
         # constant and try again
         # get the densefield vector magnitude
-        imgFlowMag = np.sqrt(imgFlow[0, :, :, 0]**2 + imgFlow[0, :, :, 1]**2)
+        imgFlowMag = np.max(np.sqrt(imgFlow[0, :, :, 0]**2 + imgFlow[0, :, :, 1]**2))
+        printProgressBar(np.clip(thr/(imgFlowMag/imgSize), 0, 1), 1, "Warping " + name, "", 0, 20)
 
-        printProgressBar(np.clip(thr/imgFlowMag, 0, 1), 1, "Warping " + name, "", 0, 20)
-        
-        # cv2.imwrite(dest + name + "_" + str(int(maxFlow)) + ".png", imgMod)
-        # cv2.imshow("Img w smoothing = " + str(maxFlow), imgMod); cv2.waitKey(0)
-        if np.max(imgFlowMag)/np.sqrt((tftarImg.shape[0]**2 + tftarImg.shape[1]**2))>thr:
+        if (imgFlowMag/imgSize)>thr:
 
             pos = np.argmax(np.sum((rawf-smf)**2, axis = 1))
             # remove the individual feature with the largest error contribution
             rawf = np.delete(rawf, pos, axis = 0)
             smf = np.delete(smf, pos, axis = 0)
         else:
-            print("Feats used: " + str(len(smf)) + "/" + str(len(smFeats)) + "\n")
 
             tftarImg = np.expand_dims(img, 0).astype(float)
 
@@ -812,9 +795,6 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
             imgFlowMag = np.sqrt(imgFlow[:, :, 0]**2 + imgFlow[:, :, 1]**2)
             imgFlowMag = ((imgFlowMag-np.min(imgFlowMag))/(np.max(imgFlowMag) - np.min(imgFlowMag))*255).astype(np.uint8)
             break
-    # plt.imshow(np.sum(np.abs(imgMod - img)/3, axis = 2), cmap = 'gray'); plt.show()
-
-    # print("Max Flow = " + str(np.max(Flow)) + " Min Flow = " + str(np.min(Flow)))
 
     # add annotations to the image to show the feature position changes
     if annotate:
@@ -1232,12 +1212,13 @@ if __name__ == "__main__":
     # '/eresearch/uterine/jres129/BoydCollection/H671A_18.5/',
     # '/eresearch/uterine/jres129/BoydCollection/H671B_18.5/',
     # '/eresearch/uterine/jres129/BoydCollection/H710B_6.1/',
+    '/eresearch/uterine/jres129/BoydCollection/test/',
     '/eresearch/uterine/jres129/BoydCollection/H710C_6.1/',
     '/eresearch/uterine/jres129/BoydCollection/H673A_7.6/',
     '/eresearch/uterine/jres129/BoydCollection/H1029A_8.4/'
     '/eresearch/uterine/jres129/BoydCollection/H750A_7.0/',
     ]
-
+    '''
     dataHomes = [
     # '/Volumes/USB/H653A_11.3/',  
     # '/Volumes/USB/H671A_18.5/',  
@@ -1248,14 +1229,14 @@ if __name__ == "__main__":
     '/Volumes/USB/H750A_7.0/',   
     '/Volumes/USB/H1029A_8.4/'
     ]
-
+    '''
     for dataHome in dataHomes:
         name = dataHome.split("/")[-2]
         print(name)
         nonRigidAlign(dataHome, size, cpuNo = cpuNo, \
         featsMin = 10, dist = 30, featsMax = 100, errorThreshold = 200, \
             distFeats = 50, sect = 100, selectCriteria = "length", \
-                flowThreshold = 50, fixFeatures = False, plot = False)
+                flowThreshold = 0.01, fixFeatures = False, plot = False)
 
     '''
     for d in dirHome:
