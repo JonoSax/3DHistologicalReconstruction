@@ -144,23 +144,23 @@ Run the main_fullScaleTransform to transform the FULLSCALE images exactly the sa
     
 # Outputs are saved in the following directories:
 
-    * Size (all files are processed per extracted scale)
-        * alignedSamples (linear aligned sections)
-            * feats (transformed feature positions)
-        * FeatureSections (stores the feature trajectory position and extracted patches)
-            * Various extracted sections (True = 3D extraction as it appears in the reconstruction, False = only the patch corresponding is extracted) *
-        * images (base-line slide image)
-        * info (reference and target section feature positions for linear transformation)
-        * infoNL (reference and target section feature positions for NL transformation)
-        * maskedSamples (extract and, if specified, colour normalised sections)
-            * masks (.pbm files used to mask images)
-            * plots (graphs showing the bounding and identification of each section)
-        * NLAlignedSamplesSmall (the base-line sections with linear/NL deformations)
-            * flowMagnidue (deformation magnitudes from the sections where the images are normalised so that the maximum deformation is shown brightest and the maximum magnitude pixel deformation is the value in the image name)
-        * NLAlignedSamplesFull (the full-size sections with linear/NL deformations calculated from teh baseline image)
-        * RealignedSamples (sections aligned using tracked features)
-            * feats (transformed feature positions)
-        * tifFiles (full-scale slide images)
+    ├── Size (all files are processed per extracted scale)
+        ├── alignedSamples (linear aligned sections)
+        │    ├── feats (transformed feature positions)
+        ├── FeatureSections (stores the feature trajectory position and extracted patches)
+        │    ├── Various extracted sections (True = 3D extraction as it appears in the reconstruction, False = only the patch corresponding is extracted) *
+        ├── images (base-line slide image)
+        ├── info (reference and target section feature positions for linear transformation)
+        ├── infoNL (reference and target section feature positions for NL transformation)
+        ├── maskedSamples (extract and, if specified, colour normalised sections)
+        │    ├── masks (.pbm files used to mask images)
+        │    ├── plots (graphs showing the bounding and identification of each section)
+        ├── NLAlignedSamplesSmall (the base-line sections with linear/NL deformations)
+        │    ├── flowMagnidue (deformation magnitudes from the sections where the images are normalised so that the maximum deformation is shown brightest and the maximum magnitude pixel deformation is the value in the image name)
+        ├── NLAlignedSamplesFull (the full-size sections with linear/NL deformations calculated from teh baseline image)
+        ├── RealignedSamples (sections aligned using tracked features)
+        │    ├── feats (transformed feature positions)
+        ├── tifFiles (full-scale slide images)
 
 
 NOTE on operation
