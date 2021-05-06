@@ -192,7 +192,7 @@ def contFeatFinder(imgsrc, destFeat, destImg, cpuNo = False, sz = 100, dist = 20
         '''
 
         # parallelsiation seems to take longer...
-        if cpuNo == False:
+        if cpuNo == True:
             confirmInfo = []
             for m in continuedFeatures + matchedInfo:
                 confirmInfo.append(featMatching(m, tarImg, refImg, sz = sz))
@@ -421,6 +421,7 @@ def nonRigidDeform(diralign, dirNLdest, dirSectdest, scl = 1, prefix = "png", fl
 
     dirMaker(dirNLdest)
     dirMaker(featsConfirm)
+    dirMaker(dirNLdest + "flowMagnitude/")
 
     # get info
     if prefix == "png":
@@ -809,12 +810,13 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
                     num_boundary_points=border, \
                         regularization_weight=smoother, \
                             interpolation_order=order)
-
+    '''
+    
     imgMod = np.array(imgMod[0]).astype(np.uint8)
     imgFlow = np.array(imgFlow[0]).astype(float)
     imgFlowMag = np.sqrt(imgFlow[:, :, 0]**2 + imgFlow[:, :, 1]**2)
     imgFlowMagNorm = ((imgFlowMag-np.min(imgFlowMag))/(np.max(imgFlowMag) - np.min(imgFlowMag))*255).astype(np.uint8)
-    '''
+    
     # add annotations to the image to show the feature position changes
     if annotate:
         # convert Flow tensor into a 3D array so that it can be saved
@@ -852,8 +854,8 @@ def ImageWarp(s, imgpath, dfRaw, dfNew, dest, sz = 100, smoother = 0, border = 5
         return None
 
     else:
-        dirMaker(dest + "flowMagnitude/")
         cv2.imwrite(dest + name + ".png", imgMod)
+        cv2.imwrite(dest + "flowMagnitude/" + name + "_maxMag_" + str(np.round(np.max(imgFlowMag), 2)) + ".png", imgFlowMagNorm)
         print(name + " baseline deformation saved")
 
         # based on the final positions of the features found, return these 

@@ -17,7 +17,7 @@ if __name__ == "__main__":
     size = 1.25
     res = 0.4
     scale = 1/res
-    cpuNo = 4
+    cpuNo = 20
 
     dataHomes = [
     # '/Volumes/USB/H653A_11.3/',
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     # '/Volumes/USB/H750A_7.0/',
     # '/Volumes/USB/H1029A_8.4/'
     ]
-    '''
+    
     dataHomes = [
     # '/eresearch/uterine/jres129/BoydCollection/H653A_11.3/',
     # '/eresearch/uterine/jres129/BoydCollection/H671A_18.5/',
@@ -39,8 +39,9 @@ if __name__ == "__main__":
     # '/eresearch/uterine/jres129/BoydCollection/H673A_7.6/',
     # '/eresearch/uterine/jres129/BoydCollection/H750A_7.0/',
     # '/eresearch/uterine/jres129/BoydCollection/H1029A_8.4/'
+    '/eresearch/uterine/jres129/BoydCollection/test/'
     ]
-    '''
+    
 
     for d in dataHomes:
 

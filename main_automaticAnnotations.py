@@ -43,15 +43,15 @@ if __name__ == "__main__":
     ]
 
     # zoom level to use
-    size = 2.5
+    size = 1.25
 
     # resolution of the baseline image to be extratcted from the full scale image
-    res = 0.2
+    res = 0.4
 
     # number of cores to use. If set to 1 then will serialise and allow
     # for debugging (if 1 is used it still processes with the multiprocessing
     # functions) 
-    cpuNo = 4
+    cpuNo = 20
 
     errorThreshold = 300
 
@@ -98,10 +98,10 @@ if __name__ == "__main__":
                 fixit(dataHome, size, cpuNo, samples, errorThreshold)
             else:
                 break
-
+        
         # change the multiprocessing method for the nonRigidAlign
         multiprocessing.set_start_method("fork", force=True)
-
+        
         # perform a non-rigid alignment
         nonRigidAlign(dataHome, size, cpuNo = cpuNo, \
         featsMin = 10, dist = 30, featsMax = 100, errorThreshold = 200, \
