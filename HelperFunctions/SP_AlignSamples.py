@@ -53,7 +53,7 @@ def align(data, size, cpuNo = 1, errorThreshold = 100):
 
     aligner(dataSegmented, featureInfoPath, destImgPath, cpuNo, errorThreshold)
 
-def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThreshold = 100, shift = True):
+def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThreshold = 100):
 
     '''
     this function takes all the directories and info and then does the full 
@@ -80,9 +80,8 @@ def aligner(sampledirs, featureInfoPath, destImgPath, cpuNo = False, errorThresh
     # NOTE this has to be sequential because the centre of rotation changes for each image
     # so the angles of rotation dont add up
     
-    if shift:
-        # if align then shift features
-        shiftFeatures(featureInfoPath, sampledirs, destImgPath, errorThreshold)
+    # if align then shift features
+    shiftFeatures(featureInfoPath, sampledirs, destImgPath, errorThreshold)
 
     # get the minimum plate shift
     maxShape, minShift = getSpecShift(featureInfoPath)
@@ -402,7 +401,7 @@ def getSpecShift(featureInfoPath):
 
     return(maxShape, shiftMi)
 
-def transformSamples(samplePath, maxShape, shift, segInfo, dest, saving = False):
+def transformSamples(samplePath, maxShape, shift, segInfo, dest, saving = False, shapeR = 1):
     # this function takes the affine transformation information and applies it to the samples
     # Inputs:   (smallsamplePath), downsampled sample being processed
     #           (fullsamplePath), full scale sample being processed
@@ -410,6 +409,7 @@ def transformSamples(samplePath, maxShape, shift, segInfo, dest, saving = False)
     #           (segInfo), directory of the feature information
     #           (dest), directories to save the aligned samples
     #           (saving), boolean whether to save new info
+    #           (shapeR), scale of the features to the image it is being applied to
     # Outputs   (), saves an image of the tissue with the necessary padding to ensure all images are the same size and roughly aligned if saving is True
 
     # get the name of the sample
@@ -439,8 +439,7 @@ def transformSamples(samplePath, maxShape, shift, segInfo, dest, saving = False)
     except: pass
 
     # get the scale difference between the aligned image and image being transformed
-    shapeR = int(np.round(field.shape[0] / imgShape))
-    maxShapeR = maxShape.copy() * [shapeR, shapeR, 1]
+    maxShapeR = (maxShape.copy() * [shapeR, shapeR, 1]).astype(int)
     shiftR = shift.copy() * shapeR
 
     # get the translations and set 0, 0 to be the position of minimum translation

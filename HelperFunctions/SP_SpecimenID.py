@@ -287,7 +287,7 @@ def maskMaker(idir, imgMasked = None, imgplot = False, plot = False):
         plt.savefig(imgplot + name + ".jpg")
         plt.clf()
 
-def imgStandardiser(destPath, maskpath, imgsrc, imgRef):
+def imgStandardiser(destPath, maskpath, imgsrc, imgRef, ratio = 1):
 
     # this applies the mask created to the lower resolution and full 
     # resolution images and creates information needed for the alignment
@@ -296,7 +296,9 @@ def imgStandardiser(destPath, maskpath, imgsrc, imgRef):
     #           (imgbigpath), path of the tif image of the samples
     #           (imgsmallpath), path of the reduced sized image
     #           (imgref), reference image for colour normalisation
+    #           (ratio), scale of the mask to the image it is being applied to
     # Outputs:  (), saves image at destination with standard size and mask if inputted
+
 
     # get info to place all the images into a standard size to process (if there
     # is a mask)
@@ -326,12 +328,6 @@ def imgStandardiser(destPath, maskpath, imgsrc, imgRef):
         print("     FAILED mask: " + maskpath)
         return
 
-    try:
-        ratio = int(np.round(img.shape[0] / mask.shape[0], 2))  # get the upscale size of the images
-    except:
-        print("---- FAILED " + name + " ----")
-        return
-
     # get the bounding positional information
     extract = bounder(mask[:, :, 0])
 
@@ -357,7 +353,7 @@ def imgStandardiser(destPath, maskpath, imgsrc, imgRef):
         newid = name + "_" + str(id)
 
         # adjust for the original size image
-        xb, yb = np.array(extract[n]) *  ratio
+        xb, yb = (np.array(extract[n]) *  ratio).astype(int)
         imgsect = img[:, :, :][yb[0]:yb[1], xb[0]:xb[1], :].copy()
 
         # expand the dims so that it can multiply the original image
