@@ -1571,16 +1571,18 @@ def bounder(img, s = 100):
 
     return(extractA)
 
-def exactBound(imgDir, prefix, pad, dest = None):
+def exactBound(imgDir, prefix, dest = None, pad = 0):
     ''' 
     Bounding the images to extract only the sample
 
         Inputs:\n
     (imgDir), directory of the images
     (prefix), image prefix (ie png or tif)
+    (pad), constant border around any bounding
+    (dest), destination for the bounded images. If not set then just replaces the source images
 
         Output:\n
-    (), replaces the aligned images with the bounded ones
+    (), bounded images 
     '''
 
     print("Bounding " + prefix + " images")
@@ -1635,6 +1637,7 @@ def exactBound(imgDir, prefix, pad, dest = None):
     # write the bounding points used
     eRdict = {0: extractRange[0][0], 1:extractRange[0][1]}
     dictToTxt(eRdict, dest + "_boundingPoints.txt")
+    print("Bounding completed")
 
 def findMissing(imgs, destFeat):
 
