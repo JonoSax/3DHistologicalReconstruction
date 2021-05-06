@@ -157,9 +157,9 @@ Run the main_fullScaleTransform to transform the FULLSCALE images exactly the sa
         │    ├── masks              # .pbm files used to mask images
         │    └── plots              # graphs showing the bounding and identification of each section
         ├── NLAlignedSamplesSmall # the base-line sections with linear/NL deformations
-        │    ├── flowMagnidue       # dense deformation matrices
+        │    └── flowMagnidue       # dense deformation matrices
         ├── RealignedSamples    # sections aligned using tracked features)
-        │    ├── feats              # transformed feature positions
+        │    └── feats              # transformed feature positions
         └── tifFiles            # full-scale images
 
 
