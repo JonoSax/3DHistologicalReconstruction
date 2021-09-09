@@ -39,7 +39,7 @@ Install ndpitools
 
 **Set the dataHome paths for each script**
 
-Run the main_automaticAnnotations script to perform a linear + NL registration and perform feature extraction. It is automatic unless there is feature finding failure, in which case follow the on screen instructions to select features on the sections.
+Run the main_automaticAnnotations script to perform a rigid + non-rigid registration and perform feature extraction. It is automatic unless there is feature finding failure, in which case follow the on screen instructions to select features on the sections.
 
 Run the SegSectionTraining to launch an integrated labelling, 2D model training and segmentation script on the BASELINE images.
 
