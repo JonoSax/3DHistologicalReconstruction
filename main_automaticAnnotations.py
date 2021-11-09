@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # '/eresearch/uterine/jres129/BoydCollection/H673A_7.6/',
     # '/eresearch/uterine/jres129/BoydCollection/H750A_7.0/',
     # '/eresearch/uterine/jres129/BoydCollection/H1029A_8.4/'
-    '/eresearch/uterine/jres129/BoydCollection/test/'
+    '/eresearch/uterine-vasculature-marsden135/mmad610/BoydCollection/mm_test/'
     ]
 
     # zoom level to use
