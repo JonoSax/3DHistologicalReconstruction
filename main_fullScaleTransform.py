@@ -25,9 +25,10 @@ if __name__ == "__main__":
     # '/Volumes/USB/H671B_18.5/',
     # '/Volumes/USB/H673A_7.6/',
     # '/Volumes/USB/H710B_6.1/',
-    '/Volumes/USB/H710C_6.1/',
+    #'/Volumes/USB/H710C_6.1/',
     # '/Volumes/USB/H750A_7.0/',
     # '/Volumes/USB/H1029A_8.4/'
+    '/eresearch/uterine-vasculature-marsden135/mmad610/BoydCollection/mm_test/'
     ]
     
     dataHomes = [
@@ -39,7 +40,7 @@ if __name__ == "__main__":
     # '/eresearch/uterine/jres129/BoydCollection/H673A_7.6/',
     # '/eresearch/uterine/jres129/BoydCollection/H750A_7.0/',
     # '/eresearch/uterine/jres129/BoydCollection/H1029A_8.4/'
-    '/eresearch/uterine/jres129/BoydCollection/mm_test/'
+    '/eresearch/uterine-vasculature-marsden135/mmad610/BoydCollection/mm_test/'
     ]
     
 
