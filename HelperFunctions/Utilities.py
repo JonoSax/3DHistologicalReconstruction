@@ -13,7 +13,17 @@ from PIL import Image
 import multiprocessing
 from itertools import repeat
 import pandas as pd
-from time import time, time_ns
+from time import time #, time_ns
+#for compatibility with Python 3.6, time_ns is being imported as follows
+try:
+     from time import time_ns
+ except ImportError:
+     from datetime import datetime
+     # For compatibility with Python 3.6
+     def time_ns():
+         now = datetime.now()
+         return int(now.timestamp() * 1e9)
+         
 import shutil
 import random
 
